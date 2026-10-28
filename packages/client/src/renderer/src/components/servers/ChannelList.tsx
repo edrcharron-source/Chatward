@@ -3,6 +3,7 @@ import type { Channel, User } from '@chatward/shared';
 import { api } from '../../api/http';
 import { useSession } from '../../state/session';
 import { useVoice } from '../../state/voice';
+import { useMemberMenu } from '../voice/MemberMenu';
 import VoiceDock from '../voice/VoiceDock';
 import Avatar from './Avatar';
 import ChannelSettingsDialog from './ChannelSettingsDialog';
@@ -25,6 +26,7 @@ export default function ChannelList({ onOpenSettings, onReload }: { onOpenSettin
   const [dialog, setDialog] = useState<DialogKind>(null);
   const [voiceError, setVoiceError] = useState<string | null>(null);
   const [settingsChannel, setSettingsChannel] = useState<Channel | null>(null);
+  const memberMenu = useMemberMenu();
 
   const bundle = servers.find((b) => b.server.id === activeServerId);
   const admin = isAdmin(bundle?.members.find((m) => m.user.id === user?.id));
@@ -119,7 +121,11 @@ export default function ChannelList({ onOpenSettings, onReload }: { onOpenSettin
                     {occupants.length > 0 && (
                       <ul className="cw-occupants" aria-label={`In ${c.name}`}>
                         {occupants.map((u) => (
-                          <li key={u.id} data-speaking={speaking.includes(u.id) || undefined}>
+                          <li
+                            key={u.id}
+                            data-speaking={speaking.includes(u.id) || undefined}
+                            onContextMenu={u.id === user?.id ? undefined : (e) => memberMenu.openMenu(e, { userId: u.id, channelId: c.id, serverId: c.serverId })}
+                          >
                             <ProfileTrigger user={u}>
                               <Avatar user={u} size={18} />
                               <span>{u.displayName}</span>
@@ -137,6 +143,7 @@ export default function ChannelList({ onOpenSettings, onReload }: { onOpenSettin
           </>
         )}
       </div>
+      {memberMenu.element}
 
       <VoiceDock />
 
