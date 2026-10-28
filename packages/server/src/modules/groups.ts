@@ -54,7 +54,6 @@ export function register(app: Express, ctx: Ctx): void {
     'SELECT epoch, sender_device_id, commit_bytes FROM mls_commits WHERE group_id=? AND epoch>=? ORDER BY epoch LIMIT ?');
   const welcomesFor = db.prepare(
     'SELECT epoch, to_device_id, welcome FROM mls_welcomes WHERE group_id=? AND to_device_id IN (SELECT device_id FROM devices WHERE user_id=?) ORDER BY epoch');
-  const groupDevices = db.prepare('SELECT device_id FROM mls_group_devices WHERE group_id=?');
   const dropCommitsFrom = db.prepare('DELETE FROM mls_commits WHERE group_id=? AND epoch>=?');
   const dropWelcomesAfter = db.prepare('DELETE FROM mls_welcomes WHERE group_id=? AND epoch>?');
   // A Commit at epoch e comes with Welcomes at e+1, so these are the Welcomes a reset from `epoch` would drop.

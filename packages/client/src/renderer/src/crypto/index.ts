@@ -686,6 +686,24 @@ export function handleMemberLeave(serverId: string, userId: string, servers: Ser
   });
 }
 
+/** Drops the keys and group state of channels that were deleted, along with their server's. They can never be used again. */
+export function forgetChannels(channelIds: string[]): Promise<void> {
+  return serial(async () => {
+    if (isDemo() || !device || !privates) return;
+    let changed = false;
+    for (const channelId of channelIds) {
+      if (!(channelId in vault.channels) && !(channelId in vault.groups) && !(channelId in vault.shared)) continue;
+      delete vault.channels[channelId];
+      delete vault.groups[channelId];
+      delete vault.shared[channelId];
+      groupStates.delete(channelId);
+      for (const key of aesCache.keys()) if (key.startsWith(`${channelId}#`)) aesCache.delete(key);
+      changed = true;
+    }
+    if (changed) await persistVault();
+  });
+}
+
 /** Verifies the sender against the member directory, then stores the history key. Caller persists. */
 async function acceptEnvelope(env: KeyEnvelope): Promise<boolean> {
   const me = getDevice();
