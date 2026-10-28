@@ -45,6 +45,9 @@ export default function AuthScreen() {
     setError(null);
     try {
       useSession.getState().setServerUrl(url);
+      // The page's connection rules name the server, so a different server needs a reload before anything can reach it.
+      // The saved address comes back after the reload, so the user only re-enters the password.
+      if (await window.chatward.server.allow(url)) { location.reload(); return; }
       await initDevice(accountKey(url, name));
       // Reset goes through the same device handling as login, so this PC's existing keys and history stay with the account.
       const send = (device: DeviceKeys) => {
