@@ -1,34 +1,40 @@
 # Chatward E2EE (crypto module)
 
-Everything here is WebCrypto (`crypto.subtle`). No hand-rolled primitives.
+Group membership and epoch keys use MLS (RFC 9420) via `mls.ts`, which wraps [ts-mls](https://www.npmjs.com/package/ts-mls). Everything else is WebCrypto (`crypto.subtle`). The contract with the server and the full model are in `docs/CONTRACT.md`.
+
+## Files
+- `mls.ts`: pure MLS group functions over ts-mls: create, add, remove, Welcome join, application messages, per-epoch history key, voice key, state and KeyPackage (de)serialization.
+- `index.ts`: the app-facing API (`syncChannelKeys`, `encryptPayload`, `decryptMessage`, `voiceKey`, ...). Keeps the state in a vault saved through `window.chatward.secureStore`.
+- `envelope.ts`: wraps history keys for a device (ECDH ephemeral-static → HKDF → AES-GCM, signed with ECDSA).
+- `primitives.ts`, `safety.ts`: WebCrypto helpers and safety numbers.
 
 ## Primitives
-- Device identity: ECDH P-256 (key agreement) and ECDSA P-256 (signing), one pair per device, created on first run.
-- Private keys live in `window.chatward.secureStore` as JWK. The main process encrypts that file with Electron `safeStorage`. They are re-imported as non-extractable keys.
-- Channel key: random AES-256-GCM key per channel and version.
-- Key wrap: ephemeral-static ECDH, HKDF-SHA-256 (salt = ephemeral pub || recipient pub, info = envelope header), then AES-256-GCM. The header binds channel, version, sender and recipient device ids.
-- Envelope signature: ECDSA P-256 over the header and wrapped bytes. A receiver accepts an envelope only if the sender device is in the member directory and the signature verifies.
-- Messages: AES-256-GCM, random 12-byte IV, AAD = `channelId|keyVersion|authorId`. Wire format is base64(iv || ciphertext+tag).
-- Attachments: a fresh AES-256-GCM key and IV per blob. The key and IV travel inside the encrypted message payload.
-- Voice: LiveKit E2EE key = HKDF-SHA-256 of the latest channel key, info `chatward-voice`, salt = channel id.
-- Safety number: SHA-256 over the sorted device signing keys, shown as six groups of five digits.
+- Device identity: ECDH P-256 and ECDSA P-256, one pair per device. Private keys in `secureStore` as JWK.
+- MLS suite: `MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519`. ts-mls is not audited.
+- Message key for epoch E: `keyVersion = E + 1`, derived from the MLS exporter (label `chatward-history`). Messages: AES-256-GCM, random 12-byte IV, AAD = `channelId|keyVersion|authorId`.
+- Voice: LiveKit E2EE key = MLS exporter (label `chatward-voice`) of the server's first text channel.
+- Attachments: a fresh AES-256-GCM key and IV per blob, inside the message payload.
+- Safety number: SHA-256 over the sorted device signing keys, six groups of five digits.
 
-## Key lifecycle
-1. The first device to sync a channel with no server key creates version 1 and wraps it for every member device.
-2. Any device that holds the latest version wraps it (and older versions) for member devices the server reports as missing it. A new device therefore gets full history from any online member.
-3. When a member is removed (`member.leave`), call `handleMemberLeave(serverId, userId, servers)`. Every device that holds the latest version rotates each channel of that server to version N+1 and wraps it only for the remaining members. A regular sync also rotates if a device we recorded as a recipient has since left. Removed devices keep the old keys they already had.
+## Lifecycle
+1. **Keys**: each device keeps a pool of single-use KeyPackages on the server (refilled below 5), plus one last-resort package. Private parts stay in the vault.
+2. **Group**: a channel's group is created by the first device that finds no commits and no Welcome. The creator commits at epoch 0 and adds every other member device it can claim a KeyPackage for. A 409 means another device won, so this device joins by Welcome.
+3. **Join**: a device with a Welcome for its KeyPackage joins at that epoch and derives the current history key.
+4. **Follow**: every sync applies Commits from the local epoch on. A failure to apply one (usually a Remove naming this device) drops the local group.
+5. **Reconcile**: a device removes group members the server no longer lists, then adds server devices the group lacks. Each change is one Commit.
+6. **History**: members send every history key they hold to devices that have not received them yet, as v1 envelopes. Devices that left the server are forgotten.
+7. **Kick**: `handleMemberLeave` runs the sync without the removed user, so a remaining member commits the Remove.
 
-## Threat model (v1, honest)
-Protects message and attachment contents, and voice media, from the server and from anyone without a member device's keys. The server still sees metadata: channel ids, author ids, timestamps, message sizes, who is in which voice channel.
-
-Known limits:
-- **Trust on first use for devices.** The server relays each member's device list. A compromised server could add an attacker device to a member and receive the channel keys. Verify the safety number out of band to detect this. Nothing in the client detects it automatically.
-- **No forward secrecy for history.** A removed member keeps the keys they already had, so they can still read messages from before their removal. Rotation only protects future messages.
-- **Concurrent first key.** If two devices create version 1 at the same moment, the server may store two different version-1 keys. Messages sealed under one will not open for the other. Retry by reloading after the envelopes settle.
-- **Voice uses only the latest version.** A participant still on an older version cannot join voice until it syncs.
-- **New devices wait for a sync.** A brand-new device cannot read history until an online member syncs and wraps the keys for it.
-- Soundboard clips and avatars are not E2EE in v1 (per CONTRACT).
-- v2 plan: migrate group key management to MLS (OpenMLS), which adds forward secrecy and authenticated membership changes.
+## Threat model (v2, honest)
+- Protects message and attachment contents, and voice media, from the server and from anyone without a member device's keys.
+- Forward secrecy for new messages: after a Remove, the removed device gets no new epoch keys.
+- Removal does not revoke history. A removed member keeps every history key they already had, so they can read messages from before their removal.
+- New devices read history from before they joined, by design. Members share history keys with them, so any member who holds a key can help a new device read it.
+- Trust on first use for devices: a compromised server could substitute a device. Verify safety numbers out of band.
+- The server still sees metadata: channel ids, author ids, timestamps, message sizes, and who is in which voice channel.
+- ts-mls has not had a formal security audit.
 
 ## Tests
-`npm run test:crypto -w @chatward/client` runs `crypto.test.ts` with `node --test` (round trip, AAD and tamper detection, envelope signatures and addressing, rotation, voice key separation, safety number).
+- `npm run test:crypto -w @chatward/client`: `crypto.test.ts` (primitives, envelopes, safety number) and `mls.test.ts` (join, Commit from a non-creator, removed member cannot decrypt, voice key rotates per epoch).
+- The server side is covered by `npm run test:e2e -w @chatward/server`, which runs the real HTTP API: race, second device by Welcome, message round trip, kick, stale commit.
+- The client flow in `index.ts` (sync, reconcile, history sharing) is not covered by an automated test yet.

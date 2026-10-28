@@ -92,6 +92,37 @@ export function openDb(): DB {
     duration_ms INTEGER NOT NULL,
     created_at INTEGER NOT NULL
   );
+  CREATE TABLE IF NOT EXISTS mls_keypackages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    device_id TEXT NOT NULL,
+    kp TEXT NOT NULL,
+    last_resort INTEGER NOT NULL DEFAULT 0,
+    consumed_at INTEGER
+  );
+  CREATE INDEX IF NOT EXISTS idx_mls_kp_device ON mls_keypackages(device_id, last_resort, consumed_at);
+  CREATE TABLE IF NOT EXISTS mls_groups (
+    group_id TEXT PRIMARY KEY REFERENCES channels(id) ON DELETE CASCADE,
+    epoch INTEGER NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS mls_commits (
+    group_id TEXT NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+    epoch INTEGER NOT NULL,
+    sender_device_id TEXT NOT NULL,
+    commit_bytes TEXT NOT NULL,
+    PRIMARY KEY (group_id, epoch)
+  );
+  CREATE TABLE IF NOT EXISTS mls_welcomes (
+    group_id TEXT NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+    epoch INTEGER NOT NULL,
+    to_device_id TEXT NOT NULL,
+    welcome TEXT NOT NULL,
+    PRIMARY KEY (group_id, epoch, to_device_id)
+  );
+  CREATE TABLE IF NOT EXISTS mls_group_devices (
+    group_id TEXT NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+    device_id TEXT NOT NULL,
+    PRIMARY KEY (group_id, device_id)
+  );
   `);
   return db;
 }

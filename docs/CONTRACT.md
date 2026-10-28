@@ -63,14 +63,23 @@ Voice (module `voice`)
 WS fan-out: server pushes ServerFrame events to every connected socket whose user is a member of the relevant server.
 Server exposes `ctx.broadcastToServer(serverId, frame)` and `ctx.sendToUser(userId, frame)`.
 
-## E2EE model (v1, honest)
-- Each device generates ECDH P-256 + ECDSA P-256 keypairs on first run; private keys stored in Electron safeStorage-encrypted file (renderer asks main via preload `window.chatward.secureStore`).
-- Each text channel has a random AES-256-GCM key (versioned). Any member device holding the key can create a new version and wrap it for every member device (ECDH ephemeral-static → HKDF → AES-GCM wrap), signed with ECDSA. Rotate on member kick.
-- Messages: AES-GCM, random 12-byte IV, AAD = channelId|keyVersion|authorId. Wire = base64(iv||ct).
+## E2EE model (v2: MLS group + per-epoch history keys)
+- Each device generates ECDH P-256 + ECDSA P-256 keypairs on first run; private keys stored in Electron safeStorage-encrypted file (renderer asks main via preload `window.chatward.secureStore`). These keys wrap history keys for new devices.
+- Each text channel is one MLS group (RFC 9420, ts-mls, suite MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519). Group id = channel id. MLS identity = deviceId, so membership is per device.
+- Membership changes are Commits: a kick is a Remove by a remaining member, and new devices are added by Commit with a Welcome. The server orders Commits by epoch (409 on mismatch), which gives one winner when two members commit at once. Pending removals are listed at `GET /api/servers/:id/pending-removals`.
+- KeyPackages: single-use pool per device (`POST /api/devices/keypackages`, claimed with `GET /api/users/:id/keypackages`), plus one last-resort package.
+- Message key for epoch E is a history key derived from the MLS exporter: `keyVersion = E + 1`. Messages: AES-GCM, random 12-byte IV, AAD = channelId|keyVersion|authorId. Wire = base64(iv||ct). The key never goes on the wire.
+- History for new devices: a device that joins by Welcome gets the current key from the Welcome. Older history keys reach it as v1 envelopes (`POST /api/channels/:id/keys`) from members who already hold them. Envelope wrap is ECDH ephemeral-static → HKDF → AES-GCM, signed with ECDSA.
 - Attachments: random per-file AES key, blob uploaded encrypted, key+iv inside the message payload.
-- Voice/video/screen: LiveKit E2EE with a key derived from the channel key (HKDF info "chatward-voice").
+- Voice/video/screen: LiveKit E2EE key = MLS exporter of the server's first text channel (label `chatward-voice`). Voice has no group of its own.
 - Device verification: safety number = SHA-256 over sorted device signPublic keys, shown as 6x5 digit groups.
-- Planned v2: migrate group key mgmt to MLS (OpenMLS). Soundboard clips + avatars are NOT E2EE in v1.
+- Soundboard clips and avatars are NOT E2EE.
+
+Tradeoffs (honest):
+- Removal stops new messages and new epoch keys for the removed device. It does not revoke history the device already has: a removed member keeps every history key they held.
+- History keys are shared with new devices, so a member who joins can read history from before they joined. That is the requested behavior.
+- Trust on first use for devices: the server relays device keys. Verify safety numbers out of band to detect a substituted device.
+- ts-mls has not had a formal security audit.
 
 ## Layout / ownership
 packages/shared      types (lead)

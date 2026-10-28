@@ -1,0 +1,277 @@
+// End-to-end MLS check against a real server process (real HTTP, real SQLite) using the public API only:
+// register with invites, login for a second device, server and channel creation, kick, and Commit delivery.
+// Run with: npm run test:e2e -w @chatward/server
+import assert from 'node:assert/strict';
+import { spawn, type ChildProcess } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
+import * as mls from '../../client/src/renderer/src/crypto/mls';
+import { exportRawPublic, generateEcdh, generateSigning, toB64 } from '../../client/src/renderer/src/crypto/primitives';
+
+const PORT = 3999;
+const BASE = `http://127.0.0.1:${PORT}`;
+const PASSWORD = 'correct-horse-1';
+const serverDir = path.resolve(import.meta.dirname, '..');
+// Under out/ (gitignored) so a failed run leaves nothing to commit.
+const dataDir = path.join(serverDir, 'out', `e2e-data-${Date.now()}`);
+fs.mkdirSync(dataDir, { recursive: true });
+
+interface Dev {
+  id: string;
+  user: string;
+  name: string;
+  token: string;
+  /** KeyPackage wire string -> our private package, for every KeyPackage we uploaded. */
+  pool: Map<string, mls.MemberKeys>;
+  /** Our MLS state per channel. */
+  state: Map<string, Awaited<ReturnType<typeof mls.createMlsGroup>>>;
+}
+
+interface DeviceKeys { deviceId: string; ecdhPublic: string; signPublic: string }
+
+async function makeDeviceKeys(): Promise<DeviceKeys> {
+  const ecdh = await generateEcdh();
+  const sign = await generateSigning();
+  return {
+    deviceId: crypto.randomUUID(),
+    ecdhPublic: toB64(await exportRawPublic(ecdh.publicKey)),
+    signPublic: toB64(await exportRawPublic(sign.publicKey)),
+  };
+}
+
+/** The text channel under test, set once the server exists. */
+let CHANNEL = '';
+
+const log = (msg: string) => console.log(`  ok  ${msg}`);
+
+async function api(token: string | null, method: string, p: string, body?: unknown) {
+  const res = await fetch(BASE + p, {
+    method,
+    headers: {
+      ...(token ? { authorization: `Bearer ${token}` } : {}),
+      ...(body !== undefined ? { 'content-type': 'application/json' } : {}),
+    },
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+  return { status: res.status, json: (await res.json().catch(() => null)) as any };
+}
+
+const b64 = (bytes: Uint8Array) => Buffer.from(bytes).toString('base64');
+const unb64 = (s: string) => new Uint8Array(Buffer.from(s, 'base64'));
+
+async function startServer(): Promise<ChildProcess> {
+  const child = spawn('node', ['dist/index.js'], {
+    cwd: serverDir,
+    env: { ...process.env, DATA_DIR: dataDir, PORT: String(PORT), HOST: '127.0.0.1' },
+    stdio: 'inherit',
+  });
+  for (let i = 0; i < 100; i++) {
+    try {
+      if ((await fetch(`${BASE}/api/health`)).ok) return child;
+    } catch { /* not up yet */ }
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  throw new Error('server did not start');
+}
+
+async function uploadPool(dev: Dev, singleUse: number) {
+  const items: { kp: string; lastResort?: boolean }[] = [];
+  const made: [string, mls.MemberKeys][] = [];
+  for (let i = 0; i <= singleUse; i++) {
+    const keys = await mls.newMemberKeys(dev.id);
+    const kp = await mls.encodeKeyPackage(keys);
+    items.push({ kp, lastResort: i === singleUse });
+    made.push([kp, keys]);
+  }
+  const r = await api(dev.token, 'POST', '/api/devices/keypackages', { deviceId: dev.id, keyPackages: items });
+  assert.equal(r.status, 200, 'upload KeyPackages');
+  for (const [kp, keys] of made) dev.pool.set(kp, keys);
+}
+
+/** Claim one KeyPackage per device of `targetUser`, as a decoded KeyPackage per device. */
+async function claim(by: Dev, targetUserId: string) {
+  const r = await api(by.token, 'GET', `/api/users/${targetUserId}/keypackages`);
+  assert.equal(r.status, 200, `claim ${targetUserId}`);
+  return (r.json.keyPackages as { deviceId: string; kp: string }[]).map((k) => ({
+    deviceId: k.deviceId,
+    kp: mls.decodeKeyPackage(k.kp),
+  }));
+}
+
+/** Post our commit; returns the HTTP result. Caller updates local state only on 200. */
+async function postCommit(by: Dev, epoch: number, step: mls.GroupStep, members: string[], welcomeFor: string[]) {
+  const welcomes = welcomeFor.map((toDeviceId) => ({ toDeviceId, welcome: b64(step.welcome!) }));
+  const r = await api(by.token, 'POST', `/api/groups/${CHANNEL}/commits`, {
+    deviceId: by.id, epoch, commit: b64(step.commit!), members, welcomes,
+  });
+  if (r.status === 200) mls.settle(step);
+  return r;
+}
+
+/** Join from the Welcome the server holds for this device, trying each KeyPackage we still have. */
+async function joinFromServer(dev: Dev) {
+  const r = await api(dev.token, 'GET', `/api/groups/${CHANNEL}/welcomes`);
+  const mine = (r.json.welcomes as { toDeviceId: string; welcome: string }[]).filter((w) => w.toDeviceId === dev.id);
+  assert.ok(mine.length > 0, `${dev.id} has a Welcome`);
+  const welcome = unb64(mine[mine.length - 1].welcome);
+  for (const keys of dev.pool.values()) {
+    try {
+      dev.state.set(CHANNEL, await mls.joinFromWelcome(welcome, keys));
+      return;
+    } catch { /* not the KeyPackage this Welcome was made for */ }
+  }
+  throw new Error(`${dev.id} could not join`);
+}
+
+async function catchUp(dev: Dev, from: number) {
+  const r = await api(dev.token, 'GET', `/api/groups/${CHANNEL}/commits?from=${from}`);
+  let state = dev.state.get(CHANNEL)!;
+  for (const c of r.json.commits as { commit: string }[]) state = (await mls.receive(state, unb64(c.commit))).state;
+  dev.state.set(CHANNEL, state);
+  return r.json.epoch as number;
+}
+
+async function newDev(name: string, user: { id: string; token: string }, keys: DeviceKeys): Promise<Dev> {
+  return { id: keys.deviceId, user: user.id, name, token: user.token, pool: new Map(), state: new Map() };
+}
+
+async function main() {
+  const server = await startServer();
+  let failed = false;
+  try {
+    // Accounts go through the real API. The first user needs no invite and owns the server.
+    const aliceKeys = await makeDeviceKeys();
+    const reg = (await api(null, 'POST', '/api/auth/register', {
+      username: 'alice', displayName: 'Alice', password: PASSWORD, device: aliceKeys,
+    })).json;
+    const alice = await newDev('alice', { id: reg.user.id, token: reg.token }, aliceKeys);
+    const srv = (await api(alice.token, 'POST', '/api/servers', { name: 'S' })).json;
+    const channel = (srv.channels as { id: string; name: string; kind: string }[]).find((c) => c.name === 'general' && c.kind === 'text')!;
+    const serverId: string = srv.server.id;
+    CHANNEL = channel.id;
+    const invite = async (uses: number) => (await api(alice.token, 'POST', `/api/servers/${serverId}/invites`, { maxUses: uses })).json.code as string;
+
+    const bobKeys = await makeDeviceKeys();
+    const bobReg = (await api(null, 'POST', '/api/auth/register', {
+      username: 'bob', displayName: 'Bob', password: PASSWORD, device: bobKeys, inviteCode: await invite(1),
+    })).json;
+    const bob = await newDev('bob', { id: bobReg.user.id, token: bobReg.token }, bobKeys);
+
+    const carolKeys = await makeDeviceKeys();
+    const carolReg = (await api(null, 'POST', '/api/auth/register', {
+      username: 'carol', displayName: 'Carol', password: PASSWORD, device: carolKeys, inviteCode: await invite(1),
+    })).json;
+    const carol = await newDev('carol', { id: carolReg.user.id, token: carolReg.token }, carolKeys);
+    for (const d of [alice, bob, carol]) await uploadPool(d, 4);
+    log('registered alice (owner), bob and carol through invites; uploaded KeyPackage pools');
+
+    // 1. First group creation, then add bob.
+    alice.state.set(CHANNEL, await mls.createMlsGroup(CHANNEL, await mls.newMemberKeys(alice.id)));
+    const [bobKp] = (await claim(alice, bob.user)).filter((k) => k.deviceId === bob.id);
+    const add1 = await mls.addMembers(alice.state.get(CHANNEL)!, [bobKp.kp]);
+    const r1 = await postCommit(alice, 0, add1, [alice.id, bob.id], [bob.id]);
+    assert.equal(r1.status, 200, 'first commit accepted');
+    assert.equal(r1.json.epoch, 1);
+    alice.state.set(CHANNEL, add1.state);
+    await joinFromServer(bob);
+    assert.deepEqual(await mls.voiceKey(bob.state.get(CHANNEL)!), await mls.voiceKey(alice.state.get(CHANNEL)!));
+    log('first group creation and add of bob via Welcome (epoch 0 to 1)');
+    // 2. Race: alice and bob both add carol from epoch 1. Exactly one commit wins.
+    const [carolKpA] = (await claim(alice, carol.user)).filter((k) => k.deviceId === carol.id);
+    const [carolKpB] = (await claim(bob, carol.user)).filter((k) => k.deviceId === carol.id);
+    const stepA = await mls.addMembers(alice.state.get(CHANNEL)!, [carolKpA.kp]);
+    const stepB = await mls.addMembers(bob.state.get(CHANNEL)!, [carolKpB.kp]);
+    const [ra, rb] = await Promise.all([
+      postCommit(alice, 1, stepA, [alice.id, bob.id, carol.id], [carol.id]),
+      postCommit(bob, 1, stepB, [alice.id, bob.id, carol.id], [carol.id]),
+    ]);
+    const statuses = [ra.status, rb.status].sort();
+    assert.deepEqual(statuses, [200, 409], 'one commit wins, the other gets 409');
+    const loser = ra.status === 409 ? alice : bob;
+    const winnerStep = ra.status === 200 ? stepA : stepB;
+    assert.equal((ra.status === 409 ? ra : rb).json.currentEpoch, 2);
+    assert.equal(winnerStep.commit !== undefined, true);
+    // The loser drops its own pending add and applies the winning commit instead.
+    const epoch = await catchUp(loser, 1);
+    assert.equal(epoch, 2);
+    const winner = loser === alice ? bob : alice;
+    winner.state.set(CHANNEL, winnerStep.state);
+    assert.equal(ra.status === 200 ? alice.id : bob.id, winner.id);
+    await joinFromServer(carol);
+    assert.deepEqual(await mls.voiceKey(carol.state.get(CHANNEL)!), await mls.voiceKey(loser.state.get(CHANNEL)!));
+    log('concurrent commit race: one 200, one 409 with currentEpoch 2; loser caught up; carol joined');
+
+    // 3. A second device for bob joins by Welcome.
+    // A second device is bound to bob's account by logging in with new device keys.
+    const bob2Keys = await makeDeviceKeys();
+    const login = await api(null, 'POST', '/api/auth/login', { username: 'bob', password: PASSWORD, device: bob2Keys });
+    assert.equal(login.status, 200, 'bob logs in on a second device');
+    const bob2 = await newDev('bob2', { id: bob.user, token: login.json.token }, bob2Keys);
+    await uploadPool(bob2, 4);
+    const [bob2Kp] = (await claim(alice, bob.user)).filter((k) => k.deviceId === bob2.id);
+    const add3 = await mls.addMembers(alice.state.get(CHANNEL)!, [bob2Kp.kp]);
+    const r3 = await postCommit(alice, 2, add3, [alice.id, bob.id, carol.id, bob2.id], [bob2.id]);
+    assert.equal(r3.status, 200, 'add bob second device');
+    alice.state.set(CHANNEL, add3.state);
+    bob.state.set(CHANNEL, (await mls.receive(bob.state.get(CHANNEL)!, unb64(b64(add3.commit!)))).state);
+    carol.state.set(CHANNEL, (await mls.receive(carol.state.get(CHANNEL)!, add3.commit!)).state);
+    await joinFromServer(bob2);
+    log('second device of bob joined through its Welcome (epoch 3)');
+
+    // 4. Message round trip, sealed in the current epoch and carried as keyVersion = epoch + 1.
+    const enc = await mls.encryptMessage(alice.state.get(CHANNEL)!, new TextEncoder().encode('hello team'));
+    alice.state.set(CHANNEL, enc.state);
+    const sent = await api(alice.token, 'POST', `/api/channels/${CHANNEL}/messages`, { ciphertext: b64(enc.ciphertext), keyVersion: 4 });
+    assert.equal(sent.status, 201, 'message accepted');
+    const hist = await api(bob2.token, 'GET', `/api/channels/${CHANNEL}/messages`);
+    const list = (Array.isArray(hist.json) ? hist.json : hist.json.messages) as { ciphertext: string }[];
+    const got = await mls.receive(bob2.state.get(CHANNEL)!, unb64(list[list.length - 1].ciphertext));
+    assert.equal(new TextDecoder().decode(got.plaintext!), 'hello team');
+    bob2.state.set(CHANNEL, got.state);
+    log('message round trip: alice to bob second device');
+
+    // 5. Kick carol: the server removes her membership, then a remaining device commits the Remove.
+    const kick = await api(alice.token, 'DELETE', `/api/servers/${serverId}/members/${carol.user}`);
+    assert.equal(kick.status, 200, 'owner kicks carol');
+    const pending = await api(alice.token, 'GET', `/api/servers/${serverId}/pending-removals`);
+    assert.deepEqual(pending.json.pending, [{ channelId: CHANNEL, epoch: 3, removedDeviceIds: [carol.id] }]);
+    const carolLeaf = mls.memberLeaves(alice.state.get(CHANNEL)!).find((m) => m.deviceId === carol.id)!.leafIndex;
+    const remove = await mls.removeMembers(alice.state.get(CHANNEL)!, [carolLeaf]);
+    const r5 = await postCommit(alice, 3, remove, [alice.id, bob.id, bob2.id], []);
+    assert.equal(r5.status, 200, 'remove carol');
+    alice.state.set(CHANNEL, remove.state);
+    bob.state.set(CHANNEL, (await mls.receive(bob.state.get(CHANNEL)!, remove.commit!)).state);
+    bob2.state.set(CHANNEL, (await mls.receive(bob2.state.get(CHANNEL)!, remove.commit!)).state);
+    assert.equal((await api(alice.token, 'GET', `/api/servers/${serverId}/pending-removals`)).json.pending.length, 0);
+    log('kick: pending removal listed for carol, Remove committed, pending list now empty');
+
+    // 6. Carol is out: a fresh message is unreadable to her, and her commits are refused.
+    const after = await mls.encryptMessage(alice.state.get(CHANNEL)!, new TextEncoder().encode('secret after kick'));
+    alice.state.set(CHANNEL, after.state);
+    await assert.rejects(mls.receive(carol.state.get(CHANNEL)!, after.ciphertext), 'removed carol must not decrypt');
+    const carolPost = await api(carol.token, 'POST', `/api/groups/${CHANNEL}/commits`, {
+      deviceId: carol.id, epoch: 4, commit: b64(add1.commit!), members: [], welcomes: [],
+    });
+    assert.equal(carolPost.status, 404, 'removed carol cannot commit');
+    const bobRead = await mls.receive(bob.state.get(CHANNEL)!, after.ciphertext);
+    assert.equal(new TextDecoder().decode(bobRead.plaintext!), 'secret after kick');
+    log('removed carol cannot decrypt or commit; remaining members still can');
+
+    // 7. Stale commit at an old epoch is refused with the current epoch.
+    const stale = await postCommit(bob, 0, add1, [alice.id, bob.id], [bob.id]);
+    assert.equal(stale.status, 409);
+    assert.equal(stale.json.currentEpoch, 4);
+    log('stale commit at epoch 0 refused with 409 and currentEpoch 4');
+
+    console.log('\nE2E MLS: all checks passed');
+  } catch (err) {
+    failed = true;
+    console.error('\nE2E MLS FAILED:', err);
+  } finally {
+    server.kill();
+    fs.rmSync(dataDir, { recursive: true, force: true });
+    if (failed) process.exitCode = 1;
+  }
+}
+
+main();
