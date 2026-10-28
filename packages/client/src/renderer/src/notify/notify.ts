@@ -49,10 +49,13 @@ export function playSound(kind: SoundKind) {
 function onNewMessage(m: Message) {
   const { messageSounds, mutedChannels } = useSettings.getState();
   const { user, activeChannelId, theaterChatId, myStatus } = useSession.getState();
-  if (!messageSounds || m.authorId === user?.id) return;
-  // Do Not Disturb: the user asked not to be interrupted, so stay silent.
+  if (m.authorId === user?.id) return;
+  // Do Not Disturb: the user asked not to be interrupted, so stay silent and don't flash either.
   if (myStatus === 'dnd') return;
   if (mutedChannels.includes(m.channelId)) return;
+  // Flash the taskbar when the window is in the background, even if sounds are off.
+  if (!document.hasFocus()) window.chatward?.flashWindow();
+  if (!messageSounds) return;
   // The channel is on screen and the window has focus: the user already sees it.
   if (m.channelId === activeChannelId && document.hasFocus()) return;
   // The chat shown alongside theater mode is on screen, so it needs no ping.

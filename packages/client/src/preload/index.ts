@@ -9,6 +9,8 @@ const api = {
   getScreenSources: (): Promise<{ id: string; name: string; thumbnail: string; appIcon: string | null; isScreen: boolean }[]> =>
     ipcRenderer.invoke('screen:sources'),
   selectScreenSource: (id: string): Promise<void> => ipcRenderer.invoke('screen:select', id),
+  // Flashes the taskbar button until the window is focused. The main process ignores it while the window has focus.
+  flashWindow: (): void => ipcRenderer.send('window:flash'),
   // Auto-update. `check` points the updater at <serverUrl>/updates and starts a background download.
   updates: {
     getVersion: (): Promise<string> => ipcRenderer.invoke('app:version'),

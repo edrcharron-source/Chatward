@@ -71,6 +71,8 @@ function createWindow() {
     },
   });
   guardWebContents(win.webContents);
+  // Once the user looks at the window, the taskbar flash has done its job, so stop it.
+  win.on('focus', () => win.flashFrame(false));
   // Child windows (the watch-party pop-out) don't inherit the handlers above, so guard them too.
   win.webContents.on('did-create-window', (child) => guardWebContents(child.webContents));
   if (process.env['ELECTRON_RENDERER_URL']) win.loadURL(process.env['ELECTRON_RENDERER_URL']);
@@ -113,6 +115,11 @@ app.whenReady().then(() => {
     return sources.map((s) => ({ id: s.id, name: s.name, thumbnail: s.thumbnail.toDataURL(), appIcon: s.appIcon?.toDataURL() ?? null, isScreen: s.id.startsWith('screen:') }));
   });
   ipcMain.handle('screen:select', (_e, id: string) => { pendingSourceId = id; });
+  // The renderer asks for a taskbar flash only for messages the user should see. Skip it if they are already looking.
+  ipcMain.on('window:flash', (e) => {
+    const win = BrowserWindow.fromWebContents(e.sender);
+    if (win && !win.isFocused()) win.flashFrame(true);
+  });
 
   createWindow();
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
