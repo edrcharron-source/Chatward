@@ -17,6 +17,9 @@
 }
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; margin: 0; }
+/* #root is the app surface. overflow: clip stops focus() or scrollIntoView from scrolling it and
+   pushing the composer past the window bottom, which body overflow: hidden alone does not prevent. */
+#root { position: fixed; inset: 0; overflow: clip; }
 body { background: var(--bg-2); color: var(--text); font: 14px/1.45 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; overflow: hidden; }
 button { font: inherit; color: inherit; cursor: pointer; border: 0; border-radius: var(--radius-sm); padding: 8px 14px; background: var(--bg-3); transition: background .12s; }
 button:hover { background: var(--bg-hover); }

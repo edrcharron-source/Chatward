@@ -1,4 +1,4 @@
-.cv-root { display: flex; flex-direction: column; height: 100%; min-width: 0; background: var(--bg-2); }
+.cv-root { display: flex; flex-direction: column; height: 100%; min-width: 0; background: var(--bg-2); overflow: clip; }
 
 .cv-header {
   display: flex; align-items: center; gap: 8px; height: 48px; padding: 0 16px; flex: none;
