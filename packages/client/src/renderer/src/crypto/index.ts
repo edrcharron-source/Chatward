@@ -299,11 +299,14 @@ async function ensureKeyPool(): Promise<boolean> {
   const made: { kp: string; keys: mls.MemberKeys; lastResort: boolean }[] = [];
   for (let i = 0; i < size; i++) made.push(await newKeyPackage(false));
   if (needLastResort) made.push(await newKeyPackage(true));
+  // Save the private parts before the server can hand these packages to a peer. If the upload reply is lost, the server
+  // may still hold them, and a Welcome made for one of them must find its private part here.
+  for (const m of made) vault.pool[m.kp] = mls.storeKeyPackage(m.keys, m.kp, m.lastResort);
+  if (made.length > 0) await persistVault();
   await api.post('/api/devices/keypackages', {
     deviceId: me.deviceId,
     keyPackages: made.map((m) => ({ kp: m.kp, lastResort: m.lastResort })),
   });
-  for (const m of made) vault.pool[m.kp] = mls.storeKeyPackage(m.keys, m.kp, m.lastResort);
   return pruned || made.length > 0;
 }
 
