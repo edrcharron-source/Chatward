@@ -2,6 +2,7 @@ import type { Express } from 'express';
 import { LIMITS } from '@chatward/shared';
 import type { AuthedRequest, Ctx } from '../ctx.js';
 import { perMember } from '../userLimit.js';
+import { isInVoiceChannel } from './voice.js';
 
 // Latest watch-party snapshot per channel. The server never reads it: the body is the client-encrypted
 // playback state, so a relayed snapshot is opaque ciphertext. In memory, so a restart means nothing is playing.
@@ -23,7 +24,9 @@ export function register(app: Express, ctx: Ctx): void {
   // Any member of the channel's server can read and set the shared playback state, same as posting a message.
   app.get('/api/channels/:id/watch', ctx.requireAuth, (req, res) => {
     const userId = (req as AuthedRequest).userId;
-    if (!ctx.serverIdForChannelMember(req.params.id, userId)) { res.status(404).json({ error: 'channel not found' }); return; }
+    const channel = ctx.serverIdForChannelMember(req.params.id, userId) ? ctx.getChannel(req.params.id) : null;
+    if (!channel) { res.status(404).json({ error: 'channel not found' }); return; }
+    if (channel.kind !== 'voice') { res.status(400).json({ error: 'not a voice channel' }); return; }
     res.json({ state: snapshots.get(req.params.id) ?? null, serverNow: Date.now() });
   });
 
@@ -31,7 +34,11 @@ export function register(app: Express, ctx: Ctx): void {
     const userId = (req as AuthedRequest).userId;
     const channelId = req.params.id;
     const serverId = ctx.serverIdForChannelMember(channelId, userId);
-    if (!serverId) { res.status(404).json({ error: 'channel not found' }); return; }
+    const channel = serverId ? ctx.getChannel(channelId) : null;
+    if (!serverId || !channel) { res.status(404).json({ error: 'channel not found' }); return; }
+    if (channel.kind !== 'voice') { res.status(400).json({ error: 'not a voice channel' }); return; }
+    // Only someone in the call can change what the call is watching.
+    if (!isInVoiceChannel(channelId, userId)) { res.status(409).json({ error: 'join the voice channel first' }); return; }
 
     const { ciphertext, keyVersion } = (req.body ?? {}) as { ciphertext?: unknown; keyVersion?: unknown };
     if (typeof ciphertext !== 'string' || ciphertext.length === 0 || ciphertext.length > LIMITS.MESSAGE_CIPHERTEXT_MAX) {
