@@ -16,8 +16,10 @@ export interface ChannelChat {
   hasMore: boolean;
   /** A page load or catch-up is running. */
   loading: boolean;
-  /** Why the last load failed, shown in the channel until a load succeeds. */
+  /** Why the first load failed, shown in the channel until a load succeeds. */
   error: string | null;
+  /** Why the last older-page load failed. Kept apart from `error` so a catch-up does not hide the Retry for it. */
+  olderError: string | null;
   /** The running load is fetching older messages, so the list shows a hint. Catch-ups do not set it. */
   loadingOlder: boolean;
 }
@@ -33,7 +35,7 @@ interface ChatState {
   setDraft: (channelId: string, text: string) => void;
 }
 
-const EMPTY: ChannelChat = { messages: [], loaded: false, hasMore: false, loading: false, error: null, loadingOlder: false };
+const EMPTY: ChannelChat = { messages: [], loaded: false, hasMore: false, loading: false, error: null, olderError: null, loadingOlder: false };
 const TYPING_SEND_MS = 3000;
 
 export const useChat = create<ChatState>(() => ({
@@ -178,7 +180,7 @@ export async function loadHistory(channelId: string, mode: 'initial' | 'older' =
     return;
   }
 
-  patchChannel(channelId, { loading: true, loadingOlder: mode === 'older', error: null });
+  patchChannel(channelId, { loading: true, loadingOlder: mode === 'older', ...(mode === 'older' ? { olderError: null } : { error: null }) });
   try {
     const before = mode === 'older' ? `&before=${cur.messages[0].id}` : '';
     const { messages } = await api.get<{ messages: Message[] }>(
@@ -189,7 +191,8 @@ export async function loadHistory(channelId: string, mode: 'initial' | 'older' =
     void decryptAll(channelId, messages);
   } catch (e) {
     const fallback = mode === 'older' ? 'Could not load older messages' : 'Could not load messages';
-    endLoad(channelId, { error: e instanceof Error ? e.message : fallback });
+    const message = e instanceof Error ? e.message : fallback;
+    endLoad(channelId, mode === 'older' ? { olderError: message } : { error: message });
     throw e;
   }
 }
@@ -238,8 +241,6 @@ export async function catchUp(channelId: string) {
     const floor = latest.length < LIMITS.HISTORY_PAGE ? '' : latest.reduce((min, m) => (m.id < min ? m.id : min), latest[0].id);
     const present = new Set(latest.map((m) => m.id));
     removeMessages(channelId, held.filter((id) => id >= floor && !present.has(id)));
-    // The catch-up reached the newest page, so an older-page error from before is no longer true.
-    patchChannel(channelId, { error: null });
   } finally {
     // Stop recording first: a queued catch-up started by endLoad records its own changes.
     missedDuringCatchUp.delete(channelId);
@@ -377,7 +378,7 @@ onFrame((f) => {
         if (c.loaded) {
           void catchUp(id).catch(() => {});
           // An older page that failed has a Retry in the channel, and a reconnect is a good time to try it again.
-          if (c.error) void loadHistory(id, 'older').catch(() => {});
+          if (c.olderError) void loadHistory(id, 'older').catch(() => {});
         } else if (c.loading) catchUpWanted.add(id);
         else void loadHistory(id).catch(() => {});
       }

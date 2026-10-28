@@ -98,9 +98,9 @@ export default function ChatView({ channel }: { channel: Channel }) {
           <div className="cv-start">This is the start of #{channel.name}</div>
         )}
         {chat?.loadingOlder && <div className="cv-hint muted">Loading older messages…</div>}
-        {chat?.error && (
+        {(chat?.error || chat?.olderError) && (
           <div className="cv-error">
-            {chat.error}
+            {chat.error ?? chat.olderError}
             <button
               className="cv-retry"
               disabled={chat.loading}
