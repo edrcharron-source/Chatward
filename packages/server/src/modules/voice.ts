@@ -84,6 +84,11 @@ export function endCallOnOtherDevices(ctx: Ctx, userId: string, keepDeviceId: st
   endCall(ctx, userId);
 }
 
+/** For an account delete, which signs out every device. If the account is in a call on any device, the call ends. */
+export function endAccountCall(ctx: Ctx, userId: string): void {
+  if (voiceChannelOf.has(userId)) endCall(ctx, userId);
+}
+
 /** Drops the account's call and its LiveKit session, in one place for the device-based endings above. */
 function endCall(ctx: Ctx, userId: string): void {
   const channelId = voiceChannelOf.get(userId);
