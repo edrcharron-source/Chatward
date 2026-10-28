@@ -14,6 +14,7 @@ export function openDb(): DB {
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
   const seenDevicesExisted = db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='mls_group_seen_devices'").get() !== undefined;
+  const readsExisted = db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='channel_reads'").get() !== undefined;
   db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
@@ -145,7 +146,25 @@ export function openDb(): DB {
     epoch INTEGER NOT NULL,
     PRIMARY KEY (group_id, device_id)
   );
+  -- Where each member has read up to in a text channel. Unread counts are computed from it, so messages sent while away still count.
+  CREATE TABLE IF NOT EXISTS channel_reads (
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    channel_id TEXT NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+    last_read_id TEXT NOT NULL,
+    PRIMARY KEY (user_id, channel_id)
+  );
   `);
+  // Read positions start with the release that added channel_reads. Everything already in a channel counts as read,
+  // so upgrading does not flag all old history as unread.
+  if (!readsExisted) {
+    db.exec(`
+    INSERT OR IGNORE INTO channel_reads (user_id, channel_id, last_read_id)
+      SELECT mb.user_id, c.id, MAX(m.id) FROM members mb
+      JOIN channels c ON c.server_id=mb.server_id AND c.kind='text'
+      JOIN messages m ON m.channel_id=c.id
+      GROUP BY mb.user_id, c.id;
+    `);
+  }
   // Groups created before mls_group_seen_devices existed: seed it from the devices the server already recorded.
   if (!seenDevicesExisted) {
     db.exec(`

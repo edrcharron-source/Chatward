@@ -119,6 +119,51 @@ export function register(app: Express, ctx: Ctx): void {
     return row;
   };
 
+  // ---------- read state ----------
+
+  // Shown as "99+" by the client, so there is no point counting past this.
+  const UNREAD_CAP = 100;
+  // Unread = other people's messages after the caller's read position. With no read position yet,
+  // count from when they joined the server.
+  const unreadCounts = db.prepare(`
+    SELECT c.id AS channel_id, (
+      SELECT COUNT(*) FROM (
+        SELECT 1 FROM messages m
+        WHERE m.channel_id=c.id AND m.author_id<>?
+          AND ((r.last_read_id IS NOT NULL AND m.id>r.last_read_id)
+            OR (r.last_read_id IS NULL AND m.created_at>=mb.joined_at))
+        LIMIT ?)
+    ) AS unread
+    FROM channels c
+    JOIN members mb ON mb.server_id=c.server_id AND mb.user_id=?
+    LEFT JOIN channel_reads r ON r.channel_id=c.id AND r.user_id=?
+    WHERE c.kind='text'`);
+  const latestMessageId = db.prepare(
+    'SELECT id FROM messages WHERE channel_id=? ORDER BY id DESC LIMIT 1');
+  // Only moves forward, so a late or repeated read never rewinds the position.
+  const setReadPosition = db.prepare(`
+    INSERT INTO channel_reads (user_id, channel_id, last_read_id) VALUES (?,?,?)
+    ON CONFLICT(user_id, channel_id) DO UPDATE SET last_read_id=excluded.last_read_id
+      WHERE excluded.last_read_id > channel_reads.last_read_id`);
+
+  app.get('/api/unread', ctx.requireAuth, (req, res) => {
+    const userId = (req as AuthedRequest).userId;
+    const rows = unreadCounts.all(userId, UNREAD_CAP, userId, userId) as { channel_id: string; unread: number }[];
+    const unread: Record<string, number> = {};
+    for (const r of rows) if (r.unread > 0) unread[r.channel_id] = r.unread;
+    res.json({ unread });
+  });
+
+  // Marks the channel read up to its newest message, so the caller's unread count there drops to zero.
+  app.post('/api/channels/:id/read', ctx.requireAuth, (req, res) => {
+    const userId = (req as AuthedRequest).userId;
+    const ch = textChannelFor(userId, req.params.id, res);
+    if (!ch) return;
+    const latest = latestMessageId.get(ch.id) as { id: string } | undefined;
+    if (latest) setReadPosition.run(userId, ch.id, latest.id);
+    res.status(204).end();
+  });
+
   // ---------- messages ----------
 
   app.get('/api/channels/:id/messages', ctx.requireAuth, (req, res) => {

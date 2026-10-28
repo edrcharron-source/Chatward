@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { Channel, Member } from '@chatward/shared';
 import { api } from './api/http';
 import { connectWs, disconnectWs, onFrame, sendFrame } from './api/ws';
-import { useSession, type ServerBundle } from './state/session';
+import { refreshUnread, useSession, type ServerBundle } from './state/session';
 import { useSettings, applyTheme } from './state/settings';
 import { useVoice, rekeyActiveCall, resumeVoiceSlot } from './state/voice';
 import { accountKey, adoptLegacyIfOwned, initDevice, syncChannelKeys, handleEnvelope, handleMemberLeave } from './crypto';
@@ -206,6 +206,7 @@ function Shell() {
   async function loadServers() {
     const { servers } = await api.get<{ servers: ServerBundle[] }>('/api/servers');
     useSession.getState().setServers(servers);
+    void refreshUnread().catch(() => {});
     for (const b of servers) {
       const { channels } = await api.get<{ channels: Record<string, string[]> }>(`/api/servers/${b.server.id}/voice-state`);
       for (const [cid, ids] of Object.entries(channels)) useSession.getState().setVoiceOccupants(cid, ids);
