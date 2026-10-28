@@ -164,6 +164,27 @@ async function main() {
     assert.ok(aliceAfterLeave.includes('bob can talk again'), `alice reads bob after he leaves and rejoins: ${JSON.stringify(aliceAfterLeave)}`);
     log('bob leaves and rejoins while alice is offline; he reads and sends again without being locked out');
 
+    // 5d. Dave's KeyPackage upload reaches the server, but its reply is lost. Alice then adds dave using one of the packages
+    // the server now holds. Dave must still join from that Welcome, so his device has to have saved the private parts first.
+    await bob.call('init', { serverUrl: BASE, username: 'dave' });
+    const daveInvite = await alice.call('invite', { serverId });
+    await bob.call('register', { username: 'dave', inviteCode: daveInvite.code });
+    await bob.call('dropNextKeyPackageReply');
+    await bob.call('sync'); // the upload lands on the server; the failure is logged and retried later
+    await alice.call('sync'); // alice claims one of dave's packages and adds his device with a Commit and a Welcome
+    await bob.call('sync'); // dave joins from the Welcome
+    const aliceEpochAfterDave = (await alice.call('status', { channelId })).epoch;
+    assert.equal((await bob.call('status', { channelId })).epoch, aliceEpochAfterDave, 'dave joins at alice\'s epoch after a lost upload reply');
+    await alice.call('send', { channelId, text: 'hello dave' });
+    await bob.call('sync');
+    const daveSees = (await bob.call('read', { channelId })).texts;
+    assert.ok(daveSees.includes('hello dave'), `dave reads after joining: ${JSON.stringify(daveSees)}`);
+    await bob.call('send', { channelId, text: 'dave is here' });
+    await alice.call('sync');
+    const aliceSeesDave = (await alice.call('read', { channelId })).texts;
+    assert.ok(aliceSeesDave.includes('dave is here'), `alice reads dave: ${JSON.stringify(aliceSeesDave)}`);
+    log('dave\'s KeyPackage upload loses its reply; he still joins from the Welcome and both sides read each other');
+
     // A second account on the same PC gets its own device, and alice's group state is still there when she switches back.
     const epochOnPc = (await alice.call('status', { channelId })).epoch;
     await alice.call('init', { serverUrl: BASE, username: 'carol' });

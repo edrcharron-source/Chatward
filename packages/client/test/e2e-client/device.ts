@@ -66,6 +66,18 @@ const handlers: Record<string, (args: any) => Promise<unknown>> = {
     return {};
   },
 
+  /** The next KeyPackage upload reaches the server, but this device never gets its reply, as if the network dropped it. */
+  async dropNextKeyPackageReply() {
+    const realPost = api.post;
+    api.post = (async (path: string, body?: unknown) => {
+      if (path !== '/api/devices/keypackages') return realPost(path, body);
+      api.post = realPost;
+      await realPost(path, body);
+      throw new Error('reply lost');
+    }) as typeof api.post;
+    return {};
+  },
+
   async joinInvite({ code }) {
     await api.post(`/api/invites/${code}/join`, {});
     return {};
