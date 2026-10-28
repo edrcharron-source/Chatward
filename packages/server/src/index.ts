@@ -45,6 +45,7 @@ const ctx: Ctx = {
   broadcastToServer: () => {},
   sendToUser: () => {},
   onDisconnect: [],
+  onConnect: [],
   getUser: (id) => {
     const r = db.prepare(`SELECT ${USER_COLUMNS} FROM users WHERE id=?`).get(id) as UserRow | undefined;
     return r ? toUser(r) : null;
