@@ -16,6 +16,8 @@ import {
   sha256, toB64, utf8,
 } from './primitives';
 
+import { safetyNumber } from './safety';
+
 export { safetyNumber } from './safety';
 
 // Local vault. Stored only through window.chatward.secureStore, which the main process encrypts with safeStorage.
@@ -33,6 +35,10 @@ interface Vault {
   shared: Record<string, string[]>;
   /** KeyPackage wire string -> private parts. Single-use entries are removed once a Welcome consumes them. */
   pool: Record<string, mls.StoredKeyPackage>;
+  /** userId -> safety number we accepted for that person. Set the first time we see them, then changes need a check. */
+  trusted: Record<string, string>;
+  /** userId -> the contact's new safety number and name, while it differs from the one we trusted. */
+  changed: Record<string, { name: string; number: string }>;
 }
 
 // Before accounts had their own keys, the PC's single device and vault lived under these two keys.
@@ -73,7 +79,7 @@ async function readStored<T>(key: string): Promise<T | null> {
 }
 
 function emptyVault(): Vault {
-  return { channels: {}, groups: {}, shared: {}, pool: {} };
+  return { channels: {}, groups: {}, shared: {}, pool: {}, trusted: {}, changed: {} };
 }
 
 /**
@@ -214,6 +220,7 @@ export function syncChannelKeys(servers: ServerBundle[]): Promise<void> {
         }
       }
     }
+    changed = (await checkContactKeys(servers)) || changed;
     if (changed) {
       await persistVault();
       notify();
@@ -275,6 +282,51 @@ async function reportEpoch(channelId: string): Promise<void> {
 /** Same id the server reports for a KeyPackage: base64 SHA-256 of its wire string. */
 async function keyPackageId(kp: string): Promise<string> {
   return toB64(await sha256(utf8(kp)));
+}
+
+/**
+ * Compare each contact's safety number with the one we trusted. The first sighting is trusted silently. A later
+ * change is kept in vault.changed until the user accepts it, so a swapped key cannot pass unnoticed.
+ */
+async function checkContactKeys(servers: ServerBundle[]): Promise<boolean> {
+  const me = getDevice();
+  const people = new Map<string, Member>();
+  for (const bundle of servers) for (const m of bundle.members) people.set(m.user.id, m);
+  let dirty = false;
+  for (const member of people.values()) {
+    if (member.devices.length === 0 || member.devices.some((d) => d.deviceId === me.deviceId)) continue;
+    const id = member.user.id;
+    const number = await safetyNumber(member.devices);
+    const trusted = vault.trusted[id];
+    if (!trusted) {
+      vault.trusted[id] = number;
+      dirty = true;
+    } else if (number !== trusted && vault.changed[id]?.number !== number) {
+      vault.changed[id] = { name: member.user.displayName, number };
+      dirty = true;
+    } else if (number === trusted && vault.changed[id]) {
+      delete vault.changed[id];
+      dirty = true;
+    }
+  }
+  return dirty;
+}
+
+/** Contacts whose keys changed since we last accepted them. Shown in Settings > Security. */
+export function changedContacts(): { userId: string; name: string; number: string }[] {
+  return Object.entries(vault.changed).map(([userId, change]) => ({ userId, ...change }));
+}
+
+/** The user has checked the new safety number with this contact. Trust the new keys from now on. */
+export function acceptContactKeys(userId: string): Promise<void> {
+  return serial(async () => {
+    const change = vault.changed[userId];
+    if (!change) return;
+    vault.trusted[userId] = change.number;
+    delete vault.changed[userId];
+    await persistVault();
+    notify();
+  });
 }
 
 /**
@@ -494,7 +546,17 @@ async function claimFor(members: Member[], wanted: Set<string>): Promise<{ devic
   for (const m of members) {
     if (!m.devices.some((d) => wanted.has(d.deviceId))) continue;
     const r = await api.get<{ keyPackages: { deviceId: string; kp: string }[] }>(`/api/users/${m.user.id}/keypackages`);
-    for (const k of r.keyPackages) if (wanted.has(k.deviceId)) out.push({ deviceId: k.deviceId, kp: mls.decodeKeyPackage(k.kp) });
+    for (const k of r.keyPackages) {
+      if (!wanted.has(k.deviceId)) continue;
+      // A KeyPackage the server swapped in does not carry this device's signature, so it is never added.
+      const device = m.devices.find((d) => d.deviceId === k.deviceId);
+      const kp = mls.decodeKeyPackage(k.kp);
+      if (!device || !(await mls.verifyKeyPackage(kp, device))) {
+        console.warn(`Skipping a KeyPackage that does not belong to device ${k.deviceId}`);
+        continue;
+      }
+      out.push({ deviceId: k.deviceId, kp });
+    }
   }
   return out;
 }

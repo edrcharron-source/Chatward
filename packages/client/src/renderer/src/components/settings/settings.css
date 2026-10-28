@@ -87,3 +87,4 @@
   .setting-row .slider { min-width: 0; }
   .setting-row input[type='range'] { width: 120px; }
 }
+.key-change { border-left: 3px solid var(--warn); padding-left: 10px; }

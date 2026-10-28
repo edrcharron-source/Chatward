@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import type { Member } from '@chatward/shared';
 import { api } from '../../api/http';
-import { getDevice, safetyNumber } from '../../crypto';
+import { acceptContactKeys, changedContacts, getDevice, onKeysChanged, safetyNumber } from '../../crypto';
 import { useSession } from '../../state/session';
 import { Section, errorText } from './controls';
 
@@ -113,8 +113,29 @@ export default function SecurityTab() {
     return () => { active = false; };
   }, [people]);
 
+  const [changes, setChanges] = useState(changedContacts);
+  useEffect(() => onKeysChanged(() => setChanges(changedContacts())), []);
+
   return (
     <>
+      {changes.length > 0 && (
+        <Section title="Keys changed">
+          <p className="muted">
+            These people&apos;s encryption keys changed. This is expected if they signed in on a new device, but it is also
+            what happens if someone is intercepting your chats. Check the new safety number with them in person or on a call
+            before you accept it.
+          </p>
+          {changes.map((c) => (
+            <div key={c.userId} className="setting-section key-change">
+              <strong>{c.name}</strong>
+              <div className="safety-number" aria-label={`New safety number for ${c.name}`}>{c.number}</div>
+              <button onClick={() => { acceptContactKeys(c.userId).catch(() => {}); }}>
+                I checked it, trust the new keys
+              </button>
+            </div>
+          ))}
+        </Section>
+      )}
       <YourDevices />
       <Section title="Safety numbers">
         <p className="muted">
