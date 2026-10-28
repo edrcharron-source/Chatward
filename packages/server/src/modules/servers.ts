@@ -300,6 +300,28 @@ export function register(app: Express, ctx: Ctx): void {
     res.json({ ok: true });
   }));
 
+  // Owner only: hand the server to another member. The old owner becomes an admin.
+  app.post('/api/servers/:id/transfer', ctx.requireAuth, route((req, res) => {
+    const serverId = String(req.params.id);
+    const uid = userIdOf(req);
+    const actorRole = ctx.roleIn(serverId, uid);
+    if (!actorRole) throw new ApiError(404, 'server not found');
+    if (actorRole !== 'owner') throw new ApiError(403, 'only the owner can transfer a server');
+    const targetId = bodyOf(req).userId;
+    if (typeof targetId !== 'string' || !targetId) bad('userId is required');
+    if (targetId === uid) bad('you already own this server');
+    const targetRole = ctx.roleIn(serverId, targetId);
+    if (!targetRole) throw new ApiError(404, 'member not found');
+    ctx.db.transaction(() => {
+      ctx.db.prepare('UPDATE members SET role=? WHERE server_id=? AND user_id=?').run('admin', serverId, uid);
+      ctx.db.prepare('UPDATE members SET role=? WHERE server_id=? AND user_id=?').run('owner', serverId, targetId);
+      ctx.db.prepare('UPDATE servers SET owner_id=? WHERE id=?').run(targetId, serverId);
+    })();
+    ctx.broadcastToServer(serverId, { t: 'member.role', serverId, userId: uid, role: 'admin' });
+    ctx.broadcastToServer(serverId, { t: 'member.role', serverId, userId: targetId, role: 'owner' });
+    res.json({ ok: true });
+  }));
+
   app.post('/api/servers/:id/invites', ctx.requireAuth, route((req, res) => {
     const serverId = String(req.params.id);
     requireAdmin(ctx, serverId, userIdOf(req));

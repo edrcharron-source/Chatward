@@ -303,6 +303,17 @@ async function main() {
     assert.equal(back.status, 200, 'dave can join again after unban');
     log('unban lets dave rejoin with an invite');
 
+    // Ownership transfer: only the owner can hand it over, and the old owner drops to admin.
+    const notOwner = await api(bob.token, 'POST', `/api/servers/${serverId}/transfer`, { userId: bob.user });
+    assert.equal(notOwner.status, 403, 'a non-owner cannot transfer');
+    const handOver = await api(alice.token, 'POST', `/api/servers/${serverId}/transfer`, { userId: bob.user });
+    assert.equal(handOver.status, 200, 'owner hands the server to bob');
+    const aliceAgain = await api(alice.token, 'POST', `/api/servers/${serverId}/transfer`, { userId: alice.user });
+    assert.equal(aliceAgain.status, 403, 'former owner can no longer transfer');
+    const handBack = await api(bob.token, 'POST', `/api/servers/${serverId}/transfer`, { userId: alice.user });
+    assert.equal(handBack.status, 200, 'new owner can hand it back');
+    log('ownership transfer is owner-only, moves the owner role, and can be handed back');
+
     // 9. A junk Commit at epoch 4 is accepted (the server cannot verify MLS) but nobody can apply it.
     // The stuck device drops it through reset, and a valid Commit then takes its place.
     const junk = await api(bob.token, 'POST', `/api/groups/${CHANNEL}/commits`, {
