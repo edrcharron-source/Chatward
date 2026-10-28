@@ -54,6 +54,8 @@ const ctx: Ctx = {
 
 const app = express();
 app.disable('x-powered-by');
+// One proxy (Caddy) sits in front; trust its X-Forwarded-For so the login rate limit sees real client IPs.
+app.set('trust proxy', 1);
 app.use(helmet());
 app.use('/api/auth', rateLimit({ windowMs: 15 * 60_000, limit: 40, standardHeaders: true }));
 app.use(express.json({ limit: '64kb' }));
