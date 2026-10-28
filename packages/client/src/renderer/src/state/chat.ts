@@ -5,7 +5,7 @@ import { onFrame, sendFrame } from '../api/ws';
 import { buildLinkPreviews, extractUrls, shrinkPreviewImage, uploadAttachment } from '../components/media';
 import { decryptMessage, encryptPayload, onKeysChanged } from '../crypto';
 import { fitPayload } from './fitPayload';
-import { onBeforeSignOut, refreshUnread, useSession } from './session';
+import { isLiveChannel, onBeforeSignOut, refreshUnread, useSession } from './session';
 
 export type Gif = NonNullable<MessagePayload['gif']>;
 
@@ -49,7 +49,33 @@ onBeforeSignOut(() => useChat.setState({ channels: {}, payloads: {}, typing: {},
 
 const channelOf = (id: string) => useChat.getState().channels[id] ?? EMPTY;
 
+/**
+ * Drops the cache of channels the account no longer has: removed, left, or deleted with their server. Their
+ * messages, drafts and typing are cleared, and a load still running for them cannot put them back.
+ */
+export function forgetChatChannels(channelIds: string[]) {
+  if (channelIds.length === 0) return;
+  const gone = new Set(channelIds);
+  useChat.setState((s) => {
+    const channels = { ...s.channels };
+    const payloads = { ...s.payloads };
+    const typing = { ...s.typing };
+    const drafts = { ...s.drafts };
+    for (const id of gone) {
+      for (const m of channels[id]?.messages ?? []) delete payloads[m.id];
+      delete channels[id];
+      delete typing[id];
+      delete drafts[id];
+      catchUpWanted.delete(id);
+      olderWanted.delete(id);
+    }
+    return { channels, payloads, typing, drafts };
+  });
+}
+
 function patchChannel(channelId: string, patch: Partial<ChannelChat>) {
+  // A load that finishes after its channel was removed must not recreate the channel's cache.
+  if (!isLiveChannel(channelId)) return;
   useChat.setState((s) => ({
     channels: { ...s.channels, [channelId]: { ...(s.channels[channelId] ?? EMPTY), ...patch } },
   }));
@@ -59,6 +85,7 @@ const byTime = (a: Message, b: Message) => a.createdAt - b.createdAt || (a.id < 
 
 /** Insert or replace by id, keeping chronological order. Dedupes the sender's own echo. */
 function mergeMessages(channelId: string, incoming: Message[]) {
+  if (!isLiveChannel(channelId)) return;
   useChat.setState((s) => {
     const cur = s.channels[channelId] ?? EMPTY;
     const byId = new Map(cur.messages.map((m) => [m.id, m]));
@@ -211,6 +238,8 @@ export async function catchUp(channelId: string) {
     const floor = latest.length < LIMITS.HISTORY_PAGE ? '' : latest.reduce((min, m) => (m.id < min ? m.id : min), latest[0].id);
     const present = new Set(latest.map((m) => m.id));
     removeMessages(channelId, held.filter((id) => id >= floor && !present.has(id)));
+    // The catch-up reached the newest page, so an older-page error from before is no longer true.
+    patchChannel(channelId, { error: null });
   } finally {
     // Stop recording first: a queued catch-up started by endLoad records its own changes.
     missedDuringCatchUp.delete(channelId);
@@ -342,9 +371,14 @@ onFrame((f) => {
     case 'ready':
       // After a (re)connect, frames may have been missed: catch up every channel we already hold. A channel whose
       // first load failed (or never finished) is loaded again, and one still loading is caught up when it ends.
+      // A channel the account no longer has is skipped, so its cache does not keep asking the server for it.
       for (const [id, c] of Object.entries(useChat.getState().channels)) {
-        if (c.loaded) void catchUp(id).catch(() => {});
-        else if (c.loading) catchUpWanted.add(id);
+        if (!isLiveChannel(id)) continue;
+        if (c.loaded) {
+          void catchUp(id).catch(() => {});
+          // An older page that failed has a Retry in the channel, and a reconnect is a good time to try it again.
+          if (c.error) void loadHistory(id, 'older').catch(() => {});
+        } else if (c.loading) catchUpWanted.add(id);
         else void loadHistory(id).catch(() => {});
       }
       void refreshUnread().catch(() => {});

@@ -6,6 +6,7 @@ import { keepTokenFresh } from './api/token';
 import { refreshUnread, signOut, useSession, type ServerBundle } from './state/session';
 import { useSettings, applyTheme } from './state/settings';
 import { useVoice, rekeyActiveCall, resumeVoiceSlot, clearLeftoverVoiceSlot, leaveCallOnExit } from './state/voice';
+import { forgetChatChannels } from './state/chat';
 import { accountKey, adoptLegacyIfOwned, initDevice, syncChannelKeys, handleEnvelope, handleMemberLeave, forgetChannels } from './crypto';
 import { installNotifications } from './notify/notify';
 import AuthScreen from './components/auth/AuthScreen';
@@ -163,6 +164,7 @@ function Shell() {
             // leave the call if it was in the deleted voice channel, since the server has already dropped everyone
             if (useVoice.getState().channelId === f.channelId) void useVoice.getState().leave();
             st.removeChannel(f.serverId, f.channelId);
+            forgetChatChannels([f.channelId]);
             void forgetChannels([f.channelId]).catch((e) => console.error(e));
             // Calls key off the server's first text channel. Deleting that one moves them to the next channel's key.
             // No epoch moves here, so the call is rekeyed explicitly.
@@ -179,6 +181,7 @@ function Shell() {
             if (useVoice.getState().serverId === f.serverId) void useVoice.getState().leave();
             const channelIds = st.servers.find((b) => b.server.id === f.serverId)?.channels.map((c) => c.id) ?? [];
             st.removeServer(f.serverId);
+            forgetChatChannels(channelIds);
             void forgetChannels(channelIds).catch((e) => console.error(e));
             // A sync still running or retrying for this server must not keep using its channels.
             void syncChannelKeys(useSession.getState().servers).catch((e) => console.error(e));
@@ -221,7 +224,9 @@ function Shell() {
               // we left (or were kicked), so end any call we had in this server
               if (useVoice.getState().serverId === f.serverId) void useVoice.getState().leave();
               // Our channel groups stay: if nobody is online to commit the Remove, a rejoin must still find them
+              const channelIds = st.servers.find((b) => b.server.id === f.serverId)?.channels.map((c) => c.id) ?? [];
               st.removeServer(f.serverId);
+              forgetChatChannels(channelIds);
               void syncChannelKeys(useSession.getState().servers).catch((e) => console.error(e));
               break;
             }
