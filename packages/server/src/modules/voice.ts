@@ -139,6 +139,8 @@ export function register(app: Express, ctx: Ctx): void {
       return;
     }
     kickFromChannelCall(ctx, channelId, targetId);
+    // Tells the kicked user's open sockets why their call ended. Joining again is still allowed.
+    ctx.sendToUser(targetId, { t: 'voice.kicked', channelId });
     res.json({ ok: true });
   });
 
