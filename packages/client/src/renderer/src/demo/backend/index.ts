@@ -332,6 +332,23 @@ on('DELETE', /^\/api\/servers\/([^/]+)\/members\/([^/]+)$/, (r) => {
   removeDemoMember(r.match[2]);
   return json({ ok: true });
 });
+// Same as the server's transfer route: the old owner becomes an admin and the target becomes the owner.
+on('POST', /^\/api\/servers\/([^/]+)\/transfer$/, (r) => {
+  serverGuard(r.match[1]);
+  const targetId = (r.body as { userId?: unknown })?.userId;
+  if (typeof targetId !== 'string' || !targetId) throw new HttpError(400, 'userId is required');
+  if (targetId === YOU_ID) throw new HttpError(400, 'you already own this server');
+  memberOrThrow(targetId);
+  world.members = world.members.map((m) => {
+    if (m.user.id === YOU_ID) return { ...m, role: 'admin' };
+    if (m.user.id === targetId) return { ...m, role: 'owner' };
+    return m;
+  });
+  world.server = { ...world.server, ownerId: targetId };
+  emit({ t: 'member.role', serverId: SERVER_ID, userId: YOU_ID, role: 'admin' });
+  emit({ t: 'member.role', serverId: SERVER_ID, userId: targetId, role: 'owner' });
+  return json({ ok: true });
+});
 on('POST', /^\/api\/servers\/([^/]+)\/invites$/, (r) => {
   serverGuard(r.match[1]);
   return json({ code: 'DEMO-INVITE', expiresAt: Date.now() + 7 * 24 * 3600_000 }, 201);
