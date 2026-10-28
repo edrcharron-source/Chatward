@@ -1,12 +1,13 @@
 import type { Express } from 'express';
-import { AccessToken } from 'livekit-server-sdk';
+import { AccessToken, RoomServiceClient } from 'livekit-server-sdk';
 import type { Ctx, AuthedRequest } from '../ctx.js';
 
 // In-memory voice occupancy. Lost on restart, which is fine: clients rejoin.
 const occupants = new Map<string, Set<string>>(); // channelId -> userIds
 const voiceChannelOf = new Map<string, string>(); // userId -> channelId (a user is in at most one VC)
 
-const TOKEN_TTL = '1h';
+// Only needed to join. An active call keeps its LiveKit session, so a short TTL does not cut calls off.
+const TOKEN_TTL = '10m';
 
 /** True if the user currently holds a voice slot in this channel. Used by soundboard. */
 export function isInVoiceChannel(channelId: string, userId: string): boolean {
@@ -17,6 +18,19 @@ export function isInVoiceChannel(channelId: string, userId: string): boolean {
 export function leaveVoice(ctx: Ctx, userId: string): void {
   const channelId = voiceChannelOf.get(userId);
   if (channelId) leaveChannel(ctx, channelId, userId);
+}
+
+/**
+ * For a server kick: drops the user from voice, then removes them from the LiveKit room so they stop receiving
+ * media now. Not used on a dropped socket, where a reconnect should keep the call.
+ */
+export function kickFromCall(ctx: Ctx, userId: string): void {
+  const channelId = voiceChannelOf.get(userId);
+  leaveVoice(ctx, userId);
+  if (!channelId) return;
+  const rooms = new RoomServiceClient(ctx.config.livekit.apiUrl, ctx.config.livekit.apiKey, ctx.config.livekit.apiSecret);
+  // Fails if LiveKit no longer has the participant (already left or still connecting). Either way they are out.
+  rooms.removeParticipant(channelId, userId).catch((err: unknown) => console.warn('livekit removeParticipant failed', err));
 }
 
 function leaveChannel(ctx: Ctx, channelId: string, userId: string): boolean {

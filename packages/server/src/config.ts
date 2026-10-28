@@ -31,6 +31,8 @@ export const config = {
   klipyApiKey: process.env.KLIPY_API_KEY ?? '',
   livekit: {
     url: process.env.LIVEKIT_URL ?? 'ws://localhost:7880',
+    /** Server-side API (kick from a room) speaks HTTP, so the ws:// URL is mapped to http://. */
+    apiUrl: (process.env.LIVEKIT_URL ?? 'ws://localhost:7880').replace(/^ws/, 'http'),
     apiKey: process.env.LIVEKIT_API_KEY ?? 'devkey',
     apiSecret: process.env.LIVEKIT_API_SECRET ?? 'secret',
   },

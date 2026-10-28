@@ -61,6 +61,22 @@ async function applyBitrate(room: Room, kbps: number): Promise<void> {
 
 const bump = () => useVoice.setState((s) => ({ version: s.version + 1 }));
 
+// Key provider of the call in progress, so a membership change can set a fresh key on it.
+let activeKeyProvider: ExternalE2EEKeyProvider | null = null;
+
+const keyBuffer = (key: Uint8Array): ArrayBuffer => key.buffer.slice(key.byteOffset, key.byteOffset + key.byteLength) as ArrayBuffer;
+
+/**
+ * Call after a member is removed from the server. The removal moves the channel's MLS epoch on, which changes the
+ * call key, so the people still in the call switch to it. The removed member cannot derive the new key.
+ */
+export async function rekeyActiveCall(): Promise<void> {
+  const { channelId, status } = useVoice.getState();
+  if (!activeKeyProvider || !channelId || status !== 'connected') return;
+  const key = await voiceKey(channelId);
+  if (key) await activeKeyProvider.setKey(keyBuffer(key));
+}
+
 // Your own speaking state comes from your mic level, so it works without LiveKit's active-speaker data.
 const METER_MS = 100;
 const SPEAK_LEVEL = 0.01;
@@ -173,7 +189,8 @@ export const useVoice = create<VoiceState>((set, get) => {
         const { url, token } = await api.post<{ url: string; token: string }>('/api/voice/token', { channelId });
 
         const keyProvider = new ExternalE2EEKeyProvider();
-        await keyProvider.setKey(key.buffer.slice(key.byteOffset, key.byteOffset + key.byteLength) as ArrayBuffer);
+        await keyProvider.setKey(keyBuffer(key));
+        activeKeyProvider = keyProvider;
         const worker = new Worker(new URL('livekit-client/e2ee-worker', import.meta.url), { type: 'module' });
         room = new Room({ adaptiveStream: true, dynacast: true, e2ee: { keyProvider, worker } });
         wire(room);
