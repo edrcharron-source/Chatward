@@ -42,7 +42,7 @@ jobs:
         env: { GH_TOKEN: '${{ github.token }}' }
         run: |
           cd dist
-          for f in win/*Setup*.exe; do cp "$f" Chatward-Setup.exe; done
+          cp win/Chatward-Setup.exe Chatward-Setup.exe
           gh release create "${{ inputs.tag }}" --repo "${{ github.repository }}" \
-            --title "Chatward ${{ inputs.tag }}" --notes "Test build. Download Chatward-Setup.exe (the app) and chatward-server.zip (the server). See README inside the zip." \
+            --title "Chatward ${{ inputs.tag }}" --notes "Test build. Download Chatward-Setup.exe and install it. To try the app with no server, click Try demo on the login screen. chatward-server.zip is only needed for a real server (needs Docker Desktop)." \
             Chatward-Setup.exe server/chatward-server.zip

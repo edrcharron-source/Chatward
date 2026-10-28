@@ -45,11 +45,14 @@
       "target": [
         "nsis",
         "portable"
-      ]
+      ],
+      "artifactName": "Chatward-Portable.${ext}"
     },
     "nsis": {
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true
-    }
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "Chatward-Setup.exe"
+    },
+    "electronVersion": "33.4.11"
   }
 }
