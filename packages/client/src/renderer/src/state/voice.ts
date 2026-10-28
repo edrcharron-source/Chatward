@@ -400,5 +400,12 @@ useSettings.subscribe((s, prev) => {
   if (s.cameraDeviceId === prev.cameraDeviceId) return;
   const { room, cameraOn } = useVoice.getState();
   if (!room || !cameraOn) return;
-  switchCamera(room, s.cameraDeviceId).catch((e) => console.warn('camera change failed', e));
+  switchCamera(room, s.cameraDeviceId)
+    .then(() => {
+      // the swap unpublishes the old track, which clears cameraOn; read the fresh track's state back
+      if (useVoice.getState().room !== room) return;
+      const pub = room.localParticipant.getTrackPublication(Track.Source.Camera);
+      useVoice.setState({ cameraOn: !!pub && !pub.isMuted });
+    })
+    .catch((e) => console.warn('camera change failed', e));
 });
