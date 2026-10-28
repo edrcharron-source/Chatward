@@ -110,6 +110,14 @@ function demoTarget(actorId: string, targetId: string): Member {
   return target;
 }
 
+/** Past members are not in the member list, but any user the demo knows about can be banned by id. */
+function demoFormerUser(userId: string) {
+  if (userId === YOU_ID) throw new HttpError(400, 'you cannot ban yourself');
+  const bot = world.bots.find((b) => b.user.id === userId);
+  if (!bot) throw new HttpError(404, 'user not found');
+  return bot.user;
+}
+
 /** Takes a member out of the server, their voice call, and the member list, then tells every open socket. */
 function removeDemoMember(userId: string) {
   world.members = world.members.filter((m) => m.user.id !== userId);
@@ -342,10 +350,22 @@ on('POST', /^\/api\/servers\/([^/]+)\/bans$/, (r) => {
   serverGuard(r.match[1]);
   const targetId = (r.body as { userId?: unknown })?.userId;
   if (typeof targetId !== 'string') throw new HttpError(400, 'userId is required');
-  const target = demoTarget(YOU_ID, targetId);
-  world.bans = [...world.bans.filter((b) => b.user.id !== targetId), { user: target.user, bannedAt: Date.now() }];
+  const user = world.members.some((m) => m.user.id === targetId) ? demoTarget(YOU_ID, targetId).user : demoFormerUser(targetId);
+  world.bans = [...world.bans.filter((b) => b.user.id !== targetId), { user, bannedAt: Date.now() }];
   removeDemoMember(targetId);
   return json({ ok: true });
+});
+on('GET', /^\/api\/servers\/([^/]+)\/former-members$/, (r) => {
+  serverGuard(r.match[1]);
+  const current = new Set([...world.members.map((m) => m.user.id), ...world.bans.map((b) => b.user.id)]);
+  const users = new Map<string, User>();
+  for (const msgs of Object.values(world.messages)) {
+    for (const msg of msgs) {
+      const bot = world.bots.find((b) => b.user.id === msg.authorId);
+      if (bot && !current.has(bot.user.id)) users.set(bot.user.id, bot.user);
+    }
+  }
+  return json({ users: [...users.values()] });
 });
 on('DELETE', /^\/api\/servers\/([^/]+)\/bans\/([^/]+)$/, (r) => {
   serverGuard(r.match[1]);
