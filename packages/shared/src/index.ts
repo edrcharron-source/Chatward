@@ -126,6 +126,7 @@ export type ServerFrame =
   | { t: 'typing'; channelId: string; userId: string }
   | { t: 'presence'; userId: string; status: 'online' | 'idle' | 'dnd' | 'offline' }
   | { t: 'member.join'; serverId: string; member: Member }
+  | { t: 'member.leave'; serverId: string; userId: string }
   | { t: 'member.devices'; serverId: string; userId: string; devices: DeviceKeys[] }
   | { t: 'key.envelope'; envelope: KeyEnvelope }
   | { t: 'channel.new'; channel: Channel }

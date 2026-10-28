@@ -58,6 +58,8 @@ Voice (module `voice`)
   Every change broadcasts `voice.state` {serverId, channelId, userIds} so all members see who is in VC.
 - (do not implement) GET  /api/voice/e2ee-seed/:channelId -> {key: base64}  per-channel voice media key; derived from the channel's current message key client-side instead — server returns 404 (clients must NOT rely on this).
 
+`member.leave` {serverId,userId}: after a kick, send to remaining members AND to the kicked user (sendToUser) so their client drops the server.
+
 WS fan-out: server pushes ServerFrame events to every connected socket whose user is a member of the relevant server.
 Server exposes `ctx.broadcastToServer(serverId, frame)` and `ctx.sendToUser(userId, frame)`.
 

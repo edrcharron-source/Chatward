@@ -67,6 +67,13 @@ function Shell() {
             void syncChannelKeys(useSession.getState().servers);
             break;
           }
+          case 'member.leave': {
+            if (f.userId === st.user?.id) { st.setServers(st.servers.filter((b) => b.server.id !== f.serverId)); break; }
+            const b = st.servers.find((x) => x.server.id === f.serverId);
+            if (b) st.upsertServer({ ...b, members: b.members.filter((m) => m.user.id !== f.userId) });
+            void syncChannelKeys(useSession.getState().servers);
+            break;
+          }
           case 'member.devices': {
             st.setServers(st.servers.map((b) => b.server.id !== f.serverId ? b
               : { ...b, members: b.members.map((m) => (m.user.id === f.userId ? { ...m, devices: f.devices } : m)) }));

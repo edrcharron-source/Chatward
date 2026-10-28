@@ -1,0 +1,82 @@
+/* chat-media styles. Colors come from the theme variables in styles/theme.css, so dark and light both work. */
+
+.media-anchor { position: relative; display: inline-flex; }
+
+.media-toolbar-btn { color: var(--text-muted); }
+.media-toolbar-btn:hover { color: var(--text); }
+.media-gif-btn { font-size: 11px; font-weight: 700; letter-spacing: .02em; border: 1.5px solid currentColor; border-radius: 6px; padding: 2px 5px; }
+
+.media-popover {
+  position: absolute; bottom: calc(100% + 8px); right: 0; z-index: 50;
+  background: var(--bg-1); border-radius: var(--radius); box-shadow: var(--shadow);
+  padding: 8px; width: 340px; max-width: calc(100vw - 32px);
+}
+.media-emoji-popover { padding: 0; width: 352px; overflow: hidden; }
+
+.media-emoji-picker emoji-picker {
+  --background: var(--bg-1);
+  --border-color: var(--border);
+  --text-color: var(--text);
+  --category-font-color: var(--text-muted);
+  --input-background: var(--bg-0);
+  --input-border-color: var(--border);
+  --input-font-color: var(--text);
+  --indicator-color: var(--accent);
+  --button-hover-background: var(--bg-hover);
+  --outline-color: var(--accent);
+  width: 100%; height: 360px;
+}
+
+.media-search { width: 100%; margin-bottom: 8px; }
+.media-note { margin: 6px 2px; font-size: 13px; }
+.media-error { color: var(--danger); margin: 6px 2px; font-size: 13px; }
+
+.media-gif-grid {
+  display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px;
+  max-height: 340px; overflow-y: auto;
+}
+.media-gif-tile { padding: 0; height: 110px; overflow: hidden; background: var(--bg-3); border-radius: 8px; }
+.media-gif-tile img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.media-more { width: 100%; margin-top: 8px; }
+
+.media-open { padding: 0; background: none; border-radius: 10px; display: block; max-width: 100%; }
+.media-open:hover { background: none; opacity: .92; }
+.media-image {
+  display: block; max-width: min(360px, 100%); max-height: 320px; height: auto;
+  border-radius: 10px; background: var(--bg-3);
+}
+.media-image-placeholder {
+  width: min(360px, 100%); height: 200px; border-radius: 10px; background: var(--bg-3);
+}
+.media-gif { display: block; max-width: min(320px, 100%); height: auto; border-radius: 10px; }
+
+.media-file {
+  display: inline-flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  background: var(--bg-1); border-radius: 8px; padding: 8px 12px; max-width: 100%;
+}
+.media-file-name { font-weight: 600; color: var(--text-strong); max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.media-file-download { color: var(--accent); text-decoration: none; }
+.media-file-download:hover { text-decoration: underline; }
+
+.modal-backdrop.media-lightbox { flex-direction: column; gap: 12px; }
+.media-lightbox-img { max-width: 94vw; max-height: 86vh; object-fit: contain; border-radius: 8px; cursor: default; }
+.media-lightbox-close { align-self: center; }
+
+.media-link-card, .media-embed {
+  display: flex; flex-direction: column; gap: 6px; max-width: 520px;
+  background: var(--bg-1); border-left: 3px solid var(--accent); border-radius: 8px;
+  padding: 10px 12px; margin-top: 6px; color: inherit; text-decoration: none;
+}
+.media-link-card { flex-direction: row; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.media-link-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.media-link-site { font-size: 12px; color: var(--text-muted); text-decoration: none; }
+.media-link-title { font-weight: 600; color: var(--text-strong); overflow-wrap: anywhere; }
+.media-link-desc { font-size: 13px; color: var(--text-muted); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.media-link-image { width: 96px; height: 64px; object-fit: cover; border-radius: 6px; flex: none; }
+
+.media-embed iframe { width: 100%; aspect-ratio: 16 / 9; border: 0; border-radius: 8px; background: #000; }
+.media-embed-twitter iframe { aspect-ratio: auto; height: 520px; background: transparent; }
+.media-embed-placeholder {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 4px; text-align: left;
+  padding: 10px; background: var(--bg-2);
+}
