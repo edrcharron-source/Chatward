@@ -5,7 +5,7 @@ import { DEFAULT_VOICE_BITRATE_KBPS, VOICE_BITRATES_KBPS, type Channel } from '@
 import { api, postOnUnload } from '../api/http';
 import { voiceKey } from '../crypto';
 import { startCamera, stopCamera, startScreen, stopScreen } from '../components/voice/media';
-import { attachRemote, closeAudio, detachRemote, micLevel, openMic, setDeafened, setTransmitting, startPlayback } from './voiceAudio';
+import { attachRemote, closeAudio, detachRemote, micLevel, openMic, setDeafened, setTransmitting, setVoiceNotifier, startPlayback } from './voiceAudio';
 import { onBeforeSignOut, useSession } from './session';
 import { useSettings } from './settings';
 import { demoVoice } from '../demo/voice';
@@ -177,8 +177,15 @@ export const useVoice = create<VoiceState>((set, get) => {
         if (current() && pub.source === Track.Source.Camera) set({ cameraOn: false });
         bump();
       })
-      .on(RoomEvent.TrackMuted, bump)
-      .on(RoomEvent.TrackUnmuted, bump)
+      .on(RoomEvent.TrackMuted, (pub, p) => {
+        // turning the camera off mutes its publication rather than unpublishing it, so clear our state here too
+        if (current() && p === room.localParticipant && pub.source === Track.Source.Camera) set({ cameraOn: false });
+        bump();
+      })
+      .on(RoomEvent.TrackUnmuted, (pub, p) => {
+        if (current() && p === room.localParticipant && pub.source === Track.Source.Camera) set({ cameraOn: true });
+        bump();
+      })
       .on(RoomEvent.TrackSubscribed, (track, pub, p) => {
         if (current() && track.kind === Track.Kind.Audio) attachRemote(pub.trackSid, p.identity, track.mediaStreamTrack);
         bump();
@@ -371,6 +378,8 @@ export const useVoice = create<VoiceState>((set, get) => {
     },
   };
 });
+
+setVoiceNotifier((message) => useVoice.setState({ notice: message }));
 
 // Leave the call on logout (or a 401 sign-out) while the token is still set, so the server accepts the leave.
 // After an account delete there is no token left to leave with, so only tear down the local call.

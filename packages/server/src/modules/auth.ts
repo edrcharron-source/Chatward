@@ -455,6 +455,16 @@ export function register(app: Express, ctx: Ctx): void {
     res.json({ user: mustUser(ctx, uid) });
   }));
 
+  app.delete('/api/me/avatar', ctx.requireAuth, route((req, res) => {
+    const uid = userIdOf(req);
+    const prev = (ctx.db.prepare('SELECT avatar_path FROM users WHERE id=?').get(uid) as
+      { avatar_path: string | null }).avatar_path;
+    if (prev) fs.rmSync(path.join(avatarDir, path.basename(prev)), { force: true });
+    ctx.db.prepare('UPDATE users SET avatar_path=NULL WHERE id=?').run(uid);
+    broadcastUser(ctx, uid);
+    res.json({ user: mustUser(ctx, uid) });
+  }));
+
   app.get('/api/avatars/:userId', ctx.requireAuth, route((req, res) => {
     const row = ctx.db.prepare('SELECT avatar_path FROM users WHERE id=?').get(String(req.params.userId)) as
       { avatar_path: string | null } | undefined;

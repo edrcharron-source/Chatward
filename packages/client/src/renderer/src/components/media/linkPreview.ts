@@ -75,6 +75,26 @@ async function fetchPreview(url: string): Promise<LinkPreview | null> {
   }
 }
 
+const THUMB_MAX_PX = 200;
+const THUMB_QUALITY = 0.6;
+
+/** Re-encodes a preview image as a small JPEG so it can fit the message size cap. Undefined if it cannot be decoded. */
+export async function shrinkPreviewImage(dataUrl: string): Promise<string | undefined> {
+  try {
+    const img = new Image();
+    img.src = dataUrl;
+    await img.decode();
+    const scale = Math.min(1, THUMB_MAX_PX / Math.max(img.naturalWidth, img.naturalHeight));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
+    canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+    canvas.getContext('2d')?.drawImage(img, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL('image/jpeg', THUMB_QUALITY);
+  } catch {
+    return undefined;
+  }
+}
+
 /** Sender-side: fetch previews via /api/linkpreview (max 3 urls), respecting settings.linkPreviews. Never throws. */
 export async function buildLinkPreviews(urls: string[]): Promise<LinkPreview[]> {
   try {

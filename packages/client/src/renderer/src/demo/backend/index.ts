@@ -284,6 +284,13 @@ on('GET', /^\/api\/banners\/([^/]+)$/, (r) => {
 on('PUT', /^\/api\/me\/avatar$/, (r) => {
   if (!r.bytes) throw new HttpError(400, 'missing image');
   world.blobs.set(`avatar:${YOU_ID}`, { bytes: r.bytes, mime: r.type });
+  world.you = { ...world.you, avatarUrl: `/api/avatars/${YOU_ID}` };
+  emit({ t: 'user.update', user: world.you });
+  return json({ user: world.you });
+});
+on('DELETE', /^\/api\/me\/avatar$/, () => {
+  world.blobs.delete(`avatar:${YOU_ID}`);
+  world.you = { ...world.you, avatarUrl: null };
   emit({ t: 'user.update', user: world.you });
   return json({ user: world.you });
 });

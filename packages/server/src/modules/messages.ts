@@ -55,6 +55,8 @@ const toEnvelope = (r: EnvelopeRow): KeyEnvelope => ({
 const validCiphertext = (v: unknown): v is string =>
   typeof v === 'string' && v.length > 0 && v.length <= LIMITS.MESSAGE_CIPHERTEXT_MAX && BASE64.test(v);
 
+const tooLong = (v: unknown): boolean => typeof v === 'string' && v.length > LIMITS.MESSAGE_CIPHERTEXT_MAX;
+
 const validKeyVersion = (v: unknown): v is number => Number.isSafeInteger(v) && (v as number) >= 1;
 
 const parseLimit = (raw: unknown): number => {
@@ -192,6 +194,7 @@ export function register(app: Express, ctx: Ctx): void {
     if (!ch) return;
     const { ciphertext, keyVersion, attachmentIds = [] } = (req.body ?? {}) as
       { ciphertext?: unknown; keyVersion?: unknown; attachmentIds?: unknown };
+    if (tooLong(ciphertext)) return void res.status(413).json({ error: 'message too long' });
     if (!validCiphertext(ciphertext)) return void bad(res, 'invalid ciphertext');
     if (!validKeyVersion(keyVersion)) return void bad(res, 'invalid keyVersion');
     if (!Array.isArray(attachmentIds) || attachmentIds.length > MAX_ATTACHMENTS) return void bad(res, 'invalid attachmentIds');
@@ -224,6 +227,7 @@ export function register(app: Express, ctx: Ctx): void {
     if (!row) return;
     if (row.author_id !== userId) { res.status(403).json({ error: 'only the author can edit' }); return; }
     const { ciphertext, keyVersion } = (req.body ?? {}) as { ciphertext?: unknown; keyVersion?: unknown };
+    if (tooLong(ciphertext)) return void res.status(413).json({ error: 'message too long' });
     if (!validCiphertext(ciphertext)) return void bad(res, 'invalid ciphertext');
     if (!validKeyVersion(keyVersion)) return void bad(res, 'invalid keyVersion');
 

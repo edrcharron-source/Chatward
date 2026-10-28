@@ -86,13 +86,17 @@ app.disable('x-powered-by');
 if (config.trustProxy) app.set('trust proxy', 1);
 app.use(helmet());
 app.use('/api/auth', rateLimit({ windowMs: 15 * 60_000, limit: 40, standardHeaders: true }));
+// A Commit lists a batch of Welcomes, so it needs more room than the default limit. Only that route gets it.
+app.post('/api/groups/:id/commits', express.json({ limit: '512kb' }));
 app.use(express.json({ limit: '64kb' }));
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
 for (const reg of [auth, servers, messages, uploads, soundboard, gifs, linkpreview, voice, groups, watchparty, updates]) reg(app, ctx);
 
 app.use((_req, res) => res.status(404).json({ error: 'not found' }));
-app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+app.use((err: Error & { type?: string }, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  // express.json rejects an oversize body with this type; that is the client's fault, not a server error.
+  if (err.type === 'entity.too.large') { res.status(413).json({ error: 'request too large' }); return; }
   console.error(err);
   res.status(500).json({ error: 'internal error' });
 });

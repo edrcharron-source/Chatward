@@ -5,5 +5,5 @@ export { uploadAttachment } from './upload';
 export { AttachmentView } from './AttachmentView';
 export { EmojiPickerButton } from './EmojiPicker';
 export { GifPickerButton, GifView } from './GifPicker';
-export { extractUrls, buildLinkPreviews } from './linkPreview';
+export { extractUrls, buildLinkPreviews, shrinkPreviewImage } from './linkPreview';
 export { LinkPreviewCard } from './LinkPreviewCard';
