@@ -32,6 +32,7 @@ export function register(app: Express, ctx: Ctx): void {
     'SELECT COUNT(*) AS n FROM mls_keypackages WHERE device_id=? AND last_resort=0 AND consumed_at IS NULL');
   const insertKeyPackage = db.prepare(
     'INSERT INTO mls_keypackages (device_id, kp, last_resort) VALUES (?,?,?)');
+  const deleteUnclaimedKeyPackages = db.prepare('DELETE FROM mls_keypackages WHERE device_id=? AND consumed_at IS NULL');
   const pickSingleUse = db.prepare(
     'SELECT id, kp FROM mls_keypackages WHERE device_id=? AND last_resort=0 AND consumed_at IS NULL ORDER BY id LIMIT 1');
   const markConsumed = db.prepare('UPDATE mls_keypackages SET consumed_at=? WHERE id=?');
@@ -107,7 +108,7 @@ export function register(app: Express, ctx: Ctx): void {
   };
 
   // Upload single-use KeyPackages (and at most one batch of last-resort packages) for one of our devices.
-  app.post('/api/devices/keypackages', ctx.requireAuth, (req, res) => {
+  const uploadKeyPackages = (replace: boolean) => (req: Request, res: Response) => {
     const userId = (req as AuthedRequest).userId;
     const { deviceId, keyPackages } = (req.body ?? {}) as { deviceId?: unknown; keyPackages?: unknown };
     if (!requireOwnDevice(userId, deviceId, res)) return;
@@ -120,6 +121,8 @@ export function register(app: Express, ctx: Ctx): void {
     // and found nothing to claim, so tell them now. Their sync then claims these packages and adds the device.
     const firstUpload = !anyKeyPackage.get(deviceId);
     db.transaction(() => {
+      // A replace drops the packages nobody has claimed yet (for example ones a client found it cannot use), then adds the new ones.
+      if (replace) deleteUnclaimedKeyPackages.run(deviceId);
       for (const k of items) insertKeyPackage.run(deviceId, k.kp, k.lastResort === true ? 1 : 0);
     })();
     if (firstUpload) {
@@ -129,7 +132,10 @@ export function register(app: Express, ctx: Ctx): void {
       }
     }
     res.json({ added: items.length, available: (availableCount.get(deviceId) as { n: number }).n });
-  });
+  };
+  app.post('/api/devices/keypackages', ctx.requireAuth, uploadKeyPackages(false));
+  // Same as the upload, but first removes this device's unclaimed packages. Used when the client finds its pool unusable.
+  app.post('/api/devices/keypackages/replace', ctx.requireAuth, uploadKeyPackages(true));
 
   // How many single-use KeyPackages a device still has, and which last-resort package the server would hand out
   // (its id, or null if it has none). A client compares the id with its own copy to see whether the two agree.

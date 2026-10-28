@@ -83,7 +83,7 @@ async function startServer(): Promise<ChildProcess> {
   throw new Error('server did not start');
 }
 
-async function uploadPool(dev: Dev, singleUse: number) {
+async function uploadPool(dev: Dev, singleUse: number, replace = false) {
   const items: { kp: string; lastResort?: boolean }[] = [];
   const made: [string, mls.MemberKeys][] = [];
   for (let i = 0; i <= singleUse; i++) {
@@ -92,7 +92,8 @@ async function uploadPool(dev: Dev, singleUse: number) {
     items.push({ kp, lastResort: i === singleUse });
     made.push([kp, keys]);
   }
-  const r = await api(dev.token, 'POST', '/api/devices/keypackages', { deviceId: dev.id, keyPackages: items });
+  const path = replace ? '/api/devices/keypackages/replace' : '/api/devices/keypackages';
+  const r = await api(dev.token, 'POST', path, { deviceId: dev.id, keyPackages: items });
   assert.equal(r.status, 200, 'upload KeyPackages');
   for (const [kp, keys] of made) dev.pool.set(kp, keys);
 }
@@ -181,6 +182,11 @@ async function main() {
     const carol = await newDev('carol', { id: carolReg.user.id, token: carolReg.token }, carolKeys);
     for (const d of [alice, bob, carol]) await uploadPool(d, 4);
     log('registered alice (owner), bob and carol through invites; uploaded KeyPackage pools');
+    // A replace drops the unclaimed packages the device already had: carol still has 4, not 8.
+    await uploadPool(carol, 4, true);
+    const carolCount = await api(carol.token, 'GET', `/api/devices/${carol.id}/keypackages/count`);
+    assert.equal(carolCount.json.available, 4, 'replace drops unclaimed packages before adding the new ones');
+    log('replacing a pool drops the unclaimed packages it held');
     const aliceCount = await api(alice.token, 'GET', `/api/devices/${alice.id}/keypackages/count`);
     assert.equal(aliceCount.json.available, 4, 'count reports the single-use packages');
     assert.equal(typeof aliceCount.json.lastResort, 'string', 'count reports the current last-resort package');
