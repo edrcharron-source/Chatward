@@ -15,9 +15,18 @@ export default function VoiceDock() {
   const demoLoopback = useVoice((s) => s.demoLoopback);
   const setDemoLoopback = useVoice((s) => s.setDemoLoopback);
   const leave = useVoice((s) => s.leave);
+  const notice = useVoice((s) => s.notice);
   const channelName = useSession((s) => s.servers.flatMap((b) => b.channels).find((c) => c.id === channelId)?.name);
 
-  if (!channelId) return null;
+  if (!channelId) {
+    if (!notice) return null;
+    return (
+      <div className="card" role="status" style={{ margin: 8, padding: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={{ color: 'var(--danger)', fontSize: 12 }}>{notice}</div>
+        <button type="button" onClick={() => useVoice.setState({ notice: null })}>Dismiss</button>
+      </div>
+    );
+  }
 
   const label = status === 'connected' ? 'Voice connected' : status === 'error' ? 'Not connected' : 'Connecting…';
   const dot = status === 'connected' ? 'var(--ok)' : status === 'error' ? 'var(--danger)' : 'var(--warn)';

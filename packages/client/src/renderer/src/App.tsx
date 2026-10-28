@@ -148,6 +148,14 @@ function Shell() {
             void syncChannelKeys(useSession.getState().servers);
             break;
           }
+          case 'voice.kicked': {
+            // only the call they are in matters; a kick for another channel is stale or already left
+            if (useVoice.getState().channelId !== f.channelId) break;
+            void useVoice.getState().leave()
+              .then(() => useVoice.setState({ notice: 'An admin removed you from the call' }))
+              .catch((e) => console.error(e));
+            break;
+          }
           case 'member.leave': {
             if (f.userId === st.user?.id) { st.removeServer(f.serverId); break; }
             const b = st.servers.find((x) => x.server.id === f.serverId);

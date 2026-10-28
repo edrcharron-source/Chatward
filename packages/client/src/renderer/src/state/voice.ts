@@ -29,6 +29,8 @@ export interface VoiceState {
   speaking: string[];
   /** bumps on any room change so views re-read participants and tracks */
   version: number;
+  /** a short note shown after a call ends for a reason the user did not choose, e.g. a kick; cleared on the next join */
+  notice: string | null;
   join: (serverId: string, channelId: string) => Promise<void>;
   leave: () => Promise<void>;
   toggleMute: () => void;
@@ -168,7 +170,7 @@ export const useVoice = create<VoiceState>((set, get) => {
   async function hangUp(): Promise<void> {
     const { room, channelId } = get();
     if (!channelId) return;
-    set({ room: null, channelId: null, serverId: null, status: 'idle', error: null, cameraOn: false, screenOn: false, theaterKey: null, speaking: [] });
+    set({ room: null, channelId: null, serverId: null, status: 'idle', error: null, cameraOn: false, screenOn: false, theaterKey: null, speaking: [], notice: null });
     endMeter();
     closeAudio();
     demoVoice.leave(); // no-op outside a demo call
@@ -187,7 +189,7 @@ export const useVoice = create<VoiceState>((set, get) => {
 
   return {
     channelId: null, serverId: null, status: 'idle', error: null, room: null,
-    muted: false, deafened: false, demoLoopback: true, cameraOn: false, screenOn: false, theaterKey: null, speaking: [], version: 0,
+    muted: false, deafened: false, demoLoopback: true, cameraOn: false, screenOn: false, theaterKey: null, speaking: [], version: 0, notice: null,
 
     join: async (serverId, channelId) => {
       const cur = get();
