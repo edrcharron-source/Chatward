@@ -52,6 +52,16 @@ export function App() {
   );
 }
 
+// A burst of keypackages.low frames runs one key sync, a few seconds after the first, instead of one sync per frame.
+let lowKeyPackageSync: ReturnType<typeof setTimeout> | null = null;
+function syncAfterLowKeyPackages(): void {
+  if (lowKeyPackageSync) return;
+  lowKeyPackageSync = setTimeout(() => {
+    lowKeyPackageSync = null;
+    void syncChannelKeys(useSession.getState().servers).catch((e) => console.error(e));
+  }, 5_000);
+}
+
 function Shell() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [ready, setReady] = useState(false);
@@ -225,9 +235,9 @@ function Shell() {
           // A low key-package pool is topped up the same way, rather than waiting for the next full sync.
           case 'group.commit':
           case 'group.welcome':
-          case 'keypackages.low':
             void syncChannelKeys(useSession.getState().servers).catch((e) => console.error(e));
             break;
+          case 'keypackages.low': syncAfterLowKeyPackages(); break;
           case 'key.envelope': void handleEnvelope(f.envelope); break;
           case 'device.added':
             // Flash the taskbar so a background window still gets noticed.

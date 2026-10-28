@@ -1,6 +1,7 @@
 import type { Express } from 'express';
 import { LIMITS } from '@chatward/shared';
 import type { AuthedRequest, Ctx } from '../ctx.js';
+import { perMember } from '../userLimit.js';
 
 // Latest watch-party snapshot per channel. The server never reads it: the body is the client-encrypted
 // playback state, so a relayed snapshot is opaque ciphertext. In memory, so a restart means nothing is playing.
@@ -26,7 +27,7 @@ export function register(app: Express, ctx: Ctx): void {
     res.json({ state: snapshots.get(req.params.id) ?? null, serverNow: Date.now() });
   });
 
-  app.post('/api/channels/:id/watch', ctx.requireAuth, (req, res) => {
+  app.post('/api/channels/:id/watch', ctx.requireAuth, perMember(60_000, 120), (req, res) => {
     const userId = (req as AuthedRequest).userId;
     const channelId = req.params.id;
     const serverId = ctx.serverIdForChannelMember(channelId, userId);
