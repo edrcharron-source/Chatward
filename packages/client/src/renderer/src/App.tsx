@@ -172,8 +172,13 @@ function Shell() {
           }
           case 'member.join': {
             const b = st.servers.find((x) => x.server.id === f.serverId);
-            if (b) st.upsertServer({ ...b, members: [...b.members.filter((m) => m.user.id !== f.member.user.id), f.member] });
-            void syncChannelKeys(useSession.getState().servers);
+            if (b) {
+              st.upsertServer({ ...b, members: [...b.members.filter((m) => m.user.id !== f.member.user.id), f.member] });
+              void syncChannelKeys(useSession.getState().servers);
+            } else if (f.member.user.id === st.user?.id) {
+              // This device has not seen the server yet (created or joined on another device), so fetch the list.
+              void loadServers();
+            }
             break;
           }
           case 'voice.kicked': {

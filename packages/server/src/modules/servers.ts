@@ -180,6 +180,8 @@ export function register(app: Express, ctx: Ctx): void {
       insertChannel(ctx, id, 'General', 'voice');
       return id;
     })();
+    // The creator's other devices learn about the new server the same way they learn about an invite join.
+    announceJoin(ctx, serverId, uid);
     res.json({ server: serverOf(ctx, serverId), channels: channelsOf(ctx, serverId) });
   }));
 
