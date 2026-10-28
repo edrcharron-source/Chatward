@@ -8,6 +8,7 @@ import { LIMITS, type DeviceKeys } from '@chatward/shared';
 import type { AuthedRequest, Ctx } from '../ctx.js';
 import { clearSetupCode, setupCode } from '../config.js';
 import { newId } from '../db.js';
+import { endCallOnDevice } from './voice.js';
 import {
   ApiError,
   announceJoin,
@@ -417,6 +418,8 @@ export function register(app: Express, ctx: Ctx): void {
     })();
     broadcastDevices(ctx, uid);
     res.status(204).end();
+    // Ends the call if this device is in one. Its socket closing alone would leave the LiveKit session running.
+    endCallOnDevice(ctx, uid, deviceId);
     ctx.revokeSockets(uid, deviceId);
   }));
 
