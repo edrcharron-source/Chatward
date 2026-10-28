@@ -21,8 +21,9 @@ export function utf8(s: string): Bytes {
 }
 
 export function toB64(bytes: Bytes): string {
+  // Chunked: spreading the whole array into fromCharCode overflows the call stack on large payloads (images, files).
   let s = '';
-  for (const b of bytes) s += String.fromCharCode(b);
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000) as unknown as number[]);
   return btoa(s);
 }
 
