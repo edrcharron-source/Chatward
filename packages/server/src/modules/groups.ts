@@ -1,5 +1,6 @@
 // MLS delivery: KeyPackage pool, epoch-ordered Commits, per-device Welcomes, pending removals.
 // The group id is the text channel id. The server stores and orders opaque MLS bytes; it never decrypts them.
+import crypto from 'node:crypto';
 import type { Express, Request, Response } from 'express';
 import type { AuthedRequest, Ctx } from '../ctx.js';
 
@@ -10,6 +11,8 @@ const MAX_COMMIT_CHARS = 32_000;
 const MAX_COMMITS_PER_FETCH = 200;
 /** Tell a device to refill its KeyPackage pool when fewer single-use packages than this remain. */
 const KEYPACKAGE_LOW_WATER = 5;
+/** Identifies a stored KeyPackage without sending it back: SHA-256 of its wire string, base64. Clients compute the same. */
+const keyPackageId = (kp: string): string => crypto.createHash('sha256').update(kp).digest('base64');
 
 const bad = (res: Response, error: string) => res.status(400).json({ error });
 const isB64 = (s: unknown, max: number): s is string =>
@@ -120,12 +123,17 @@ export function register(app: Express, ctx: Ctx): void {
     res.json({ added: items.length, available: (availableCount.get(deviceId) as { n: number }).n });
   });
 
-  // How many single-use KeyPackages a device still has.
+  // How many single-use KeyPackages a device still has, and which last-resort package the server would hand out
+  // (its id, or null if it has none). A client compares the id with its own copy to see whether the two agree.
   app.get('/api/devices/:deviceId/keypackages/count', ctx.requireAuth, (req, res) => {
     const userId = (req as AuthedRequest).userId;
     const deviceId = req.params.deviceId;
     if (!requireOwnDevice(userId, deviceId, res)) return;
-    res.json({ available: (availableCount.get(deviceId) as { n: number }).n });
+    const lastResort = pickLastResort.get(deviceId) as { kp: string } | undefined;
+    res.json({
+      available: (availableCount.get(deviceId) as { n: number }).n,
+      lastResort: lastResort ? keyPackageId(lastResort.kp) : null,
+    });
   });
 
   // Claim one KeyPackage per device of a user who shares a server with us. Single-use packages are consumed;

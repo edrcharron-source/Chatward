@@ -172,6 +172,10 @@ async function main() {
     const carol = await newDev('carol', { id: carolReg.user.id, token: carolReg.token }, carolKeys);
     for (const d of [alice, bob, carol]) await uploadPool(d, 4);
     log('registered alice (owner), bob and carol through invites; uploaded KeyPackage pools');
+    const aliceCount = await api(alice.token, 'GET', `/api/devices/${alice.id}/keypackages/count`);
+    assert.equal(aliceCount.json.available, 4, 'count reports the single-use packages');
+    assert.equal(typeof aliceCount.json.lastResort, 'string', 'count reports the current last-resort package');
+    log('the server reports which last-resort KeyPackage it holds');
 
     // 1. First group creation, then add bob.
     alice.state.set(CHANNEL, await mls.createMlsGroup(CHANNEL, await newKeys(alice.id), devices));
