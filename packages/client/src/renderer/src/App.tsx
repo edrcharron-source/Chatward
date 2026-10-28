@@ -133,6 +133,8 @@ function Shell() {
             // leave the call if it was in the deleted voice channel, since the server has already dropped everyone
             if (useVoice.getState().channelId === f.channelId) void useVoice.getState().leave();
             st.removeChannel(f.serverId, f.channelId);
+            // Calls key off the server's first text channel. Deleting that one moves them to the next channel's key.
+            void syncChannelKeys(useSession.getState().servers).then(rekeyActiveCall).catch((e) => console.error(e));
             break;
           }
           case 'server.update': {

@@ -237,8 +237,17 @@ export function register(app: Express, ctx: Ctx): void {
     const serverId = String(req.params.id);
     const channelId = String(req.params.channelId);
     requireAdmin(ctx, serverId, userIdOf(req));
-    const exists = ctx.db.prepare('SELECT 1 FROM channels WHERE id=? AND server_id=?').get(channelId, serverId);
-    if (!exists) throw new ApiError(404, 'channel not found');
+    const row = ctx.db
+      .prepare('SELECT kind FROM channels WHERE id=? AND server_id=?')
+      .get(channelId, serverId) as { kind: Channel['kind'] } | undefined;
+    if (!row) throw new ApiError(404, 'channel not found');
+    // Voice calls take their key from the server's first text channel, so a server must always keep one.
+    if (row.kind === 'text') {
+      const { count } = ctx.db
+        .prepare("SELECT COUNT(*) AS count FROM channels WHERE server_id=? AND kind='text'")
+        .get(serverId) as { count: number };
+      if (count <= 1) throw new ApiError(409, 'a server needs at least one text channel');
+    }
     // Everyone in the voice channel is dropped first. Messages, keys and MLS state cascade with the row.
     clearVoiceChannel(ctx, channelId);
     ctx.db.prepare('DELETE FROM channels WHERE id=?').run(channelId);
