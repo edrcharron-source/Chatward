@@ -3,6 +3,12 @@ import { WebSocketServer, WebSocket } from 'ws';
 import type { ClientFrame, ServerFrame } from '@chatward/shared';
 import type { Ctx } from './ctx.js';
 
+// How often the server pings every socket. A socket that has not answered the previous ping is dead
+// (a laptop that slept or lost Wi-Fi never sends a close), so it is terminated and its user goes offline.
+const HEARTBEAT_MS = 30_000;
+
+type AliveSocket = WebSocket & { isAlive?: boolean };
+
 export function attachWs(http: HttpServer, ctx: Ctx) {
   const wss = new WebSocketServer({ noServer: true, maxPayload: 4096 });
   const socketsByUser = new Map<string, Set<WebSocket>>();
@@ -16,7 +22,9 @@ export function attachWs(http: HttpServer, ctx: Ctx) {
     if (url.pathname !== '/ws') { socket.destroy(); return; }
     const userId = ctx.verifyToken(url.searchParams.get('token') ?? '');
     if (!userId) { socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n'); socket.destroy(); return; }
-    wss.handleUpgrade(req, socket, head, (ws) => {
+    wss.handleUpgrade(req, socket, head, (ws: AliveSocket) => {
+      ws.isAlive = true;
+      ws.on('pong', () => { ws.isAlive = true; });
       let set = socketsByUser.get(userId);
       if (!set) socketsByUser.set(userId, (set = new Set()));
       set.add(ws);
@@ -41,6 +49,17 @@ export function attachWs(http: HttpServer, ctx: Ctx) {
       });
     });
   });
+
+  // terminate() emits 'close' on the socket, so the normal cleanup above marks the user offline.
+  const heartbeat = setInterval(() => {
+    for (const ws of wss.clients as Set<AliveSocket>) {
+      if (ws.isAlive === false) { ws.terminate(); continue; }
+      ws.isAlive = false;
+      ws.ping();
+    }
+  }, HEARTBEAT_MS);
+  heartbeat.unref();
+  wss.on('close', () => clearInterval(heartbeat));
 
   function send(ws: WebSocket, f: ServerFrame) {
     if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(f));
