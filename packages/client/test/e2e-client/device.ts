@@ -66,6 +66,11 @@ const handlers: Record<string, (args: any) => Promise<unknown>> = {
     return {};
   },
 
+  async joinInvite({ code }) {
+    await api.post(`/api/invites/${code}/join`, {});
+    return {};
+  },
+
   async kick({ serverId, userId }) {
     await api.del(`/api/servers/${serverId}/members/${userId}`);
     return {};
