@@ -39,16 +39,21 @@ interface SessionState {
   clearUnread: (channelId: string) => void;
 }
 
-type SignOutHook = () => void | Promise<void>;
+export interface SignOutOptions {
+  /** False after the account is deleted: the token no longer works, so hooks must skip server calls. */
+  serverAvailable?: boolean;
+}
+
+type SignOutHook = (opts: { serverAvailable: boolean }) => void | Promise<void>;
 const signOutHooks: SignOutHook[] = [];
 
-/** Cleanup that must run while the token is still set, such as leaving a call on the server. */
+/** Cleanup that must run before the session is cleared. Hooks get `serverAvailable` so they know whether they may call the server. */
 export function onBeforeSignOut(hook: SignOutHook) { signOutHooks.push(hook); }
 
 /** Logs out. Hooks run first, so their server calls still go out as this user. Then the session is cleared. */
-export async function signOut() {
+export async function signOut({ serverAvailable = true }: SignOutOptions = {}) {
   for (const hook of signOutHooks) {
-    try { await hook(); } catch { /* cleanup is best effort; logging out must still finish */ }
+    try { await hook({ serverAvailable }); } catch { /* cleanup is best effort; logging out must still finish */ }
   }
   useSession.getState().logout();
 }
