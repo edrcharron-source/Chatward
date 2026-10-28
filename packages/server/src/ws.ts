@@ -43,14 +43,21 @@ export function attachWs(http: HttpServer, ctx: Ctx) {
       replayNewDeviceAlerts(ws, userId, deviceId);
       announce(userId, 'online');
       ws.on('message', (raw) => {
-        let f: ClientFrame;
-        try { f = JSON.parse(raw.toString()); } catch { return; }
-        if (!f || typeof f !== 'object') return;
-        if (f.t === 'ping') send(ws, { t: 'pong' });
-        else if (f.t === 'typing') {
-          const sid = ctx.serverIdForChannelMember(f.channelId, userId);
-          if (sid) ctx.broadcastToServer(sid, { t: 'typing', channelId: f.channelId, userId });
-        } else if (f.t === 'presence' && CLIENT_STATUSES.includes(f.status)) announce(userId, f.status);
+        // A malformed frame must never throw out of this listener: it would crash the whole server.
+        try {
+          let f: ClientFrame;
+          try { f = JSON.parse(raw.toString()); } catch { return; }
+          if (!f || typeof f !== 'object') return;
+          if (f.t === 'ping') send(ws, { t: 'pong' });
+          else if (f.t === 'typing') {
+            // The type says string, but a client can send anything; SQLite would throw on a non-string id.
+            if (typeof f.channelId !== 'string') return;
+            const sid = ctx.serverIdForChannelMember(f.channelId, userId);
+            if (sid) ctx.broadcastToServer(sid, { t: 'typing', channelId: f.channelId, userId });
+          } else if (f.t === 'presence' && typeof f.status === 'string' && CLIENT_STATUSES.includes(f.status)) announce(userId, f.status);
+        } catch (err) {
+          console.error('Dropped a bad websocket frame:', err);
+        }
       });
       ws.on('close', () => {
         markDeviceSeen(deviceId);
