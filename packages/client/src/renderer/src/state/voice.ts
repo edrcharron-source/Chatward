@@ -7,6 +7,8 @@ import { startCamera, stopCamera, startScreen, stopScreen } from '../components/
 import { attachRemote, closeAudio, detachRemote, openMic, setDeafened, setTransmitting, startPlayback } from './voiceAudio';
 import { useSession } from './session';
 import { useSettings } from './settings';
+import { demoVoice } from '../demo/voice';
+import { isDemo } from '../demo';
 
 export interface VoiceState {
   channelId: string | null;
@@ -16,6 +18,8 @@ export interface VoiceState {
   room: Room | null;
   muted: boolean;
   deafened: boolean;
+  /** demo only: hear your own mic through the speakers */
+  demoLoopback: boolean;
   cameraOn: boolean;
   screenOn: boolean;
   /** userIds currently speaking */
@@ -26,6 +30,7 @@ export interface VoiceState {
   leave: () => Promise<void>;
   toggleMute: () => void;
   toggleDeafen: () => void;
+  setDemoLoopback: (on: boolean) => void;
   /** implemented in components/voice/media.ts and wired in below */
   setCamera: (on: boolean) => Promise<void>;
   setScreen: (on: boolean, sourceId?: string) => Promise<void>;
@@ -82,13 +87,27 @@ export const useVoice = create<VoiceState>((set, get) => {
 
   return {
     channelId: null, serverId: null, status: 'idle', error: null, room: null,
-    muted: false, deafened: false, cameraOn: false, screenOn: false, speaking: [], version: 0,
+    muted: false, deafened: false, demoLoopback: true, cameraOn: false, screenOn: false, speaking: [], version: 0,
 
     join: async (serverId, channelId) => {
       const cur = get();
       if (cur.channelId === channelId && cur.status !== 'error') return;
       if (cur.channelId) await get().leave();
       set({ serverId, channelId, status: 'connecting', error: null, cameraOn: false, screenOn: false, speaking: [] });
+
+      if (isDemo()) {
+        try {
+          const selfId = useSession.getState().user?.id ?? 'you';
+          await demoVoice.join(channelId, selfId, { loopback: get().demoLoopback, onSpeaking: (ids) => set({ speaking: ids }) });
+          set({ status: 'connected' });
+          syncMic();
+        } catch (e) {
+          demoVoice.leave();
+          closeAudio();
+          set({ channelId: null, serverId: null, status: 'error', error: e instanceof Error ? e.message : String(e), speaking: [] });
+        }
+        return;
+      }
 
       let room: Room | null = null;
       try {
@@ -129,7 +148,9 @@ export const useVoice = create<VoiceState>((set, get) => {
       // clear state first so the Disconnected handler ignores this room
       set({ room: null, channelId: null, serverId: null, status: 'idle', error: null, cameraOn: false, screenOn: false, speaking: [] });
       closeAudio();
+      demoVoice.leave(); // no-op outside a demo call
       if (room) await room.disconnect();
+      if (isDemo()) return;
       await api.post('/api/voice/leave', { channelId }).catch(() => {});
     },
 
@@ -137,6 +158,11 @@ export const useVoice = create<VoiceState>((set, get) => {
       if (get().deafened) return; // can't unmute while deafened
       set({ muted: !get().muted });
       syncMic();
+    },
+
+    setDemoLoopback: (on) => {
+      set({ demoLoopback: on });
+      demoVoice.setLoopback(on);
     },
 
     // deafen implies mute; undeafening unmutes, as Discord does
@@ -147,6 +173,12 @@ export const useVoice = create<VoiceState>((set, get) => {
     },
 
     setCamera: async (on) => {
+      if (isDemo()) {
+        await demoVoice.setCamera(on);
+        set({ cameraOn: on });
+        bump();
+        return;
+      }
       const room = get().room;
       if (!room) return;
       if (on) await startCamera(room, useSettings.getState().cameraDeviceId || undefined);
@@ -155,6 +187,15 @@ export const useVoice = create<VoiceState>((set, get) => {
     },
 
     setScreen: async (on, sourceId) => {
+      if (isDemo()) {
+        await demoVoice.setScreen(on, sourceId, () => {
+          set({ screenOn: false });
+          bump();
+        });
+        set({ screenOn: on });
+        bump();
+        return;
+      }
       const room = get().room;
       if (!room) return;
       if (on) {
