@@ -270,9 +270,11 @@ export function register(app: Express, ctx: Ctx): void {
 
   // The client calls this after its websocket reconnects while it is still in a call. A server restart clears the
   // occupancy above, but LiveKit keeps the media flowing, so the client puts its slot back. No new token is issued.
+  // The client also reports its mute state here, since the server clears it along with the slot.
   app.post('/api/voice/rejoin', ctx.requireAuth, (req, res) => {
     const userId = (req as AuthedRequest).userId;
-    const channelId = (req.body as { channelId?: unknown } | undefined)?.channelId;
+    const body = (req.body ?? {}) as { channelId?: unknown; muted?: unknown; deafened?: unknown };
+    const channelId = body.channelId;
     if (typeof channelId !== 'string') { res.status(400).json({ error: 'channelId required' }); return; }
 
     const serverId = ctx.serverIdForChannelMember(channelId, userId);
@@ -284,8 +286,22 @@ export function register(app: Express, ctx: Ctx): void {
     // Removed from this call and the removal is still being enforced. Putting the slot back would show them in the call
     // until the next sweep, so refuse. The client then hangs up. A fresh join clears the removal.
     if (evictions.has(`${channelId}:${userId}`)) { res.status(409).json({ error: 'You were removed from this call.' }); return; }
+    // Only a user who got a token for this room recently can be in it. Without this, any member could show themselves
+    // in a voice channel they never joined. A slot that is already there is trusted as before.
+    const issued = lastToken.get(`${channelId}:${userId}`);
+    if (!isInVoiceChannel(channelId, userId) && (issued === undefined || Date.now() - issued >= TOKEN_TTL_MS)) {
+      res.status(409).json({ error: 'You are not in this call. Join it again.' });
+      return;
+    }
 
+    // Moving from another voice channel works like a join: end the old room and tell the account's other sockets.
+    const previous = voiceChannelOf.get(userId);
+    if (previous && previous !== channelId) {
+      removeFromRoom(ctx, previous, userId);
+      ctx.sendToUser(userId, { t: 'voice.moved', channelId: previous });
+    }
     occupy(ctx, channelId, userId, deviceId);
+    selfState.set(userId, { muted: body.muted === true, deafened: body.deafened === true });
     res.json({ ok: true });
   });
 
