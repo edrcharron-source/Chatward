@@ -1,8 +1,9 @@
 # Local test:  docker compose -f deploy/docker-compose.yml up -d --build
+# Needs LIVEKIT_API_KEY and LIVEKIT_API_SECRET in deploy/.env (see deploy/bundle/.env.example). Compose stops if they are missing.
 services:
   livekit:
     image: livekit/livekit-server:latest
-    command: --config /etc/livekit.yaml --node-ip 127.0.0.1
+    command: '--config /etc/livekit.yaml --node-ip 127.0.0.1 --keys "${LIVEKIT_API_KEY:?set LIVEKIT_API_KEY in deploy/.env}: ${LIVEKIT_API_SECRET:?set LIVEKIT_API_SECRET in deploy/.env}"'
     volumes: ["./livekit.yaml:/etc/livekit.yaml:ro"]
     ports: ["7880:7880", "7881:7881", "50000-50100:50000-50100/udp"]
     restart: unless-stopped
@@ -13,8 +14,9 @@ services:
       DATA_DIR: /data
       UPLOADS_DIR: /data/uploads   # move to a mounted block-storage disk later
       LIVEKIT_URL: ws://localhost:7880
-      LIVEKIT_API_KEY: devkey
-      LIVEKIT_API_SECRET: secret
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:?set LIVEKIT_API_KEY in deploy/.env}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:?set LIVEKIT_API_SECRET in deploy/.env}
+      NODE_ENV: production
       KLIPY_API_KEY: ${KLIPY_API_KEY:-}
     volumes: ["chatward-data:/data"]
     ports: ["3000:3000"]

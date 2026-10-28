@@ -1,7 +1,7 @@
 services:
   livekit:
     image: livekit/livekit-server:latest
-    command: --config /etc/livekit.yaml --node-ip 127.0.0.1
+    command: '--config /etc/livekit.yaml --node-ip 127.0.0.1 --keys "${LIVEKIT_API_KEY:?set LIVEKIT_API_KEY in .env}: ${LIVEKIT_API_SECRET:?set LIVEKIT_API_SECRET in .env}"'
     volumes: ["./livekit.yaml:/etc/livekit.yaml:ro"]
     ports: ["7880:7880", "7881:7881", "50000-50100:50000-50100/udp"]
     restart: unless-stopped
@@ -16,8 +16,8 @@ services:
       CHATWARD_VERSION: ${CHATWARD_VERSION:-dev}
       MIN_CLIENT_VERSION: ${MIN_CLIENT_VERSION:-0.0.0}
       LIVEKIT_URL: ws://localhost:7880
-      LIVEKIT_API_KEY: devkey
-      LIVEKIT_API_SECRET: secret
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:?set LIVEKIT_API_KEY in .env}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:?set LIVEKIT_API_SECRET in .env}
     volumes: ["chatward-data:/data", "./updates:/updates:ro"]
     ports: ["3000:3000"]
     restart: unless-stopped

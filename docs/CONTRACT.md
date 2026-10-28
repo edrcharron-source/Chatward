@@ -55,7 +55,7 @@ Desktop updates (module `updates`), public, no auth
 - GET /updates/* -> static release files (latest.yml, Chatward-Setup.exe, blockmap) from `UPDATES_DIR`. See docs/UPDATES.md.
 
 Voice (module `voice`)
-- POST /api/voice/token {channelId} -> {url, token}   LiveKit JWT (room = channelId, identity = userId). Env LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET (defaults devkey/secret/ws://localhost:7880).
+- POST /api/voice/token {channelId} -> {url, token}   LiveKit JWT (room = channelId, identity = userId). Env LIVEKIT_URL (default ws://localhost:7880), LIVEKIT_API_KEY, LIVEKIT_API_SECRET. Outside production the keys default to devkey/secret; with NODE_ENV=production the server refuses to start unless both are set, the secret is 32+ characters, and neither is a default.
 - POST /api/voice/leave {channelId} -> {ok}
 - GET  /api/servers/:id/voice-state -> {channels: Record<channelId, userId[]>}   who is in each voice channel
   Server tracks occupancy in memory: token request = join (and leaving any other voice channel first), /leave or WS disconnect (ctx.onDisconnect) = leave.

@@ -1,6 +1,12 @@
 @echo off
 cd /d "%~dp0"
 if not exist .env copy .env.example .env >nul
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0ensure-secrets.ps1"
+if errorlevel 1 (
+  echo Could not create the LiveKit keys in .env. Open .env and set LIVEKIT_API_KEY and LIVEKIT_API_SECRET by hand.
+  pause
+  exit /b 1
+)
 echo Starting Chatward server (first run takes a few minutes)...
 docker compose up -d --build
 if errorlevel 1 (
