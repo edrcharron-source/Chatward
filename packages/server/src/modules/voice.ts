@@ -237,6 +237,10 @@ export function register(app: Express, ctx: Ctx): void {
       ctx.sendToUser(userId, { t: 'voice.moved', channelId: previous });
     }
     occupy(ctx, channelId, userId, (req as AuthedRequest).deviceId);
+    // The client sends its mute state with the join, so soundboard refuses a muted joiner from the first moment.
+    // Older clients send nothing here, which counts as unmuted, as before.
+    const body = (req.body ?? {}) as { muted?: unknown; deafened?: unknown };
+    selfState.set(userId, { muted: body.muted === true, deafened: body.deafened === true });
 
     const at = new AccessToken(ctx.config.livekit.apiKey, ctx.config.livekit.apiSecret, {
       identity: userId,
