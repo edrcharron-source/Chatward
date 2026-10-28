@@ -192,7 +192,6 @@ export function getDevice(): DeviceKeys {
 }
 
 const SYNC_RETRY_MAX_MS = 60_000;
-let lastServers: ServerBundle[] = [];
 let retryTimer: ReturnType<typeof setTimeout> | null = null;
 let retryAttempts = 0;
 
@@ -200,7 +199,6 @@ let retryAttempts = 0;
 export function syncChannelKeys(servers: ServerBundle[]): Promise<void> {
   return serial(async () => {
     if (isDemo() || !device || !privates) return;
-    lastServers = servers;
     let changed = false;
     let failed = false;
     try {
@@ -244,7 +242,8 @@ function scheduleSyncRetry(failed: boolean): void {
   retryAttempts++;
   retryTimer = setTimeout(() => {
     retryTimer = null;
-    void syncChannelKeys(lastServers).catch((err) => console.error('Key sync retry failed', err));
+    // Read the list at retry time, so a server deleted or left since the failure is not synced again.
+    void syncChannelKeys(useSession.getState().servers).catch((err) => console.error('Key sync retry failed', err));
   }, delay);
 }
 
@@ -589,12 +588,27 @@ async function reconcile(channelId: string, members: Member[]): Promise<boolean>
   return changed;
 }
 
+// A 429 means the server did not claim anything, so waiting and asking again costs no KeyPackage.
+const CLAIM_RETRY_DELAYS_MS = [2_000, 4_000, 8_000, 16_000];
+
+async function fetchKeyPackages(userId: string): Promise<{ keyPackages: { deviceId: string; kp: string }[] }> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await api.get<{ keyPackages: { deviceId: string; kp: string }[] }>(`/api/users/${userId}/keypackages`);
+    } catch (err) {
+      const delay = CLAIM_RETRY_DELAYS_MS[attempt];
+      if (!(err instanceof ApiError && err.status === 429) || delay === undefined) throw err;
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+}
+
 /** Claim one KeyPackage per wanted device, one request per user who has any wanted device. */
 async function claimFor(members: Member[], wanted: Set<string>): Promise<{ deviceId: string; kp: mls.KeyPackageLike }[]> {
   const out: { deviceId: string; kp: mls.KeyPackageLike }[] = [];
   for (const m of members) {
     if (!m.devices.some((d) => wanted.has(d.deviceId))) continue;
-    const r = await api.get<{ keyPackages: { deviceId: string; kp: string }[] }>(`/api/users/${m.user.id}/keypackages`);
+    const r = await fetchKeyPackages(m.user.id);
     for (const k of r.keyPackages) {
       if (!wanted.has(k.deviceId)) continue;
       // A KeyPackage the server swapped in does not carry this device's signature, so it is never added.
@@ -675,8 +689,6 @@ export function handleMemberLeave(serverId: string, userId: string, servers: Ser
     const bundle = servers.find((b) => b.server.id === serverId);
     if (!bundle) return;
     const remaining = bundle.members.filter((m) => m.user.id !== userId);
-    // A retry must not sync with the removed user still listed, so it gets the same member list.
-    lastServers = servers.map((b) => (b.server.id === serverId ? { ...b, members: remaining } : b));
     let changed = false;
     let failed = false;
     // One channel failing must not stop the others. Its partial progress is still saved below.

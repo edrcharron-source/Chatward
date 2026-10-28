@@ -155,7 +155,7 @@ export function register(app: Express, ctx: Ctx): void {
 
   // Claim one KeyPackage per device of a user who shares a server with us. Single-use packages are consumed;
   // a device with an empty pool falls back to its last-resort package, which is not consumed.
-  app.get('/api/users/:id/keypackages', ctx.requireAuth, perMember(60_000, 20), (req, res) => {
+  app.get('/api/users/:id/keypackages', ctx.requireAuth, perMember(60_000, 60), (req, res) => {
     const userId = (req as AuthedRequest).userId;
     const targetId = req.params.id;
     if (!sharesServer.get(userId, targetId)) return void res.status(404).json({ error: 'user not found' });
