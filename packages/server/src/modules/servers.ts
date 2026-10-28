@@ -116,6 +116,10 @@ export function peerIds(ctx: Ctx, userId: string): string[] {
     .all(userId) as { id: string }[]).map((r) => r.id);
 }
 
+export function isBanned(ctx: Ctx, serverId: string, userId: string): boolean {
+  return !!ctx.db.prepare('SELECT 1 FROM bans WHERE server_id=? AND user_id=?').get(serverId, userId);
+}
+
 /**
  * Adds `userId` to the invite's server, consuming one use. Must run inside the caller's
  * transaction. Returns null when the invite is unknown, expired or used up.
@@ -130,6 +134,7 @@ export function redeemInvite(
     .get(code) as InviteRow | undefined;
   if (!inv) return null;
   if (ctx.roleIn(inv.server_id, userId)) return { serverId: inv.server_id, joined: false };
+  if (isBanned(ctx, inv.server_id, userId)) throw new ApiError(403, 'you are banned from this server');
   if (inv.expires_at <= Date.now() || inv.uses >= inv.max_uses) return null;
   ctx.db.prepare('UPDATE invites SET uses = uses + 1 WHERE code=?').run(code);
   ctx.db
@@ -241,23 +246,91 @@ export function register(app: Express, ctx: Ctx): void {
     res.json({ server: serverOf(ctx, result.serverId) });
   }));
 
+  app.get('/api/servers/:id/invites', ctx.requireAuth, route((req, res) => {
+    const serverId = String(req.params.id);
+    requireAdmin(ctx, serverId, userIdOf(req));
+    const rows = ctx.db
+      .prepare('SELECT code, expires_at, max_uses, uses FROM invites WHERE server_id=? AND expires_at > ? AND uses < max_uses ORDER BY expires_at')
+      .all(serverId, Date.now()) as { code: string; expires_at: number; max_uses: number; uses: number }[];
+    res.json({
+      invites: rows.map((r) => ({ code: r.code, expiresAt: r.expires_at, maxUses: r.max_uses, uses: r.uses })),
+    });
+  }));
+
+  app.delete('/api/servers/:id/invites/:code', ctx.requireAuth, route((req, res) => {
+    const serverId = String(req.params.id);
+    requireAdmin(ctx, serverId, userIdOf(req));
+    const { changes } = ctx.db
+      .prepare('DELETE FROM invites WHERE code=? AND server_id=?')
+      .run(String(req.params.code), serverId);
+    if (changes === 0) throw new ApiError(404, 'invite not found');
+    res.json({ ok: true });
+  }));
+
   app.delete('/api/servers/:id/members/:userId', ctx.requireAuth, route((req, res) => {
     const serverId = String(req.params.id);
     const targetId = String(req.params.userId);
-    const actorId = userIdOf(req);
-    const actorRole = requireAdmin(ctx, serverId, actorId);
-    if (targetId === actorId) bad('you cannot remove yourself');
-    const targetRole = ctx.roleIn(serverId, targetId);
-    if (!targetRole) throw new ApiError(404, 'member not found');
-    if (targetRole === 'owner' || (targetRole === 'admin' && actorRole !== 'owner')) {
-      throw new ApiError(403, 'you cannot remove this member');
-    }
-    ctx.db.prepare('DELETE FROM members WHERE server_id=? AND user_id=?').run(serverId, targetId);
-    // Sent after the delete, so the kicked user needs an explicit send.
-    const leave: ServerFrame = { t: 'member.leave', serverId, userId: targetId };
-    ctx.broadcastToServer(serverId, leave);
-    ctx.sendToUser(targetId, leave);
-    leaveVoice(ctx, targetId);
+    assertCanModerate(ctx, serverId, userIdOf(req), targetId);
+    removeMember(ctx, serverId, targetId);
     res.json({ ok: true });
   }));
+
+  app.post('/api/servers/:id/bans', ctx.requireAuth, route((req, res) => {
+    const serverId = String(req.params.id);
+    const actorId = userIdOf(req);
+    const targetId = bodyOf(req).userId;
+    if (typeof targetId !== 'string') bad('userId is required');
+    assertCanModerate(ctx, serverId, actorId, targetId);
+    ctx.db.transaction(() => {
+      ctx.db
+        .prepare('INSERT OR IGNORE INTO bans (server_id, user_id, banned_by, created_at) VALUES (?, ?, ?, ?)')
+        .run(serverId, targetId, actorId, Date.now());
+      removeMember(ctx, serverId, targetId);
+    })();
+    res.json({ ok: true });
+  }));
+
+  app.get('/api/servers/:id/bans', ctx.requireAuth, route((req, res) => {
+    const serverId = String(req.params.id);
+    requireAdmin(ctx, serverId, userIdOf(req));
+    const rows = ctx.db
+      .prepare('SELECT user_id, created_at FROM bans WHERE server_id=? ORDER BY created_at')
+      .all(serverId) as { user_id: string; created_at: number }[];
+    const bans = rows.flatMap((r) => {
+      const user = ctx.getUser(r.user_id);
+      return user ? [{ user, bannedAt: r.created_at }] : [];
+    });
+    res.json({ bans });
+  }));
+
+  app.delete('/api/servers/:id/bans/:userId', ctx.requireAuth, route((req, res) => {
+    const serverId = String(req.params.id);
+    requireAdmin(ctx, serverId, userIdOf(req));
+    const { changes } = ctx.db
+      .prepare('DELETE FROM bans WHERE server_id=? AND user_id=?')
+      .run(serverId, String(req.params.userId));
+    if (changes === 0) throw new ApiError(404, 'ban not found');
+    res.json({ ok: true });
+  }));
+}
+
+/** Admins can kick or ban members, but never the owner, and only the owner can act on an admin. */
+function assertCanModerate(ctx: Ctx, serverId: string, actorId: string, targetId: string): void {
+  const actorRole = requireAdmin(ctx, serverId, actorId);
+  if (targetId === actorId) bad('you cannot remove yourself');
+  const targetRole = ctx.roleIn(serverId, targetId);
+  if (!targetRole) throw new ApiError(404, 'member not found');
+  if (targetRole === 'owner' || (targetRole === 'admin' && actorRole !== 'owner')) {
+    throw new ApiError(403, 'you cannot remove this member');
+  }
+}
+
+/** Takes a user out of the server: membership, their live socket, and any voice call they are in. */
+function removeMember(ctx: Ctx, serverId: string, targetId: string): void {
+  ctx.db.prepare('DELETE FROM members WHERE server_id=? AND user_id=?').run(serverId, targetId);
+  // Sent after the delete, so the kicked user needs an explicit send.
+  const leave: ServerFrame = { t: 'member.leave', serverId, userId: targetId };
+  ctx.broadcastToServer(serverId, leave);
+  ctx.sendToUser(targetId, leave);
+  leaveVoice(ctx, targetId);
 }
