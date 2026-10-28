@@ -8,14 +8,15 @@ const voiceChannelOf = new Map<string, string>(); // userId -> channelId (a user
 const voiceDeviceOf = new Map<string, string>(); // userId -> the device that holds the voice slot
 const selfState = new Map<string, { muted: boolean; deafened: boolean }>(); // userId -> self mute/deafen, reported by the client
 
-// Only needed to join. An active call keeps its LiveKit session, so a short TTL does not cut calls off. Kept short so a
-// token taken before a kick or ban stops working within a minute.
-const TOKEN_TTL = '1m';
+// Only needed to join, but livekit-client reuses this token when it reconnects after a network drop, so it must outlive
+// a short blip. Kicks and bans are enforced by removeParticipant, not by token expiry.
+const TOKEN_TTL = '10m';
 
 // A dropped websocket does not end a call: LiveKit keeps the media flowing. Hold the voice slot this long so a
 // quick reconnect keeps it. Kicks and explicit leaves ignore this and still act at once.
 const VOICE_GRACE_MS = 30_000;
-const graceTimers = new Map<string, ReturnType<typeof setTimeout>>(); // userId -> pending slot removal
+// userId -> pending slot removal. deviceId is the device the timer waits on, or null when the slot is not tied to a device.
+const graceTimers = new Map<string, { deviceId: string | null; timer: ReturnType<typeof setTimeout> }>();
 
 /** True if the user currently holds a voice slot in this channel. Used by soundboard. */
 export function isInVoiceChannel(channelId: string, userId: string): boolean {
@@ -36,10 +37,16 @@ export function leaveVoice(ctx: Ctx, userId: string): void {
 }
 
 function cancelGrace(userId: string): void {
-  const timer = graceTimers.get(userId);
-  if (!timer) return;
-  clearTimeout(timer);
+  const pending = graceTimers.get(userId);
+  if (!pending) return;
+  clearTimeout(pending.timer);
   graceTimers.delete(userId);
+}
+
+/** True if another device of the account holds the voice slot, so this device must not take or change it. */
+function heldByOtherDevice(userId: string, deviceId: string | undefined): boolean {
+  const holder = voiceDeviceOf.get(userId);
+  return !!holder && !!deviceId && holder !== deviceId;
 }
 
 /**
@@ -48,7 +55,9 @@ function cancelGrace(userId: string): void {
  * rather than the in-memory occupancy, which a dropped socket may have cleared.
  */
 export function kickFromCall(ctx: Ctx, serverId: string, userId: string): void {
-  leaveVoice(ctx, userId);
+  // Only drop the slot if the call is on this server. A call the user holds in another server stays.
+  const heldChannel = voiceChannelOf.get(userId);
+  if (heldChannel && ctx.getChannel(heldChannel)?.serverId === serverId) leaveVoice(ctx, userId);
   const rooms = new RoomServiceClient(ctx.config.livekit.apiUrl, ctx.config.livekit.apiKey, ctx.config.livekit.apiSecret);
   const channels = ctx.db.prepare("SELECT id FROM channels WHERE server_id=? AND kind='voice'").all(serverId) as { id: string }[];
   for (const { id } of channels) {
@@ -137,16 +146,26 @@ function broadcastState(ctx: Ctx, channelId: string): void {
 }
 
 export function register(app: Express, ctx: Ctx): void {
-  // Last socket closed: keep the voice slot for the grace period. If they reconnect in time, onConnect cancels this.
-  ctx.onDisconnect.push((userId) => {
+  // The slot's device lost its last socket: keep the slot for the grace period, so a quick reconnect keeps the call. A
+  // second device staying online does not hold a crashed device's slot. A slot with no device waits for the account's
+  // last socket instead, as before device-bound slots.
+  ctx.onDisconnect.push((userId, deviceId, online) => {
     if (!voiceChannelOf.has(userId)) return;
+    const slotDevice = voiceDeviceOf.get(userId) ?? null;
+    const slotFree = slotDevice ? deviceId === slotDevice && !online.device : !online.user;
+    if (!slotFree) return;
     cancelGrace(userId);
-    graceTimers.set(userId, setTimeout(() => {
+    const timer = setTimeout(() => {
       graceTimers.delete(userId);
       leaveVoice(ctx, userId);
-    }, VOICE_GRACE_MS));
+    }, VOICE_GRACE_MS);
+    graceTimers.set(userId, { deviceId: slotDevice, timer });
   });
-  ctx.onConnect.push(cancelGrace);
+  // A reconnect cancels the grace only for the device it waits on. Another device connecting leaves it running.
+  ctx.onConnect.push((userId, deviceId) => {
+    const pending = graceTimers.get(userId);
+    if (pending && (pending.deviceId === null || pending.deviceId === deviceId)) cancelGrace(userId);
+  });
 
   app.post('/api/voice/token', ctx.requireAuth, async (req, res) => {
     const userId = (req as AuthedRequest).userId;
@@ -196,15 +215,21 @@ export function register(app: Express, ctx: Ctx): void {
     const channel = serverId ? ctx.getChannel(channelId) : null;
     if (!channel) { res.status(404).json({ error: 'channel not found' }); return; }
     if (channel.kind !== 'voice') { res.status(400).json({ error: 'not a voice channel' }); return; }
+    const { deviceId } = req as AuthedRequest;
+    if (heldByOtherDevice(userId, deviceId)) { res.status(409).json({ error: 'The call is on another device.' }); return; }
 
-    occupy(ctx, channelId, userId, (req as AuthedRequest).deviceId);
+    occupy(ctx, channelId, userId, deviceId);
     res.json({ ok: true });
   });
 
+  // Only the device that holds the slot may end it. A second device whose join was refused must not clear the first
+  // device's slot while that device is still in the call.
   app.post('/api/voice/leave', ctx.requireAuth, (req, res) => {
-    const userId = (req as AuthedRequest).userId;
+    const { userId, deviceId } = req as AuthedRequest;
     const channelId = (req.body as { channelId?: unknown } | undefined)?.channelId;
     if (typeof channelId !== 'string') { res.status(400).json({ error: 'channelId required' }); return; }
+    const holder = voiceDeviceOf.get(userId);
+    if (holder && holder !== deviceId) { res.status(409).json({ error: 'The call is held by another device.' }); return; }
     leaveChannel(ctx, channelId, userId);
     res.json({ ok: true });
   });
@@ -249,12 +274,14 @@ export function register(app: Express, ctx: Ctx): void {
 
   // The client reports its own mic/speaker state so the server can refuse soundboard plays from silenced users.
   app.post('/api/voice/state', ctx.requireAuth, (req, res) => {
-    const userId = (req as AuthedRequest).userId;
+    const { userId, deviceId } = req as AuthedRequest;
     const body = (req.body ?? {}) as { channelId?: unknown; muted?: unknown; deafened?: unknown };
     if (typeof body.channelId !== 'string' || typeof body.muted !== 'boolean' || typeof body.deafened !== 'boolean') {
       res.status(400).json({ error: 'channelId, muted and deafened required' }); return;
     }
     if (!isInVoiceChannel(body.channelId, userId)) { res.status(409).json({ error: 'join the voice channel first' }); return; }
+    // Another device's state must not overwrite the mute state of the call on this one.
+    if (heldByOtherDevice(userId, deviceId)) { res.status(409).json({ error: 'The call is on another device.' }); return; }
     selfState.set(userId, { muted: body.muted, deafened: body.deafened });
     res.json({ ok: true });
   });

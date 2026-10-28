@@ -30,10 +30,13 @@ export interface Ctx {
    * Closes a user's open sockets so revoked sessions stop receiving frames. With a deviceId, only that device's sockets close.
    */
   revokeSockets: (userId: string, deviceId?: string) => void;
-  /** callbacks fired when a user's last socket closes (e.g. voice cleanup) */
-  onDisconnect: ((userId: string) => void)[];
+  /**
+   * callbacks fired when a socket closes. `online` says whether the device and the account still have an open socket,
+   * so voice cleanup can wait for the right one to go.
+   */
+  onDisconnect: ((userId: string, deviceId: string | null, online: { device: boolean; user: boolean }) => void)[];
   /** callbacks fired when a user opens a socket, including a reconnect */
-  onConnect: ((userId: string) => void)[];
+  onConnect: ((userId: string, deviceId: string | null) => void)[];
   getUser: (userId: string) => User | null;
   getDevices: (userId: string) => DeviceKeys[];
   getMembers: (serverId: string) => Member[];
