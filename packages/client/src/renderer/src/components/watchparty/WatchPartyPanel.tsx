@@ -6,6 +6,7 @@ import { decryptMessage, encryptPayload } from '../../crypto';
 import { useSession } from '../../state/session';
 import { decodeState, DRIFT_SECONDS, encodeState, playhead, SEEK_SECONDS, type StampedState, type WatchState } from './sync';
 import { bindPlayer, embedSrc, parseYouTubeUrl, sendCommand, type PlayerEvent } from './youtube';
+import { popoutUrl, type PanelToPopout, type PopoutToPanel } from './popout';
 import './watchparty.css';
 
 /** Wire shape of the latest snapshot (GET response and watch.sync frame). */
@@ -53,8 +54,12 @@ export function WatchPartyPanel({ channelId }: { channelId: string }): ReactElem
   const [remote, setRemote] = useState<StampedState | null>(null);
   const [draft, setDraft] = useState('');
   const [error, setError] = useState<string | null>(null);
+  /** true while the embed lives in the pop-out window instead of the panel */
+  const [popped, setPopped] = useState(false);
 
   const frameRef = useRef<HTMLIFrameElement>(null);
+  const frameWrapRef = useRef<HTMLDivElement>(null);
+  const popupRef = useRef<Window | null>(null);
   const readyRef = useRef(false);
   const remoteRef = useRef<StampedState | null>(null);
   const local = useRef<LocalPlayhead | null>(null);
@@ -63,6 +68,8 @@ export function WatchPartyPanel({ channelId }: { channelId: string }): ReactElem
   const clockOffset = useRef(0);
   /** ts of our last accepted publish, so its echo off the socket is skipped */
   const lastSentTs = useRef<number | null>(null);
+  /** set by Stop until the publish settles, so the old embed cannot publish over the stop */
+  const stopping = useRef(false);
 
   const serverNow = () => Date.now() + clockOffset.current;
 
@@ -73,24 +80,30 @@ export function WatchPartyPanel({ channelId }: { channelId: string }): ReactElem
     setRemote(s);
   };
 
+  const postToPopout = (msg: PanelToPopout) => popupRef.current?.postMessage(msg, '*');
+
+  /** Drives the embed wherever it is: the panel's iframe, or the pop-out window's. */
+  const command = (func: string, args: unknown[] = []) => {
+    if (popupRef.current) postToPopout({ kind: 'command', func, args });
+    else sendCommand(frameRef.current, func, args);
+  };
+
   const seekTo = (position: number) => {
-    const frame = frameRef.current;
     const now = performance.now();
-    sendCommand(frame, 'seekTo', [position, true]);
+    command('seekTo', [position, true]);
     suppressUntil.current = now + SUPPRESS_MS;
     local.current = { position, at: now, playing: local.current?.playing ?? false, rate: local.current?.rate ?? 1 };
   };
 
   const applyRemote = (s: StampedState | null) => {
-    const frame = frameRef.current;
-    if (!s?.videoId || !frame || !readyRef.current) return;
+    if (!s?.videoId || !readyRef.current) return;
     const now = performance.now();
     const target = remotePlayhead(s, serverNow());
     const current = local.current ? playhead(local.current, now) : target;
     suppressUntil.current = now + SUPPRESS_MS;
-    if (Math.abs(current - target) > DRIFT_SECONDS) sendCommand(frame, 'seekTo', [target, true]);
-    sendCommand(frame, s.playing ? 'playVideo' : 'pauseVideo');
-    sendCommand(frame, 'setPlaybackRate', [s.rate]);
+    if (Math.abs(current - target) > DRIFT_SECONDS) command('seekTo', [target, true]);
+    command(s.playing ? 'playVideo' : 'pauseVideo');
+    command('setPlaybackRate', [s.rate]);
     local.current = { position: target, at: now, playing: s.playing, rate: s.rate };
   };
 
@@ -102,7 +115,9 @@ export function WatchPartyPanel({ channelId }: { channelId: string }): ReactElem
       const res = await api.post<{ ts: number }>(`/api/channels/${channelId}/watch`, { ciphertext, keyVersion });
       lastSentTs.current = res.ts;
       accept({ ...next, ts: res.ts });
+      stopping.current = false;
     } catch (e) {
+      stopping.current = false;
       setError(errorText(e));
     }
   };
@@ -110,6 +125,7 @@ export function WatchPartyPanel({ channelId }: { channelId: string }): ReactElem
   // Our own clicks and seeks inside the embed come back as info events. Anything the user did is published.
   const onPlayerEvent = useRef<(e: PlayerEvent) => void>(() => {});
   onPlayerEvent.current = (e) => {
+    if (stopping.current) return;
     if (e.kind === 'ready') {
       readyRef.current = true;
       applyRemote(remoteRef.current);
@@ -161,14 +177,19 @@ export function WatchPartyPanel({ channelId }: { channelId: string }): ReactElem
 
   const videoId = remote?.videoId ?? null;
 
-  // Re-bind to the embed whenever it is (re)mounted for a new video.
+  // Re-bind whenever the embed is (re)mounted: a new video, or it moving between the panel and the pop-out window.
   useEffect(() => {
-    const frame = frameRef.current;
-    if (!frame || !videoId) return;
     readyRef.current = false;
     local.current = null;
+    if (!videoId) return;
+    if (popped) {
+      postToPopout({ kind: 'load', videoId });
+      return;
+    }
+    const frame = frameRef.current;
+    if (!frame) return;
     return bindPlayer(frame, (e) => onPlayerEvent.current(e));
-  }, [videoId, channelId]);
+  }, [videoId, channelId, popped]);
 
   // A remote change, or our own publish echoed back into state, is applied here.
   useEffect(() => {
@@ -207,31 +228,114 @@ export function WatchPartyPanel({ channelId }: { channelId: string }): ReactElem
     void publish({ videoId: s.videoId, playing: !s.playing, position, rate: s.rate });
   };
 
-  const stop = () => void publish({ videoId: null, playing: false, position: 0, rate: 1 });
+  /** Brings the embed back into the panel and closes the pop-out. Closing the pop-out window itself lands here too. */
+  const dock = () => {
+    popupRef.current?.close();
+    popupRef.current = null;
+    setPopped(false);
+  };
+
+  const popOut = () => {
+    if (popupRef.current && !popupRef.current.closed) {
+      popupRef.current.focus();
+      return;
+    }
+    const win = window.open(popoutUrl(), 'chatward-watch-popout', 'width=960,height=540,resizable=yes');
+    if (!win) {
+      setError('The pop-out window was blocked.');
+      return;
+    }
+    popupRef.current = win;
+    setPopped(true);
+  };
+
+  const fullscreen = () => void frameWrapRef.current?.requestFullscreen();
+
+  const stop = () => {
+    // Clear our own view first, so nothing the old embed reports while the stop is in flight gets published.
+    stopping.current = true;
+    local.current = null;
+    readyRef.current = false;
+    void publish({ videoId: null, playing: false, position: 0, rate: 1 });
+  };
+
+  // Messages from the pop-out: it says hello on load, relays player events, and says closed when it goes away.
+  useEffect(() => {
+    const onMessage = (e: MessageEvent) => {
+      if (!popupRef.current || e.source !== popupRef.current) return;
+      const msg = e.data as PopoutToPanel | null;
+      if (!msg || typeof msg !== 'object') return;
+      if (msg.kind === 'hello') {
+        const id = remoteRef.current?.videoId;
+        if (id) postToPopout({ kind: 'load', videoId: id });
+      } else if (msg.kind === 'event') {
+        onPlayerEvent.current(msg.event);
+      } else if (msg.kind === 'closed') {
+        dock();
+      }
+    };
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, []);
+
+  // Closing the pop-out with its own window controls may not send a message, so poll for it.
+  useEffect(() => {
+    if (!popped) return;
+    const timer = setInterval(() => {
+      if (popupRef.current?.closed) dock();
+    }, 500);
+    return () => clearInterval(timer);
+  }, [popped]);
+
+  // The party ending, from Stop here or from another member, closes the pop-out too.
+  useEffect(() => {
+    if (!videoId && popupRef.current) dock();
+  }, [videoId]);
+
+  // Leaving the panel, or the app closing, takes the pop-out with it.
+  useEffect(() => {
+    const closePopup = () => popupRef.current?.close();
+    window.addEventListener('pagehide', closePopup);
+    return () => {
+      window.removeEventListener('pagehide', closePopup);
+      closePopup();
+    };
+  }, []);
 
   return (
     <section className="watch-party" aria-label="Watch party">
       <header className="watch-party-head">
         <span>Watch party</span>
         {videoId && (
-          <button type="button" className="watch-party-stop" onClick={stop}>Stop</button>
+          <span className="watch-party-head-actions">
+            {!popped && <button type="button" onClick={popOut}>Pop out</button>}
+            <button type="button" className="watch-party-stop" onClick={stop}>Stop</button>
+          </span>
         )}
       </header>
 
       {videoId ? (
         <>
-          <div className="watch-party-frame">
-            <iframe
-              key={videoId}
-              ref={frameRef}
-              src={embedSrc(videoId)}
-              title="Watch party video"
-              allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
-              allowFullScreen
-            />
-          </div>
+          {popped ? (
+            <div className="watch-party-popped">
+              <p>Playing in a separate window. Closing that window brings the player back here.</p>
+              <button type="button" onClick={dock}>Bring back</button>
+            </div>
+          ) : (
+            <div className="watch-party-frame" ref={frameWrapRef}>
+              <iframe
+                key={videoId}
+                ref={frameRef}
+                src={embedSrc(videoId)}
+                title="Watch party video"
+                allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
+                allowFullScreen
+              />
+            </div>
+          )}
           <div className="watch-party-bar">
             <button type="button" onClick={togglePlay}>{remote?.playing ? 'Pause' : 'Play'}</button>
+            {!popped && <button type="button" onClick={fullscreen}>Fullscreen</button>}
             <span className="watch-party-hint">Play, pause, seeks and speed sync for everyone.</span>
           </div>
         </>

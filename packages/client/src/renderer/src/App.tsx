@@ -171,7 +171,7 @@ function Shell() {
           </div>
         )}
         {/* Voice channels have no message key of their own, so their watch party rides the server's first text channel. */}
-        {watchChannelId && watchOpen && <WatchPartyPanel key={watchChannelId} channelId={watchChannelId} />}
+        {watchChannelId && watchOpen && <WatchPartyPanel key={`watch-${watchChannelId}`} channelId={watchChannelId} />}
         {theaterWithChat && callChannel && chatChannel
           ? (
             <TheaterSplit
