@@ -48,7 +48,9 @@ function cancelGrace(userId: string): void {
  * rather than the in-memory occupancy, which a dropped socket may have cleared.
  */
 export function kickFromCall(ctx: Ctx, serverId: string, userId: string): void {
-  leaveVoice(ctx, userId);
+  // Only drop the slot if the call is on this server. A call the user holds in another server stays.
+  const heldChannel = voiceChannelOf.get(userId);
+  if (heldChannel && ctx.getChannel(heldChannel)?.serverId === serverId) leaveVoice(ctx, userId);
   const rooms = new RoomServiceClient(ctx.config.livekit.apiUrl, ctx.config.livekit.apiKey, ctx.config.livekit.apiSecret);
   const channels = ctx.db.prepare("SELECT id FROM channels WHERE server_id=? AND kind='voice'").all(serverId) as { id: string }[];
   for (const { id } of channels) {
