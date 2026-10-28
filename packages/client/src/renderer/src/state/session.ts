@@ -19,6 +19,9 @@ interface SessionState {
   voiceOccupants: Record<string, string[]>;
   /** channelId -> unread count (text) */
   unread: Record<string, number>;
+  /** The text chat shown under a featured screen share in theater mode, or null. Read on screen, so it counts as visible. */
+  theaterChatId: string | null;
+  setTheaterChatId: (channelId: string | null) => void;
   setServerUrl: (u: string) => void;
   setAuth: (token: string, user: User) => void;
   setUser: (u: User) => void;
@@ -61,7 +64,8 @@ export const useSession = create<SessionState>((set, get) => ({
   token: saved.token ?? null,
   user: saved.user ?? null,
   servers: [], activeServerId: null, activeChannelId: null,
-  presence: {}, myStatus: 'online', voiceOccupants: {}, unread: {},
+  presence: {}, myStatus: 'online', voiceOccupants: {}, unread: {}, theaterChatId: null,
+  setTheaterChatId: (theaterChatId) => set({ theaterChatId }),
   setServerUrl: (serverUrl) => { set({ serverUrl }); persist(); },
   setAuth: (token, user) => { set({ token, user }); persist(); },
   setUser: (user) => { set({ user }); persist(); },
