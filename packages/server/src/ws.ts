@@ -6,6 +6,7 @@ import type { Ctx } from './ctx.js';
 export function attachWs(http: HttpServer, ctx: Ctx) {
   const wss = new WebSocketServer({ noServer: true, maxPayload: 4096 });
   const socketsByUser = new Map<string, Set<WebSocket>>();
+  const statusByUser = new Map<string, 'online' | 'idle' | 'dnd'>();
 
   http.on('upgrade', (req, socket, head) => {
     const url = new URL(req.url ?? '', 'http://x');
@@ -16,7 +17,8 @@ export function attachWs(http: HttpServer, ctx: Ctx) {
       let set = socketsByUser.get(userId);
       if (!set) socketsByUser.set(userId, (set = new Set()));
       set.add(ws);
-      send(ws, { t: 'ready', user: ctx.getUser(userId)! });
+      statusByUser.set(userId, 'online');
+      send(ws, { t: 'ready', user: ctx.getUser(userId)!, presence: presenceFor(userId) });
       announce(userId, 'online');
       ws.on('message', (raw) => {
         let f: ClientFrame;
@@ -29,13 +31,25 @@ export function attachWs(http: HttpServer, ctx: Ctx) {
       });
       ws.on('close', () => {
         set!.delete(ws);
-        if (set!.size === 0) { socketsByUser.delete(userId); announce(userId, 'offline'); for (const cb of ctx.onDisconnect) cb(userId); }
+        if (set!.size === 0) { socketsByUser.delete(userId); statusByUser.delete(userId); announce(userId, 'offline'); for (const cb of ctx.onDisconnect) cb(userId); }
       });
     });
   });
 
   function send(ws: WebSocket, f: ServerFrame) {
     if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(f));
+  }
+  /** Who is online among the people who share a server with userId, so a reconnecting client can rebuild presence. */
+  function presenceFor(userId: string) {
+    const out: Record<string, 'online' | 'idle' | 'dnd'> = {};
+    const rows = ctx.db.prepare(
+      'SELECT DISTINCT b.user_id AS user_id FROM members a JOIN members b ON a.server_id=b.server_id WHERE a.user_id=?',
+    ).all(userId) as { user_id: string }[];
+    for (const { user_id } of rows) {
+      const status = statusByUser.get(user_id);
+      if (status) out[user_id] = status;
+    }
+    return out;
   }
   function announce(userId: string, status: 'online' | 'idle' | 'dnd' | 'offline') {
     const rows = ctx.db.prepare('SELECT server_id FROM members WHERE user_id=?').all(userId) as { server_id: string }[];
