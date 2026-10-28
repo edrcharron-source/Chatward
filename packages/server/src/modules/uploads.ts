@@ -30,10 +30,13 @@ export function register(app: Express, ctx: Ctx): void {
   const insertUpload = db.prepare('INSERT INTO uploads (id, owner_id, size, created_at, tracked) VALUES (?,?,?,?,?)');
   // The server an upload belongs to is the one its message was posted in. Unattached uploads have none.
   const findUpload = db.prepare(`
-    SELECT u.owner_id, c.server_id FROM uploads u
+    SELECT u.owner_id, u.tracked, c.server_id FROM uploads u
     LEFT JOIN messages m ON m.id=u.message_id
     LEFT JOIN channels c ON c.id=m.channel_id
     WHERE u.id=?`);
+  // Older uploads (tracked=0) have no message to check, so they fall back to: the two users share a server.
+  const sharesServer = db.prepare(
+    'SELECT 1 FROM members a JOIN members b ON b.server_id=a.server_id WHERE a.user_id=? AND b.user_id=? LIMIT 1');
 
   const filePathFor = (id: string) => path.join(ctx.config.uploadsDir, id);
 
@@ -80,11 +83,14 @@ export function register(app: Express, ctx: Ctx): void {
     const userId = (req as AuthedRequest).userId;
     const id = req.params.id;
     const row = UPLOAD_ID.test(id)
-      ? (findUpload.get(id) as { owner_id: string; server_id: string | null } | undefined)
+      ? (findUpload.get(id) as { owner_id: string; tracked: number; server_id: string | null } | undefined)
       : undefined;
-    // The uploader can always fetch. Anyone else needs to be a member of the server the upload was posted in.
+    // The uploader can always fetch. A tracked upload needs membership of the server its message was posted in.
+    // An untracked one has no message to check, so sharing any server with the uploader is enough.
     const allowed = row && (row.owner_id === userId
-      || (row.server_id !== null && ctx.roleIn(row.server_id, userId) !== null));
+      || (row.tracked === 1
+        ? row.server_id !== null && ctx.roleIn(row.server_id, userId) !== null
+        : sharesServer.get(userId, row.owner_id) !== undefined));
     if (!row || !allowed) { res.status(404).json({ error: 'not found' }); return; }
 
     res.type('application/octet-stream');

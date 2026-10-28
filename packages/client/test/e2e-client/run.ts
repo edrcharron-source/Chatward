@@ -127,6 +127,24 @@ async function main() {
     assert.equal(bobDecrypt.text, null, 'the kicked bob cannot decrypt the new message');
     log('alice kicks bob; a Remove is committed, and bob cannot decrypt the next message');
 
+    // 5b. Alice re-invites bob. His device still holds the group state from before the kick. He must rejoin from the new
+    // Welcome, not replay the Commits he missed (which would fail and make him ask the server to drop the re-add).
+    const reinvite = await alice.call('invite', { serverId });
+    await bob.call('joinInvite', { code: reinvite.code });
+    await alice.call('sync'); // re-adds bob's device with a Commit and a Welcome
+    await bob.call('sync'); // bob joins from the Welcome
+    const aliceEpochAfterReadd = (await alice.call('status', { channelId })).epoch;
+    assert.equal((await bob.call('status', { channelId })).epoch, aliceEpochAfterReadd, 'bob rejoins at alice\'s epoch');
+    await alice.call('send', { channelId, text: 'welcome back bob' });
+    await bob.call('sync');
+    const bobBack = (await bob.call('read', { channelId })).texts;
+    assert.ok(bobBack.includes('welcome back bob'), `bob reads after rejoining: ${JSON.stringify(bobBack)}`);
+    await bob.call('send', { channelId, text: 'bob is back' });
+    await alice.call('sync');
+    const aliceBack = (await alice.call('read', { channelId })).texts;
+    assert.ok(aliceBack.includes('bob is back'), `alice reads bob after he rejoins: ${JSON.stringify(aliceBack)}`);
+    log('bob is re-invited after a kick; he rejoins from the Welcome and both sides read each other again');
+
     // A second account on the same PC gets its own device, and alice's group state is still there when she switches back.
     const epochOnPc = (await alice.call('status', { channelId })).epoch;
     await alice.call('init', { serverUrl: BASE, username: 'carol' });

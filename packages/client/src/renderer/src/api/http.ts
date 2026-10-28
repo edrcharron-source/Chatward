@@ -15,7 +15,8 @@ async function req<T>(method: string, path: string, body?: unknown, opts: { raw?
   if (!res.ok) {
     let msg = res.statusText;
     try { msg = (await res.json()).error ?? msg; } catch { /* ignore */ }
-    if (res.status === 401 && token) void signOut();
+    // Sign out only if the refused token is still the current one. A password change swaps in a new token, so requests still in flight with the old one fail without ending the session.
+    if (res.status === 401 && token && useSession.getState().token === token) void signOut();
     throw new ApiError(res.status, msg);
   }
   if (res.status === 204) return undefined as T;
