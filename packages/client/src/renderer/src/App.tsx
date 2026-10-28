@@ -5,7 +5,7 @@ import { connectWs, disconnectWs, onFrame, sendFrame } from './api/ws';
 import { useSession, type ServerBundle } from './state/session';
 import { useSettings, applyTheme } from './state/settings';
 import { useVoice, rekeyActiveCall } from './state/voice';
-import { accountKey, initDevice, syncChannelKeys, handleEnvelope, handleMemberLeave } from './crypto';
+import { accountKey, adoptLegacyIfOwned, initDevice, syncChannelKeys, handleEnvelope, handleMemberLeave } from './crypto';
 import { installNotifications } from './notify/notify';
 import AuthScreen from './components/auth/AuthScreen';
 import ServerSidebar from './components/servers/ServerSidebar';
@@ -93,6 +93,7 @@ function Shell() {
     (async () => {
       const { serverUrl, user } = useSession.getState();
       await initDevice(accountKey(serverUrl, user?.username ?? ''));
+      await adoptLegacyIfOwned();
       await loadServers();
       connectWs();
       stopNotify = installNotifications();

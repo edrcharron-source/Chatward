@@ -179,6 +179,13 @@ export function register(app: Express, ctx: Ctx): void {
     res.json({ user: mustUser(ctx, userIdOf(req)) });
   }));
 
+  // Whether a device id is registered to the caller. Lets a PC confirm an old device before using it.
+  app.get('/api/me/devices/:deviceId', ctx.requireAuth, route((req, res) => {
+    const row = ctx.db.prepare('SELECT user_id FROM devices WHERE device_id=?').get(String(req.params.deviceId)) as
+      { user_id: string } | undefined;
+    res.json({ owned: row !== undefined && row.user_id === userIdOf(req) });
+  }));
+
   // Each field is optional; a missing field keeps its current value.
   app.patch('/api/me', ctx.requireAuth, route((req, res) => {
     const uid = userIdOf(req);
