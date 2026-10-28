@@ -46,9 +46,11 @@ export interface VoiceState {
 // Waits before each retry of a rejoin that failed for a reason other than the server refusing the slot. A rejoin that
 // LiveKit says is not in the room is retried on this schedule before we hang up.
 const REJOIN_RETRY_MS = [3_000, 6_000, 12_000];
-// LiveKit's admin API failing (503) says nothing about the media, so the call stays up. Retry slowly for about 5 minutes.
+// LiveKit's admin API failing (503) says nothing about the media, so the call stays up. Keep retrying every 30 seconds
+// for as long as the call is up, since the server slot is gone until a rejoin succeeds. Tell the person once it has
+// gone on for about 5 minutes.
 const LOOKUP_RETRY_MS = 30_000;
-const LOOKUP_RETRY_MAX = 10;
+const LOOKUP_NOTICE_TRIES = 10;
 let rejoinRetry: ReturnType<typeof setTimeout> | undefined;
 
 /**
@@ -56,8 +58,9 @@ let rejoinRetry: ReturnType<typeof setTimeout> | undefined;
  * in memory, so a restart clears it). Put the slot back so others see us and kicks reach us. The media is untouched.
  * If the server refuses (we were removed, lost access, or the call moved to another device), hang up: the call is no
  * longer ours on the server.
+ * The two kinds of retry have their own counters: a LiveKit lookup outage must not use up the "not in the room" tries.
  */
-export function resumeVoiceSlot(attempt = 0): void {
+export function resumeVoiceSlot(retryTries = 0, lookupTries = 0): void {
   clearTimeout(rejoinRetry);
   const { channelId, room } = useVoice.getState();
   if (!channelId || !room || isDemo()) return;
@@ -71,18 +74,25 @@ export function resumeVoiceSlot(attempt = 0): void {
       const notInRoom = e instanceof ApiError && e.status === 409 && e.code === 'not_in_room';
       const refused = e instanceof ApiError && !lookupDown && !notInRoom && [403, 404, 409].includes(e.status);
       if (!refused) {
-        // A timeout or network error says nothing about the slot, and a 503 says nothing about the media, so try again
-        // while the call goes on.
-        const delay = lookupDown
-          ? (attempt < LOOKUP_RETRY_MAX ? LOOKUP_RETRY_MS : undefined)
-          : REJOIN_RETRY_MS[attempt];
+        // A 503 says nothing about the media, so keep retrying on the slow schedule while the call goes on.
+        if (lookupDown) {
+          if (lookupTries === LOOKUP_NOTICE_TRIES) {
+            useVoice.setState({ notice: 'Voice server is not responding. Retrying until it recovers' });
+          }
+          rejoinRetry = setTimeout(() => {
+            if (useVoice.getState().room === room) resumeVoiceSlot(retryTries, lookupTries + 1);
+          }, LOOKUP_RETRY_MS);
+          return;
+        }
+        // A timeout or network error says nothing about the slot, so try again on the fast schedule.
+        const delay = REJOIN_RETRY_MS[retryTries];
         if (delay !== undefined) {
           rejoinRetry = setTimeout(() => {
-            if (useVoice.getState().room === room) resumeVoiceSlot(attempt + 1);
+            if (useVoice.getState().room === room) resumeVoiceSlot(retryTries + 1, lookupTries);
           }, delay);
           return;
         }
-        // Out of retries. A timeout, network error or 503 keeps the call going. Only "not in the room" hangs up, since
+        // Out of retries. A timeout or network error keeps the call going. Only "not in the room" hangs up, since
         // that call is not coming back.
         if (!notInRoom) return;
       }
