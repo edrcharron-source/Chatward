@@ -134,6 +134,7 @@ export type ServerFrame =
   | { t: 'sound.delete'; serverId: string; soundId: string }
   | { t: 'sound.play'; serverId: string; channelId: string; soundId: string; userId: string }
   | { t: 'voice.state'; serverId: string; channelId: string; userIds: string[] }
+  | { t: 'watch.sync'; channelId: string; authorId: string; keyVersion: number; ciphertext: string; ts: number }
   | { t: 'user.update'; user: User }
   | { t: 'group.commit'; channelId: string; epoch: number }
   | { t: 'group.welcome'; channelId: string; epoch: number }

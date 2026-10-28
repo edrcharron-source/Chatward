@@ -1,17 +1,16 @@
-// End-to-end MLS check against a real server process (real HTTP, real SQLite).
-// auth.ts and servers.ts are still stubs on main, so users, devices, servers and channels are seeded directly.
+// End-to-end MLS check against a real server process (real HTTP, real SQLite) using the public API only:
+// register with invites, login for a second device, server and channel creation, kick, and Commit delivery.
 // Run with: npm run test:e2e -w @chatward/server
 import assert from 'node:assert/strict';
 import { spawn, type ChildProcess } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import Database from 'better-sqlite3';
-import jwt from 'jsonwebtoken';
 import * as mls from '../../client/src/renderer/src/crypto/mls';
+import { exportRawPublic, generateEcdh, generateSigning, toB64 } from '../../client/src/renderer/src/crypto/primitives';
 
 const PORT = 3999;
 const BASE = `http://127.0.0.1:${PORT}`;
-const CHANNEL = 'general';
+const PASSWORD = 'correct-horse-1';
 const serverDir = path.resolve(import.meta.dirname, '..');
 // Under out/ (gitignored) so a failed run leaves nothing to commit.
 const dataDir = path.join(serverDir, 'out', `e2e-data-${Date.now()}`);
@@ -20,12 +19,28 @@ fs.mkdirSync(dataDir, { recursive: true });
 interface Dev {
   id: string;
   user: string;
+  name: string;
   token: string;
   /** KeyPackage wire string -> our private package, for every KeyPackage we uploaded. */
   pool: Map<string, mls.MemberKeys>;
   /** Our MLS state per channel. */
   state: Map<string, Awaited<ReturnType<typeof mls.createMlsGroup>>>;
 }
+
+interface DeviceKeys { deviceId: string; ecdhPublic: string; signPublic: string }
+
+async function makeDeviceKeys(): Promise<DeviceKeys> {
+  const ecdh = await generateEcdh();
+  const sign = await generateSigning();
+  return {
+    deviceId: crypto.randomUUID(),
+    ecdhPublic: toB64(await exportRawPublic(ecdh.publicKey)),
+    signPublic: toB64(await exportRawPublic(sign.publicKey)),
+  };
+}
+
+/** The text channel under test, set once the server exists. */
+let CHANNEL = '';
 
 const log = (msg: string) => console.log(`  ok  ${msg}`);
 
@@ -74,9 +89,9 @@ async function uploadPool(dev: Dev, singleUse: number) {
 }
 
 /** Claim one KeyPackage per device of `targetUser`, as a decoded KeyPackage per device. */
-async function claim(by: Dev, targetUser: string) {
-  const r = await api(by.token, 'GET', `/api/users/u-${targetUser}/keypackages`);
-  assert.equal(r.status, 200, `claim ${targetUser}`);
+async function claim(by: Dev, targetUserId: string) {
+  const r = await api(by.token, 'GET', `/api/users/${targetUserId}/keypackages`);
+  assert.equal(r.status, 200, `claim ${targetUserId}`);
   return (r.json.keyPackages as { deviceId: string; kp: string }[]).map((k) => ({
     deviceId: k.deviceId,
     kp: mls.decodeKeyPackage(k.kp),
@@ -116,43 +131,43 @@ async function catchUp(dev: Dev, from: number) {
   return r.json.epoch as number;
 }
 
+async function newDev(name: string, user: { id: string; token: string }, keys: DeviceKeys): Promise<Dev> {
+  return { id: keys.deviceId, user: user.id, name, token: user.token, pool: new Map(), state: new Map() };
+}
+
 async function main() {
   const server = await startServer();
   let failed = false;
   try {
-    // Seed users, devices, one server with all three users, and one text channel. Use the server's own schema.
-    const db = new Database(path.join(dataDir, 'chatward.db'));
-    const secret = fs.readFileSync(path.join(dataDir, 'jwt-secret'), 'utf8');
-    const now = Date.now();
-    const addUser = (name: string) =>
-      db.prepare('INSERT INTO users (id, username, display_name, password_hash, created_at) VALUES (?,?,?,?,?)')
-        .run(`u-${name}`, name, name, 'x', now);
-    const addDevice = (name: string, n: number) => {
-      const id = `d-${name}-${n}`;
-      db.prepare('INSERT INTO devices (device_id, user_id, ecdh_public, sign_public, created_at) VALUES (?,?,?,?,?)')
-        .run(id, `u-${name}`, 'x', 'x', now);
-      return id;
-    };
-    for (const n of ['alice', 'bob', 'carol']) addUser(n);
-    db.prepare('INSERT INTO servers (id, name, owner_id, created_at) VALUES (?,?,?,?)').run('s1', 'S', 'u-alice', now);
-    for (const [n, role] of [['alice', 'owner'], ['bob', 'member'], ['carol', 'member']] as const) {
-      db.prepare('INSERT INTO members (server_id, user_id, role, joined_at) VALUES (?,?,?,?)').run('s1', `u-${n}`, role, now);
-    }
-    db.prepare("INSERT INTO channels (id, server_id, name, kind, created_at) VALUES (?,?,?,?,?)").run(CHANNEL, 's1', 'general', 'text', now);
+    // Accounts go through the real API. The first user needs no invite and owns the server.
+    const aliceKeys = await makeDeviceKeys();
+    const reg = (await api(null, 'POST', '/api/auth/register', {
+      username: 'alice', displayName: 'Alice', password: PASSWORD, device: aliceKeys,
+    })).json;
+    const alice = await newDev('alice', { id: reg.user.id, token: reg.token }, aliceKeys);
+    const srv = (await api(alice.token, 'POST', '/api/servers', { name: 'S' })).json;
+    const channel = (srv.channels as { id: string; name: string; kind: string }[]).find((c) => c.name === 'general' && c.kind === 'text')!;
+    const serverId: string = srv.server.id;
+    CHANNEL = channel.id;
+    const invite = async (uses: number) => (await api(alice.token, 'POST', `/api/servers/${serverId}/invites`, { maxUses: uses })).json.code as string;
 
-    const mk = (name: string, n: number): Dev => ({
-      id: addDevice(name, n), user: name, token: jwt.sign({ sub: `u-${name}` }, secret, { expiresIn: '1h' }),
-      pool: new Map(), state: new Map(),
-    });
-    const alice = mk('alice', 1);
-    const bob = mk('bob', 1);
-    const carol = mk('carol', 1);
+    const bobKeys = await makeDeviceKeys();
+    const bobReg = (await api(null, 'POST', '/api/auth/register', {
+      username: 'bob', displayName: 'Bob', password: PASSWORD, device: bobKeys, inviteCode: await invite(1),
+    })).json;
+    const bob = await newDev('bob', { id: bobReg.user.id, token: bobReg.token }, bobKeys);
+
+    const carolKeys = await makeDeviceKeys();
+    const carolReg = (await api(null, 'POST', '/api/auth/register', {
+      username: 'carol', displayName: 'Carol', password: PASSWORD, device: carolKeys, inviteCode: await invite(1),
+    })).json;
+    const carol = await newDev('carol', { id: carolReg.user.id, token: carolReg.token }, carolKeys);
     for (const d of [alice, bob, carol]) await uploadPool(d, 4);
-    log('seeded users, devices, server and channel; uploaded KeyPackage pools');
+    log('registered alice (owner), bob and carol through invites; uploaded KeyPackage pools');
 
     // 1. First group creation, then add bob.
     alice.state.set(CHANNEL, await mls.createMlsGroup(CHANNEL, await mls.newMemberKeys(alice.id)));
-    const [bobKp] = (await claim(alice, 'bob')).filter((k) => k.deviceId === bob.id);
+    const [bobKp] = (await claim(alice, bob.user)).filter((k) => k.deviceId === bob.id);
     const add1 = await mls.addMembers(alice.state.get(CHANNEL)!, [bobKp.kp]);
     const r1 = await postCommit(alice, 0, add1, [alice.id, bob.id], [bob.id]);
     assert.equal(r1.status, 200, 'first commit accepted');
@@ -161,10 +176,9 @@ async function main() {
     await joinFromServer(bob);
     assert.deepEqual(await mls.voiceKey(bob.state.get(CHANNEL)!), await mls.voiceKey(alice.state.get(CHANNEL)!));
     log('first group creation and add of bob via Welcome (epoch 0 to 1)');
-
     // 2. Race: alice and bob both add carol from epoch 1. Exactly one commit wins.
-    const [carolKpA] = (await claim(alice, 'carol')).filter((k) => k.deviceId === carol.id);
-    const [carolKpB] = (await claim(bob, 'carol')).filter((k) => k.deviceId === carol.id);
+    const [carolKpA] = (await claim(alice, carol.user)).filter((k) => k.deviceId === carol.id);
+    const [carolKpB] = (await claim(bob, carol.user)).filter((k) => k.deviceId === carol.id);
     const stepA = await mls.addMembers(alice.state.get(CHANNEL)!, [carolKpA.kp]);
     const stepB = await mls.addMembers(bob.state.get(CHANNEL)!, [carolKpB.kp]);
     const [ra, rb] = await Promise.all([
@@ -188,9 +202,13 @@ async function main() {
     log('concurrent commit race: one 200, one 409 with currentEpoch 2; loser caught up; carol joined');
 
     // 3. A second device for bob joins by Welcome.
-    const bob2 = mk('bob', 2);
+    // A second device is bound to bob's account by logging in with new device keys.
+    const bob2Keys = await makeDeviceKeys();
+    const login = await api(null, 'POST', '/api/auth/login', { username: 'bob', password: PASSWORD, device: bob2Keys });
+    assert.equal(login.status, 200, 'bob logs in on a second device');
+    const bob2 = await newDev('bob2', { id: bob.user, token: login.json.token }, bob2Keys);
     await uploadPool(bob2, 4);
-    const [bob2Kp] = (await claim(alice, 'bob')).filter((k) => k.deviceId === bob2.id);
+    const [bob2Kp] = (await claim(alice, bob.user)).filter((k) => k.deviceId === bob2.id);
     const add3 = await mls.addMembers(alice.state.get(CHANNEL)!, [bob2Kp.kp]);
     const r3 = await postCommit(alice, 2, add3, [alice.id, bob.id, carol.id, bob2.id], [bob2.id]);
     assert.equal(r3.status, 200, 'add bob second device');
@@ -213,8 +231,9 @@ async function main() {
     log('message round trip: alice to bob second device');
 
     // 5. Kick carol: the server removes her membership, then a remaining device commits the Remove.
-    db.prepare('DELETE FROM members WHERE server_id=? AND user_id=?').run('s1', 'u-carol');
-    const pending = await api(alice.token, 'GET', '/api/servers/s1/pending-removals');
+    const kick = await api(alice.token, 'DELETE', `/api/servers/${serverId}/members/${carol.user}`);
+    assert.equal(kick.status, 200, 'owner kicks carol');
+    const pending = await api(alice.token, 'GET', `/api/servers/${serverId}/pending-removals`);
     assert.deepEqual(pending.json.pending, [{ channelId: CHANNEL, epoch: 3, removedDeviceIds: [carol.id] }]);
     const carolLeaf = mls.memberLeaves(alice.state.get(CHANNEL)!).find((m) => m.deviceId === carol.id)!.leafIndex;
     const remove = await mls.removeMembers(alice.state.get(CHANNEL)!, [carolLeaf]);
@@ -223,7 +242,7 @@ async function main() {
     alice.state.set(CHANNEL, remove.state);
     bob.state.set(CHANNEL, (await mls.receive(bob.state.get(CHANNEL)!, remove.commit!)).state);
     bob2.state.set(CHANNEL, (await mls.receive(bob2.state.get(CHANNEL)!, remove.commit!)).state);
-    assert.equal((await api(alice.token, 'GET', '/api/servers/s1/pending-removals')).json.pending.length, 0);
+    assert.equal((await api(alice.token, 'GET', `/api/servers/${serverId}/pending-removals`)).json.pending.length, 0);
     log('kick: pending removal listed for carol, Remove committed, pending list now empty');
 
     // 6. Carol is out: a fresh message is unreadable to her, and her commits are refused.
