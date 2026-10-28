@@ -139,7 +139,7 @@ export type ClientFrame =
 
 // Server -> client frames
 export type ServerFrame =
-  | { t: 'ready'; user: User }
+  | { t: 'ready'; user: User; presence: Record<string, 'online' | 'idle' | 'dnd'> }
   | { t: 'message.new'; message: Message }
   | { t: 'message.edit'; message: Message }
   | { t: 'message.delete'; channelId: string; messageId: string }

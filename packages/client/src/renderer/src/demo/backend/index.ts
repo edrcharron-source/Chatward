@@ -33,7 +33,7 @@ function emit(frame: ServerFrame) { sockets.forEach((send) => send(frame)); }
 /** Used by the WebSocket shim. Returns a detach function. */
 export function attachSocket(send: (f: ServerFrame) => void): () => void {
   sockets.add(send);
-  send({ t: 'ready', user: world.you });
+  send({ t: 'ready', user: world.you, presence: {} });
   for (const b of world.bots) send({ t: 'presence', userId: b.user.id, status: 'online' });
   return () => sockets.delete(send);
 }

@@ -89,6 +89,7 @@ function Shell() {
   useEffect(() => {
     let off: (() => void) | undefined;
     let stopNotify: (() => void) | undefined;
+    let seenReady = false;
     (async () => {
       await initDevice();
       await loadServers();
@@ -97,6 +98,14 @@ function Shell() {
       off = onFrame((f) => {
         const st = useSession.getState();
         switch (f.t) {
+          case 'ready': {
+            // Every (re)connect: rebuild what may have changed while the socket was down.
+            st.setUser(f.user);
+            useSession.setState({ presence: f.presence });
+            if (seenReady) loadServers().catch((e) => console.error('Could not refresh after reconnect', e));
+            seenReady = true;
+            break;
+          }
           case 'presence': st.setPresence(f.userId, f.status); break;
           case 'voice.state': st.setVoiceOccupants(f.channelId, f.userIds); break;
           case 'user.update': {
