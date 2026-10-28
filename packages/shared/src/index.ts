@@ -165,6 +165,8 @@ export type ServerFrame =
   | { t: 'voice.moved'; channelId: string }
   | { t: 'watch.sync'; channelId: string; authorId: string; keyVersion: number; ciphertext: string; ts: number }
   | { t: 'user.update'; user: User }
+  /** Sent to the account's own devices when a device it has not seen before signs in. */
+  | { t: 'device.added'; deviceId: string; createdAt: number }
   | { t: 'group.commit'; channelId: string; epoch: number }
   | { t: 'group.welcome'; channelId: string; epoch: number }
   | { t: 'keypackages.low'; deviceId: string; remaining: number }

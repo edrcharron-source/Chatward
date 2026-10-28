@@ -62,19 +62,23 @@ export async function signOut({ serverAvailable = true }: SignOutOptions = {}) {
 }
 
 const LS = 'chatward.session';
+// The login token is a secret, so it is kept in secureStore (encrypted by the OS). Only the server address and the user stay in localStorage.
+const TOKEN_STORE = 'session.token';
 const saved = (() => { try { return JSON.parse(localStorage.getItem(LS) ?? '{}'); } catch { return {}; } })();
+// A token saved to localStorage by an older build. Moved into secureStore by restoreSession.
+let legacyToken: string | null = typeof saved.token === 'string' ? saved.token : null;
 
 export const useSession = create<SessionState>((set, get) => ({
   serverUrl: saved.serverUrl ?? 'http://localhost:3000',
-  token: saved.token ?? null,
+  token: null,
   user: saved.user ?? null,
   servers: [], activeServerId: null, activeChannelId: null,
   presence: {}, myStatus: 'online', voiceOccupants: {}, unread: {}, theaterChatId: null,
   setTheaterChatId: (theaterChatId) => set({ theaterChatId }),
   setServerUrl: (serverUrl) => { set({ serverUrl }); persist(); },
-  setAuth: (token, user) => { set({ token, user }); persist(); },
+  setAuth: (token, user) => { set({ token, user }); persist(); saveToken(token); },
   setUser: (user) => { set({ user }); persist(); },
-  logout: () => { set({ token: null, user: null, servers: [], activeServerId: null, activeChannelId: null, myStatus: 'online', voiceOccupants: {}, unread: {} }); persist(); },
+  logout: () => { set({ token: null, user: null, servers: [], activeServerId: null, activeChannelId: null, myStatus: 'online', voiceOccupants: {}, unread: {} }); persist(); saveToken(null); },
   setServers: (servers) => {
     const s = get();
     const active = servers.find((x) => x.server.id === s.activeServerId) ?? servers[0];
@@ -113,10 +117,36 @@ export async function refreshUnread() {
   const st = useSession.getState();
   st.setUnread(unread);
   // The channel on screen is being read, so it stays clear even if the server counted a message that just arrived.
-  if (st.activeChannelId && !document.hidden) st.clearUnread(st.activeChannelId);
+  // Theater mode shows a voice channel's chat beside the video, so that chat counts as on screen too.
+  if (!document.hidden) {
+    for (const ch of new Set([st.activeChannelId, st.theaterChatId])) {
+      if (ch) st.clearUnread(ch);
+    }
+  }
+}
+
+/** Loads the login token from secureStore. Call once before the app renders, since requests read the token synchronously. Moves a token left in localStorage by an older build into secureStore. */
+export async function restoreSession(): Promise<void> {
+  const store = window.chatward.secureStore;
+  try {
+    if (legacyToken) {
+      const token = legacyToken;
+      await store.set(TOKEN_STORE, token);
+      legacyToken = null;
+      useSession.setState({ token });
+      persist(); // Rewrites localStorage without the token.
+      return;
+    }
+    const token = await store.get(TOKEN_STORE);
+    if (token) useSession.setState({ token });
+  } catch { /* secureStore unreadable: the user signs in again */ }
 }
 
 function persist() {
-  const { serverUrl, token, user } = useSession.getState();
-  localStorage.setItem(LS, JSON.stringify({ serverUrl, token, user }));
+  const { serverUrl, user } = useSession.getState();
+  localStorage.setItem(LS, JSON.stringify({ serverUrl, user }));
+}
+
+function saveToken(token: string | null) {
+  window.chatward.secureStore.set(TOKEN_STORE, token ?? '').catch(() => { /* the next sign-in saves it again */ });
 }

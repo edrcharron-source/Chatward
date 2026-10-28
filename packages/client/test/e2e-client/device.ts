@@ -25,8 +25,8 @@ const handlers: Record<string, (args: any) => Promise<unknown>> = {
     return { deviceId: device.deviceId };
   },
 
-  async register({ username, inviteCode }) {
-    const body = { username, displayName: username, password: PASSWORD, device: getDevice(), inviteCode };
+  async register({ username, inviteCode, setupCode }) {
+    const body = { username, displayName: username, password: PASSWORD, device: getDevice(), inviteCode, setupCode };
     const r = await api.post<{ token: string; user: { id: string } }>('/api/auth/register', body);
     useSession.setState({ token: r.token, user: r.user as never });
     return { userId: r.user.id };

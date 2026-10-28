@@ -19,6 +19,8 @@ import { WatchPartyPanel } from './components/watchparty';
 import SettingsModal from './components/settings/SettingsModal';
 import DemoBanner from './demo/DemoBanner';
 import UpdateBanner from './components/updates/UpdateBanner';
+import DeviceAlertBanner from './components/devices/DeviceAlertBanner';
+import { showDeviceAlert } from './state/deviceAlerts';
 import UpdateRequired from './components/updates/UpdateRequired';
 import { checkServerVersion, useUpdates } from './state/updates';
 
@@ -39,6 +41,7 @@ export function App() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <UpdateBanner />
+      <DeviceAlertBanner />
       <DemoBanner />
       <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
         {server.kind === 'update-required'
@@ -151,6 +154,7 @@ function Shell() {
             if (useVoice.getState().channelId === f.channelId) void useVoice.getState().leave();
             st.removeChannel(f.serverId, f.channelId);
             // Calls key off the server's first text channel. Deleting that one moves them to the next channel's key.
+            // No epoch moves here, so the call is rekeyed explicitly.
             void syncChannelKeys(useSession.getState().servers).then(rekeyActiveCall).catch((e) => console.error(e));
             break;
           }
@@ -208,7 +212,6 @@ function Shell() {
             const b = st.servers.find((x) => x.server.id === f.serverId);
             if (b) st.upsertServer({ ...b, members: b.members.filter((m) => m.user.id !== f.userId) });
             void handleMemberLeave(f.serverId, f.userId, useSession.getState().servers)
-              .then(rekeyActiveCall)
               .catch((e) => console.error(e));
             break;
           }
@@ -218,12 +221,17 @@ function Shell() {
             void syncChannelKeys(useSession.getState().servers);
             break;
           }
-          // Another device moved a group on, so catch up now. Then the call key follows the new epoch.
+          // Another device moved a group on, so catch up now. A call follows the new epoch as the sync applies it.
           case 'group.commit':
           case 'group.welcome':
-            void syncChannelKeys(useSession.getState().servers).then(rekeyActiveCall).catch((e) => console.error(e));
+            void syncChannelKeys(useSession.getState().servers).catch((e) => console.error(e));
             break;
           case 'key.envelope': void handleEnvelope(f.envelope); break;
+          case 'device.added':
+            // Flash the taskbar so a background window still gets noticed.
+            if (!document.hasFocus()) window.chatward?.flashWindow();
+            showDeviceAlert({ deviceId: f.deviceId, createdAt: f.createdAt });
+            break;
         }
       });
       setReady(true);

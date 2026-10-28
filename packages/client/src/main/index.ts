@@ -1,11 +1,19 @@
-import { app, BrowserWindow, ipcMain, safeStorage, desktopCapturer, session, shell } from 'electron';
-import { join } from 'node:path';
+import { app, BrowserWindow, dialog, ipcMain, net, protocol, safeStorage, desktopCapturer, session, shell } from 'electron';
+import { join, normalize, sep } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync, renameSync } from 'node:fs';
 import { fetchLinkPreview } from './linkPreview';
 import { searchGifs } from './klipy';
 import { setupUpdater } from './updater';
+import { APP_ORIGIN, buildCsp, loadServerOrigin, saveServerOrigin, serverOrigin } from './serverPolicy';
+
+// The page is served from app:// (not file://) so its Content-Security-Policy header can name the server.
+protocol.registerSchemesAsPrivileged([{ scheme: 'app', privileges: { standard: true, secure: true, corsEnabled: true } }]);
 
 const KLIPY_KEY_STORE = 'klipyApiKey';
+const rendererDir = join(__dirname, '../renderer');
+// The server the page may connect to. Set by the renderer when the user connects to a server.
+let allowedServer: string | null = null;
 
 const storeFile = () => join(app.getPath('userData'), 'secure-store.json');
 const storeBackupFile = () => `${storeFile()}.bak`;
@@ -50,13 +58,13 @@ function sendReferrerForYouTube() {
 function guardWebContents(wc: Electron.WebContents) {
   wc.setWindowOpenHandler(({ url }) => {
     // Watch party pop-out: our own page with ?watch-popout=1. Everything else stays denied.
-    if (url.includes('watch-popout=1') && (url.startsWith('file:') || url.startsWith('http://localhost:5173'))) {
+    if (url.includes('watch-popout=1') && (url.startsWith(APP_ORIGIN + '/') || url.startsWith('http://localhost:5173'))) {
       return { action: 'allow', overrideBrowserWindowOptions: { width: 960, height: 540, resizable: true, webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true } } };
     }
     if (/^https?:/.test(url)) shell.openExternal(url);
     return { action: 'deny' };
   });
-  wc.on('will-navigate', (e, url) => { if (!url.startsWith('http://localhost:5173') && !url.startsWith('file:')) { e.preventDefault(); } });
+  wc.on('will-navigate', (e, url) => { if (!url.startsWith('http://localhost:5173') && !url.startsWith(APP_ORIGIN + '/')) { e.preventDefault(); } });
 }
 
 function createWindow() {
@@ -76,11 +84,42 @@ function createWindow() {
   // Child windows (the watch-party pop-out) don't inherit the handlers above, so guard them too.
   win.webContents.on('did-create-window', (child) => guardWebContents(child.webContents));
   if (process.env['ELECTRON_RENDERER_URL']) win.loadURL(process.env['ELECTRON_RENDERER_URL']);
-  else win.loadFile(join(__dirname, '../renderer/index.html'));
+  else win.loadURL(`${APP_ORIGIN}/index.html`);
 }
 
 app.whenReady().then(() => {
   mkdirSync(app.getPath('userData'), { recursive: true });
+  allowedServer = loadServerOrigin(app.getPath('userData'));
+
+  // Serves the built page from rendererDir. Only the HTML response carries the policy; scripts and styles don't need it.
+  protocol.handle('app', async (request) => {
+    const path = decodeURIComponent(new URL(request.url).pathname);
+    const file = normalize(join(rendererDir, path === '/' ? 'index.html' : path));
+    if (!file.startsWith(rendererDir + sep)) return new Response('Not found', { status: 404 });
+    const res = await net.fetch(pathToFileURL(file).href);
+    if (!file.endsWith('.html')) return res;
+    const headers = new Headers(res.headers);
+    headers.set('Content-Security-Policy', buildCsp(allowedServer));
+    return new Response(res.body, { status: res.status, headers });
+  });
+  // The renderer calls this with the server it is about to use. Returns true when that server differs from the
+  // one the page was loaded with, so the renderer must reload to get a policy that allows it. A new server is confirmed
+  // in a native dialog: page script can't click it, so a compromised page can't widen its own connection rules.
+  ipcMain.handle('server:allow', async (e, raw: string) => {
+    const origin = serverOrigin(String(raw ?? ''));
+    if (origin === allowedServer) return false;
+    if (origin) {
+      const { response } = await dialog.showMessageBox(BrowserWindow.fromWebContents(e.sender) ?? undefined as unknown as BrowserWindow, {
+        type: 'question', buttons: ['Connect', 'Cancel'], defaultId: 0, cancelId: 1,
+        title: 'Chatward', message: `Connect to ${origin}?`,
+        detail: 'Chatward will only reach this server, and the voice server on the same address.',
+      });
+      if (response !== 0) throw new Error('Connection to that server was cancelled.');
+    }
+    allowedServer = origin;
+    saveServerOrigin(app.getPath('userData'), origin);
+    return true;
+  });
 
   // Permissions: only media (mic/camera/screen) + clipboard-sanitized-write.
   session.defaultSession.setPermissionRequestHandler((_wc, perm, cb) =>
@@ -106,8 +145,10 @@ app.whenReady().then(() => {
   ipcMain.handle('demo:gifs', (_e, kind: 'search' | 'trending', q: string, pos?: string) =>
     searchGifs(readSecret(KLIPY_KEY_STORE)?.trim() || null, kind === 'search' ? 'search' : 'trending', String(q ?? ''), pos));
   ipcMain.handle('secure:set', (_e, key: string, value: string) => {
+    // Never fall back to plain text: keys and history secrets would sit readable on disk.
+    if (!safeStorage.isEncryptionAvailable()) throw new Error('Secure storage is unavailable on this computer, so Chatward will not save keys unprotected.');
     const s = readStore();
-    s[key] = (safeStorage.isEncryptionAvailable() ? safeStorage.encryptString(value) : Buffer.from(value, 'utf8')).toString('base64');
+    s[key] = safeStorage.encryptString(value).toString('base64');
     writeStore(s);
   });
   ipcMain.handle('screen:sources', async () => {

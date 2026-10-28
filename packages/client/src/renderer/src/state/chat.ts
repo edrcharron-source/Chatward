@@ -242,10 +242,15 @@ onFrame((f) => {
     case 'message.new':
       onIncoming(f.message);
       return;
-    case 'message.edit':
+    case 'message.edit': {
+      // Only edits to messages we already hold. An edit to an unloaded message must not be merged in,
+      // or it would become the oldest message in the cache and hide the gap from paging and catch-up.
+      const held = useChat.getState().channels[f.message.channelId]?.messages.some((m) => m.id === f.message.id);
+      if (!held) return;
       mergeMessages(f.message.channelId, [f.message]);
       void decryptAll(f.message.channelId, [f.message]);
       return;
+    }
     case 'message.delete':
       removeMessage(f.channelId, f.messageId);
       return;

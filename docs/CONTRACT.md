@@ -33,6 +33,7 @@ Messages + keys (module `messages`)
 Uploads (module `uploads`) — blobs are client-encrypted, server never sees plaintext
 - POST /api/uploads (raw bytes, Content-Type application/octet-stream) -> {uploadId}
 - GET  /api/uploads/:id -> bytes
+- Per-person quota: `UPLOAD_QUOTA_MB` (default 1024, 0 = off). An upload that would push the uploader past it gets 413 `{error}` with a plain-words message.
 Disk path: `config.uploadsDir` (env UPLOADS_DIR, default ./data/uploads) — must stay one movable directory.
 
 Soundboard (module `soundboard`)

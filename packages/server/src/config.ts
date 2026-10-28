@@ -15,6 +15,30 @@ function jwtSecret(): string {
   return s;
 }
 
+const SETUP_CODE_FILE = path.join(dataDir, 'setup-code');
+// Same look-alike-free alphabet as the reset codes, so a code copied by hand is unambiguous.
+const SETUP_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+
+/**
+ * The code the first account must enter. Set SETUP_CODE in .env to choose it. Otherwise a random one is made the first
+ * time it is needed, kept in the data folder until the first account exists, and printed to the server log.
+ */
+export function setupCode(): string {
+  const fromEnv = process.env.SETUP_CODE?.trim();
+  if (fromEnv) return fromEnv;
+  if (fs.existsSync(SETUP_CODE_FILE)) return fs.readFileSync(SETUP_CODE_FILE, 'utf8').trim();
+  const chars = [...crypto.randomBytes(12)].map((b) => SETUP_CODE_ALPHABET[b % 32]).join('');
+  const code = `${chars.slice(0, 4)}-${chars.slice(4, 8)}-${chars.slice(8)}`;
+  fs.writeFileSync(SETUP_CODE_FILE, code, { mode: 0o600 });
+  console.log(`First account setup code (enter it when you register the first account): ${code}`);
+  return code;
+}
+
+/** Forgets the generated code once the first account exists. A code set in .env is not touched. */
+export function clearSetupCode(): void {
+  fs.rmSync(SETUP_CODE_FILE, { force: true });
+}
+
 /** LiveKit keys. The dev defaults are public, so production refuses to start with them. */
 function livekitKeys(): { apiKey: string; apiSecret: string } {
   const apiKey = process.env.LIVEKIT_API_KEY ?? 'devkey';
@@ -33,12 +57,24 @@ function livekitKeys(): { apiKey: string; apiSecret: string } {
   return { apiKey, apiSecret };
 }
 
+/** Per-person upload quota. 1 GB each keeps seven people well inside the Lightsail disk. */
+function uploadQuotaBytes(): number {
+  const raw = process.env.UPLOAD_QUOTA_MB ?? '1024';
+  const mb = Number(raw);
+  if (raw.trim() === '' || !Number.isFinite(mb) || mb < 0) {
+    throw new Error('UPLOAD_QUOTA_MB must be a number of megabytes (0 turns the limit off).');
+  }
+  return Math.round(mb * 1024 * 1024);
+}
+
 export const config = {
   port: Number(process.env.PORT ?? 3000),
   host: process.env.HOST ?? '0.0.0.0',
   dataDir,
   dbPath: path.join(dataDir, 'chatward.db'),
   uploadsDir: path.resolve(process.env.UPLOADS_DIR ?? path.join(dataDir, 'uploads')),
+  /** Total upload storage each person may keep, in bytes. 0 turns the limit off. Set UPLOAD_QUOTA_MB to change it. */
+  uploadQuotaBytes: uploadQuotaBytes(),
   /** Desktop installer, latest.yml and blockmap, served at /updates for the client auto-updater. */
   updatesDir: path.resolve(process.env.UPDATES_DIR ?? path.join(dataDir, 'updates')),
   /** Set by the update script from the installed release tag. */

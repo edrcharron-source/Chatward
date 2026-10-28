@@ -17,6 +17,7 @@ export default function AuthScreen() {
   const [displayName, setDisplayName] = useState('');
   const [password, setPassword] = useState('');
   const [inviteCode, setInviteCode] = useState('');
+  const [setupCode, setSetupCode] = useState('');
   const [resetCode, setResetCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -45,6 +46,9 @@ export default function AuthScreen() {
     setError(null);
     try {
       useSession.getState().setServerUrl(url);
+      // The page's connection rules name the server, so a different server needs a reload before anything can reach it.
+      // The saved address comes back after the reload, so the user only re-enters the password.
+      if (await window.chatward.server.allow(url)) { location.reload(); return; }
       await initDevice(accountKey(url, name));
       // Reset goes through the same device handling as login, so this PC's existing keys and history stay with the account.
       const send = (device: DeviceKeys) => {
@@ -59,6 +63,7 @@ export default function AuthScreen() {
               password,
               device,
               inviteCode: inviteCode.trim() || undefined,
+              setupCode: setupCode.trim() || undefined,
             });
       };
       // An old PC device is only adopted once the server accepts it for this account. If another account owns it, the server refuses and this account keeps its own device.
@@ -123,6 +128,13 @@ export default function AuthScreen() {
           <span>{mode === 'reset' ? 'New password' : 'Password'}</span>
           <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} required />
         </label>
+
+        {mode === 'register' && (
+          <label className="cw-field">
+            <span>Setup code</span>
+            <input value={setupCode} onChange={(e) => setSetupCode(e.target.value)} spellCheck={false} placeholder="Only needed for the first account" />
+          </label>
+        )}
 
         {mode === 'register' && (
           <label className="cw-field">

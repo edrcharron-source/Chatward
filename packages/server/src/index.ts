@@ -5,7 +5,7 @@ import express from 'express';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import type { Channel, DeviceKeys, Member, User } from '@chatward/shared';
-import { config } from './config.js';
+import { config, setupCode } from './config.js';
 import { openDb } from './db.js';
 import { makeAuth, type Ctx } from './ctx.js';
 import { attachWs } from './ws.js';
@@ -103,5 +103,8 @@ app.use((err: Error & { type?: string }, _req: express.Request, res: express.Res
 
 const server = http.createServer(app);
 attachWs(server, ctx);
+// A fresh server needs its setup code before the first account, so make it (and print it) at startup.
+const { n: accountCount } = db.prepare('SELECT COUNT(*) AS n FROM users').get() as { n: number };
+if (accountCount === 0) setupCode();
 server.listen(config.port, config.host, () =>
   console.log(`Chatward server listening on http://${config.host}:${config.port}`));

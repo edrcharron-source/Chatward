@@ -6,7 +6,9 @@ import { hash, verify } from '@node-rs/argon2';
 import rateLimit from 'express-rate-limit';
 import { LIMITS, type DeviceKeys } from '@chatward/shared';
 import type { AuthedRequest, Ctx } from '../ctx.js';
+import { clearSetupCode, setupCode } from '../config.js';
 import { newId } from '../db.js';
+import { endCallOnDevice } from './voice.js';
 import {
   ApiError,
   announceJoin,
@@ -51,6 +53,14 @@ function codeHash(code: string): string {
   return crypto.createHash('sha256').update(code.toUpperCase().replace(/[^A-Z0-9]/g, '')).digest('hex');
 }
 
+/** Compares a typed setup code with the real one. Case, spaces and dashes don't matter, as with reset codes. */
+function setupCodeMatches(given: string): boolean {
+  const normalize = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const expected = Buffer.from(normalize(setupCode()));
+  const actual = Buffer.from(normalize(given));
+  return actual.length === expected.length && crypto.timingSafeEqual(actual, expected);
+}
+
 /** Uncompressed P-256 point (65 bytes, leading 0x04), base64. */
 function isP256Point(v: unknown): v is string {
   if (typeof v !== 'string' || v.length > 120 || !BASE64_RE.test(v)) return false;
@@ -77,6 +87,18 @@ function upsertDevice(ctx: Ctx, userId: string, d: DeviceKeys): boolean {
       ON CONFLICT(device_id) DO UPDATE SET ecdh_public = excluded.ecdh_public, sign_public = excluded.sign_public`)
     .run(d.deviceId, userId, d.ecdhPublic, d.signPublic, Date.now());
   return true;
+}
+
+/** True if this device id is not yet registered to the user, so signing in with it adds a device. */
+function isNewDevice(ctx: Ctx, userId: string, deviceId: string): boolean {
+  return !ctx.db.prepare('SELECT 1 FROM devices WHERE device_id=? AND user_id=?').get(deviceId, userId);
+}
+
+/** Tells the account's signed-in devices that a new one was added, so the owner can spot a login they didn't make. */
+function announceNewDevice(ctx: Ctx, userId: string, deviceId: string): void {
+  const row = ctx.db.prepare('SELECT created_at FROM devices WHERE device_id=? AND user_id=?').get(deviceId, userId) as
+    { created_at: number } | undefined;
+  if (row) ctx.sendToUser(userId, { t: 'device.added', deviceId, createdAt: row.created_at });
 }
 
 function broadcastDevices(ctx: Ctx, userId: string): void {
@@ -122,10 +144,56 @@ const sensitiveLimit = rateLimit({
   message: { error: 'too many attempts, try again later' },
 });
 
+// Per-username sign-in guard. The per-IP limit alone lets one account be guessed from many addresses, so this counts
+// failures per username. A lock is short and grows with each failure past the threshold, and it always expires,
+// so a stranger who guesses a name can delay its owner for minutes at most.
+const LOGIN_FAILS_BEFORE_LOCK = 10;
+const LOGIN_FAIL_WINDOW_MS = 15 * 60_000;
+const LOGIN_LOCK_BASE_MS = 30_000;
+const LOGIN_LOCK_MAX_MS = 15 * 60_000;
+const LOGIN_GUARD_PRUNE_AT = 5000;
+
+type LoginGuard = { fails: number; windowStart: number; lockedUntil: number };
+const loginGuards = new Map<string, LoginGuard>();
+
+/** Throws 429 while the username is locked. Runs before the password check, so a locked name costs no hashing. */
+function assertLoginAllowed(username: string): void {
+  const guard = loginGuards.get(username);
+  if (guard && guard.lockedUntil > Date.now()) {
+    throw new ApiError(429, 'too many failed sign-ins for this account, try again in a few minutes');
+  }
+}
+
+function recordLoginFailure(username: string): void {
+  const now = Date.now();
+  if (loginGuards.size > LOGIN_GUARD_PRUNE_AT) {
+    for (const [name, g] of loginGuards) if (g.lockedUntil <= now && now - g.windowStart > LOGIN_FAIL_WINDOW_MS) loginGuards.delete(name);
+  }
+  const guard = loginGuards.get(username) ?? { fails: 0, windowStart: now, lockedUntil: 0 };
+  if (now - guard.windowStart > LOGIN_FAIL_WINDOW_MS) {
+    guard.fails = 0;
+    guard.windowStart = now;
+  }
+  guard.fails += 1;
+  if (guard.fails >= LOGIN_FAILS_BEFORE_LOCK) {
+    const steps = guard.fails - LOGIN_FAILS_BEFORE_LOCK;
+    guard.lockedUntil = now + Math.min(LOGIN_LOCK_BASE_MS * 2 ** steps, LOGIN_LOCK_MAX_MS);
+  }
+  loginGuards.set(username, guard);
+}
+
 function mustUser(ctx: Ctx, userId: string) {
   const user = ctx.getUser(userId);
   if (!user) throw new ApiError(401, 'unauthorized');
   return user;
+}
+
+/** Profile pictures are visible to the account itself and to anyone who shares a server with it. */
+function canSeeProfileImage(ctx: Ctx, viewerId: string, ownerId: string): boolean {
+  if (viewerId === ownerId) return true;
+  return !!ctx.db.prepare(
+    'SELECT 1 FROM members a JOIN members b ON b.server_id=a.server_id WHERE a.user_id=? AND b.user_id=? LIMIT 1',
+  ).get(viewerId, ownerId);
 }
 
 /** Free text that may be empty. Bios may contain line breaks; other fields may not. */
@@ -179,12 +247,18 @@ export function register(app: Express, ctx: Ctx): void {
     const password = validPassword(body.password);
     const device = parseDevice(body.device);
     const inviteCode = typeof body.inviteCode === 'string' ? body.inviteCode : null;
+    const givenSetupCode = typeof body.setupCode === 'string' ? body.setupCode : '';
     const id = newId();
     const passwordHash = await hash(password);
 
+    let firstAccount = false;
     const joinedServerId = ctx.db.transaction((): string | null => {
       const { n } = ctx.db.prepare('SELECT COUNT(*) AS n FROM users').get() as { n: number };
       const first = n === 0;
+      firstAccount = first;
+      // The first account owns the server, so anyone who reaches a fresh server first would take it. The setup code stops that.
+      if (first && !givenSetupCode.trim()) throw new ApiError(403, 'a setup code is required for the first account');
+      if (first && !setupCodeMatches(givenSetupCode)) throw new ApiError(403, 'setup code is incorrect');
       if (!first && !inviteCode) throw new ApiError(403, 'an invite code is required');
       try {
         ctx.db
@@ -201,6 +275,7 @@ export function register(app: Express, ctx: Ctx): void {
       return joined.serverId;
     })();
 
+    if (firstAccount) clearSetupCode();
     if (joinedServerId) announceJoin(ctx, joinedServerId, id);
     res.json({ token: ctx.signToken(id, device.deviceId), user: mustUser(ctx, id) });
   }));
@@ -210,13 +285,20 @@ export function register(app: Express, ctx: Ctx): void {
     const username = typeof body.username === 'string' ? body.username : '';
     const password = typeof body.password === 'string' && body.password.length <= PASSWORD_MAX ? body.password : '';
     const device = parseDevice(body.device);
+    if (username) assertLoginAllowed(username);
     const row = username
       ? (ctx.db.prepare('SELECT id, password_hash FROM users WHERE username=? AND deleted_at IS NULL').get(username) as
           { id: string; password_hash: string } | undefined)
       : undefined;
     const ok = password !== '' && (await verify(row?.password_hash ?? (await dummyHash), password));
-    if (!row || !ok) throw new ApiError(401, 'invalid username or password');
+    if (!row || !ok) {
+      if (username) recordLoginFailure(username);
+      throw new ApiError(401, 'invalid username or password');
+    }
+    loginGuards.delete(username);
+    const newDevice = isNewDevice(ctx, row.id, device.deviceId);
     if (ctx.db.transaction(() => upsertDevice(ctx, row.id, device))()) broadcastDevices(ctx, row.id);
+    if (newDevice) announceNewDevice(ctx, row.id, device.deviceId);
     res.json({ token: ctx.signToken(row.id, device.deviceId), user: mustUser(ctx, row.id) });
   }));
 
@@ -274,6 +356,7 @@ export function register(app: Express, ctx: Ctx): void {
       ? (ctx.db.prepare('SELECT id FROM users WHERE username=?').get(username) as { id: string } | undefined)
       : undefined;
     const passwordHash = await hash(newPassword);
+    const newDevice = user ? isNewDevice(ctx, user.id, device.deviceId) : false;
     const devicesChanged = ctx.db.transaction(() => {
       const used = user
         ? ctx.db.prepare(`DELETE FROM password_resets WHERE user_id=? AND code_hash=? AND expires_at>? AND ${ISSUER_OWNS_SHARED_SERVER}`)
@@ -286,6 +369,7 @@ export function register(app: Express, ctx: Ctx): void {
       return upsertDevice(ctx, user.id, device);
     })();
     if (devicesChanged) broadcastDevices(ctx, user!.id);
+    if (newDevice) announceNewDevice(ctx, user!.id, device.deviceId);
     res.json({ token: ctx.signToken(user!.id, device.deviceId), user: mustUser(ctx, user!.id) });
     ctx.revokeSockets(user!.id);
   }));
@@ -334,6 +418,8 @@ export function register(app: Express, ctx: Ctx): void {
     })();
     broadcastDevices(ctx, uid);
     res.status(204).end();
+    // Ends the call if this device is in one. Its socket closing alone would leave the LiveKit session running.
+    endCallOnDevice(ctx, uid, deviceId);
     ctx.revokeSockets(uid, deviceId);
   }));
 
@@ -425,9 +511,10 @@ export function register(app: Express, ctx: Ctx): void {
   }));
 
   app.get('/api/banners/:userId', ctx.requireAuth, route((req, res) => {
-    const row = ctx.db.prepare('SELECT banner_path FROM users WHERE id=?').get(String(req.params.userId)) as
+    const ownerId = String(req.params.userId);
+    const row = ctx.db.prepare('SELECT banner_path FROM users WHERE id=?').get(ownerId) as
       { banner_path: string | null } | undefined;
-    if (!row?.banner_path) throw new ApiError(404, 'no banner');
+    if (!row?.banner_path || !canSeeProfileImage(ctx, userIdOf(req), ownerId)) throw new ApiError(404, 'no banner');
     res.setHeader('Cache-Control', 'private, no-cache');
     res.sendFile(path.join(bannerDir, path.basename(row.banner_path)), (err) => {
       if (err && !res.headersSent) res.status(404).json({ error: 'no banner' });
@@ -466,9 +553,10 @@ export function register(app: Express, ctx: Ctx): void {
   }));
 
   app.get('/api/avatars/:userId', ctx.requireAuth, route((req, res) => {
-    const row = ctx.db.prepare('SELECT avatar_path FROM users WHERE id=?').get(String(req.params.userId)) as
+    const ownerId = String(req.params.userId);
+    const row = ctx.db.prepare('SELECT avatar_path FROM users WHERE id=?').get(ownerId) as
       { avatar_path: string | null } | undefined;
-    if (!row?.avatar_path) throw new ApiError(404, 'no avatar');
+    if (!row?.avatar_path || !canSeeProfileImage(ctx, userIdOf(req), ownerId)) throw new ApiError(404, 'no avatar');
     res.setHeader('Cache-Control', 'private, no-cache');
     res.sendFile(path.join(avatarDir, path.basename(row.avatar_path)), (err) => {
       if (err && !res.headersSent) res.status(404).json({ error: 'no avatar' });
