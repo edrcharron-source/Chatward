@@ -421,6 +421,27 @@ async function main() {
     assert.ok(!claimAfter.some((k) => k.deviceId === bob2.id), 'removed device is no longer offered for new groups');
     log('a device can be listed and removed, and is then cut off from new keys');
 
+    // Reset codes: an owner-issued code dies when its member leaves the owner's server, and is refused after that.
+    const codesId = (await api(alice.token, 'POST', '/api/servers', { name: 'Codes' })).json.server.id as string;
+    const ritaInvite = (await api(alice.token, 'POST', `/api/servers/${codesId}/invites`, { maxUses: 1 })).json.code as string;
+    const ritaReg = (await api(null, 'POST', '/api/auth/register', {
+      username: 'rita', displayName: 'Rita', password: PASSWORD, device: await makeDeviceKeys(), inviteCode: ritaInvite,
+    })).json;
+    const issued = await api(alice.token, 'POST', `/api/servers/${codesId}/members/${ritaReg.user.id}/reset-code`, {});
+    assert.equal(issued.status, 200, 'owner issues a reset code');
+    const redeemed = await api(null, 'POST', '/api/auth/reset', {
+      username: 'rita', code: issued.json.code, newPassword: 'rita-new-pass-0', device: await makeDeviceKeys(),
+    });
+    assert.equal(redeemed.status, 200, 'a code redeems while the owner still shares a server with the member');
+    const reissued = await api(alice.token, 'POST', `/api/servers/${codesId}/members/${ritaReg.user.id}/reset-code`, {});
+    // The positive redeem changed rita's password, so her new token is the one that still works.
+    assert.equal((await api(redeemed.json.token, 'POST', `/api/servers/${codesId}/leave`, {})).status, 200, 'rita leaves');
+    const afterLeave = await api(null, 'POST', '/api/auth/reset', {
+      username: 'rita', code: reissued.json.code, newPassword: 'rita-new-pass-1', device: await makeDeviceKeys(),
+    });
+    assert.equal(afterLeave.status, 403, 'a code is dead once the member has left the owner\'s server');
+    log('a reset code is dropped when its member leaves, so it cannot be redeemed afterwards');
+
     console.log('\nE2E MLS: all checks passed');
   } catch (err) {
     failed = true;
