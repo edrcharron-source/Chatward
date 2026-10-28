@@ -1,6 +1,6 @@
 // Offline stand-in for the server. Implements docs/CONTRACT.md REST routes and the WS frame stream in memory.
 import type { Channel, Message, ServerFrame, SoundboardSound, User } from '@chatward/shared';
-import { avatarPng, gifDataUrl } from './assets';
+import { avatarPng } from './assets';
 import { createWorld, makeMessage, newId, SERVER_ID, YOU_ID } from './world';
 
 export const DEMO_TOKEN = 'demo-token';
@@ -295,17 +295,10 @@ on('GET', /^\/api\/gifs\/(search|trending)$/, async (r) => {
   const q = (r.url.searchParams.get('q') ?? '').trim();
   if (q.length > 100) throw new HttpError(400, 'q must be at most 100 characters');
   if (kind === 'search' && !q) return json({ results: [] });
-  // Live KLIPY results when a key is saved in demo settings. Otherwise the bundled placeholder tiles below.
+  // Real KLIPY results through the main process. With no key saved, say so in the tab instead of showing fake GIFs.
   const live = await window.chatward.demo.gifs(kind, q, r.url.searchParams.get('pos') ?? undefined);
   if (live) return json(live.body, live.status);
-  const needle = q.toLowerCase();
-  const all = [['HELLO', 200], ['LOL', 40], ['GG', 110], ['WAVE', 290], ['NOPE', 0], ['YAY', 150]] as const;
-  const picks = all.filter(([label]) => !needle || label.toLowerCase().includes(needle));
-  const results = (picks.length ? picks : all).map(([label, hue], i) => {
-    const url = gifDataUrl(label, hue);
-    return { id: `gif-${label}-${i}`, url, previewUrl: url, title: label.toLowerCase(), width: 320, height: 200 };
-  });
-  return json({ results });
+  return json({ results: [], disabled: true, hint: 'Paste a KLIPY key in Settings → Privacy → Demo internet to load real GIFs.' });
 });
 
 // Real link previews, fetched by the main process with the same SSRF guards as the server.
