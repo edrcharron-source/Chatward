@@ -153,7 +153,12 @@ export const useVoice = create<VoiceState>((set, get) => {
         if (current()) set({ speaking: speakingList(speakers.map((p) => p.identity)) });
       })
       .on(RoomEvent.Reconnecting, () => { if (current()) set({ status: 'connecting' }); })
-      .on(RoomEvent.Reconnected, () => { if (current()) set({ status: 'connected' }); })
+      .on(RoomEvent.Reconnected, () => {
+        if (!current()) return;
+        set({ status: 'connected' });
+        // the group may have moved on while the call was reconnecting, which rekeyActiveCall skipped
+        void rekeyActiveCall().catch((e) => console.warn('rekey after reconnect failed', e));
+      })
       .on(RoomEvent.Disconnected, () => {
         if (!current()) return; // our own leave() already cleaned up
         endMeter();
@@ -251,6 +256,8 @@ export const useVoice = create<VoiceState>((set, get) => {
         await room.localParticipant.publishTrack(mic, { source: Track.Source.Microphone, ...micPublish(bitrate) });
         if (stale()) { abandon(channelId, room, mic); return; }
         set({ status: 'connected' });
+        // a group change during connect was skipped (status was 'connecting'), so check the key once connected
+        void rekeyActiveCall().catch((e) => console.warn('rekey after join failed', e));
         syncMic();
         startMeter();
       } catch (e) {
