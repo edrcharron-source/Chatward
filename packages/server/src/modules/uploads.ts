@@ -28,10 +28,12 @@ export function register(app: Express, ctx: Ctx): void {
   const { db } = ctx;
 
   const insertUpload = db.prepare('INSERT INTO uploads (id, owner_id, size, created_at, tracked) VALUES (?,?,?,?,?)');
-  const findUpload = db.prepare('SELECT owner_id FROM uploads WHERE id=?');
-  // Two users may fetch an upload if they share at least one server.
-  const sharesServer = db.prepare(
-    'SELECT 1 FROM members a JOIN members b ON b.server_id=a.server_id WHERE a.user_id=? AND b.user_id=? LIMIT 1');
+  // The server an upload belongs to is the one its message was posted in. Unattached uploads have none.
+  const findUpload = db.prepare(`
+    SELECT u.owner_id, c.server_id FROM uploads u
+    LEFT JOIN messages m ON m.id=u.message_id
+    LEFT JOIN channels c ON c.id=m.channel_id
+    WHERE u.id=?`);
 
   const filePathFor = (id: string) => path.join(ctx.config.uploadsDir, id);
 
@@ -77,8 +79,12 @@ export function register(app: Express, ctx: Ctx): void {
   app.get('/api/uploads/:id', ctx.requireAuth, (req, res) => {
     const userId = (req as AuthedRequest).userId;
     const id = req.params.id;
-    const row = UPLOAD_ID.test(id) ? (findUpload.get(id) as { owner_id: string } | undefined) : undefined;
-    const allowed = row && (row.owner_id === userId || sharesServer.get(userId, row.owner_id));
+    const row = UPLOAD_ID.test(id)
+      ? (findUpload.get(id) as { owner_id: string; server_id: string | null } | undefined)
+      : undefined;
+    // The uploader can always fetch. Anyone else needs to be a member of the server the upload was posted in.
+    const allowed = row && (row.owner_id === userId
+      || (row.server_id !== null && ctx.roleIn(row.server_id, userId) !== null));
     if (!row || !allowed) { res.status(404).json({ error: 'not found' }); return; }
 
     res.type('application/octet-stream');
