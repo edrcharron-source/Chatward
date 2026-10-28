@@ -350,6 +350,8 @@ async function poolEntryVerified(kp: string, me: DeviceKeys): Promise<boolean> {
  * If any local package fails verification, the unverified packages are dropped and the server's unclaimed packages are replaced.
  * The replace stays pending in the vault until the server accepts it, so a lost request is retried on the next run.
  * Verified packages are kept even on a replace: peers may already have claimed them, and their Welcomes need the private parts.
+ * A replace also deletes the server's last-resort package, so a replace always uploads a new one, and the old last-resort
+ * private part stays in the vault until the next run. A peer may have claimed the old package just before the replace.
  */
 async function ensureKeyPool(): Promise<boolean> {
   const me = getDevice();
@@ -367,12 +369,12 @@ async function ensureKeyPool(): Promise<boolean> {
     if (!entry.lastResort) continue;
     if ((await keyPackageId(kp)) === count.lastResort) {
       serverHasLastResort = true;
-    } else {
+    } else if (!replace) {
       delete vault.pool[kp];
       pruned = true;
     }
   }
-  const needLastResort = !serverHasLastResort;
+  const needLastResort = replace || !serverHasLastResort;
   if (!replace && count.available >= KEYPACKAGE_LOW_WATER && !needLastResort) return pruned;
   const size = replace || count.available < KEYPACKAGE_LOW_WATER ? KEYPACKAGE_BATCH : 0;
   const made: { kp: string; keys: mls.MemberKeys; lastResort: boolean }[] = [];

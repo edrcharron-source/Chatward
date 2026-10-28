@@ -458,12 +458,18 @@ async function main() {
 
     // A voice slot left by a previous app run must not lock the account out. The startup clear frees it.
     const voiceChan = chanServer.channels.find((c: { kind: string }) => c.kind === 'voice').id as string;
+    // Alice signs in on a real second device, so the refusal below comes from a different device than the holder.
+    const aliceOtherKeys = await makeDeviceKeys();
+    const aliceOther = await api(null, 'POST', '/api/auth/login', { username: 'alice', password: PASSWORD, device: aliceOtherKeys });
+    assert.equal(aliceOther.status, 200, 'alice logs in on a second device');
     assert.equal((await api(alice.token, 'POST', '/api/voice/token', { channelId: voiceChan })).status, 200, 'first join gets a token');
-    assert.equal((await api(alice.token, 'POST', '/api/voice/token', { channelId: voiceChan })).status, 409, 'a second device is refused while the slot is held');
+    assert.equal((await api(aliceOther.json.token as string, 'POST', '/api/voice/token', { channelId: voiceChan })).status, 409, 'a second device is refused while the slot is held');
+    assert.equal((await api(alice.token, 'POST', '/api/voice/token', { channelId: voiceChan })).status, 200, 'the device holding the slot can take it again');
     assert.equal((await api(alice.token, 'POST', '/api/voice/clear', {})).status, 200, 'startup clear succeeds');
     assert.equal((await api(alice.token, 'POST', '/api/voice/token', { channelId: voiceChan })).status, 200, 'join works again after the clear');
     assert.equal((await api(alice.token, 'POST', '/api/voice/leave', { channelId: voiceChan })).status, 200);
-    log('a leftover voice slot is cleared on startup, so the account is not locked out');
+    assert.equal((await api(alice.token, 'DELETE', `/api/me/devices/${aliceOtherKeys.deviceId}`, { password: PASSWORD })).status, 204, 'the extra alice device is removed');
+    log('a leftover voice slot is cleared on startup, and the device holding it can rejoin its own call');
 
     // A second device refused with 409 must not end the call its first device is still in.
     const chanInvite = (await api(alice.token, 'POST', `/api/servers/${chanServer.server.id as string}/invites`, { maxUses: 1 })).json.code as string;

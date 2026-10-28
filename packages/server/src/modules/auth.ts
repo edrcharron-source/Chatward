@@ -8,7 +8,7 @@ import { LIMITS, type DeviceKeys } from '@chatward/shared';
 import type { AuthedRequest, Ctx } from '../ctx.js';
 import { clearSetupCode, setupCode } from '../config.js';
 import { newId } from '../db.js';
-import { endCallOnDevice, endCallOnOtherDevices } from './voice.js';
+import { endAccountCall, endCallOnDevice, endCallOnOtherDevices } from './voice.js';
 import {
   ApiError,
   announceJoin,
@@ -481,6 +481,9 @@ export function register(app: Express, ctx: Ctx): void {
     broadcastDevices(ctx, uid);
     broadcastUser(ctx, uid);
     for (const serverId of serverIds) removeMember(ctx, serverId, uid);
+    // Every device is signed out, so a call on any of them must end and each open socket must close.
+    endAccountCall(ctx, uid);
+    ctx.revokeSockets(uid);
 
     if (files.avatar_path) fs.rmSync(path.join(avatarDir, path.basename(files.avatar_path)), { force: true });
     if (files.banner_path) fs.rmSync(path.join(bannerDir, path.basename(files.banner_path)), { force: true });

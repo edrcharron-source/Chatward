@@ -11,12 +11,21 @@ const selfState = new Map<string, { muted: boolean; deafened: boolean }>(); // u
 // Only needed to join, but livekit-client reuses this token when it reconnects after a network drop, so it must outlive
 // a short blip. Kicks and bans are enforced by removeParticipant, not by token expiry.
 const TOKEN_TTL = '10m';
+const TOKEN_TTL_MS = 10 * 60_000; // keep in step with TOKEN_TTL
+
+// A removed user's token from before the removal stays valid until it expires, and livekit-client reuses it to reconnect.
+// So after a removal, the room is cleared again every EVICT_EVERY_MS until that token is gone. A fresh token for the room
+// (the user is allowed back in) stops it early.
+const EVICT_EVERY_MS = 20_000;
+// roomId:userId -> the repeat timer and the timer that ends it
+const evictions = new Map<string, { repeat: ReturnType<typeof setInterval>; end: ReturnType<typeof setTimeout> }>();
 
 // A dropped websocket does not end a call: LiveKit keeps the media flowing. Hold the voice slot this long so a
 // quick reconnect keeps it. Kicks and explicit leaves ignore this and still act at once.
 const VOICE_GRACE_MS = 30_000;
-// userId -> pending slot removal. deviceId is the device the timer waits on, or null when the slot is not tied to a device.
-const graceTimers = new Map<string, { deviceId: string | null; timer: ReturnType<typeof setTimeout> }>();
+// userId -> pending slot removal. channelId and deviceId identify the slot the timer was started for, so it never ends a
+// newer call. deviceId is null when the slot is not tied to a device.
+const graceTimers = new Map<string, { channelId: string; deviceId: string | null; timer: ReturnType<typeof setTimeout> }>();
 
 /** True if the user currently holds a voice slot in this channel. Used by soundboard. */
 export function isInVoiceChannel(channelId: string, userId: string): boolean {
@@ -58,12 +67,8 @@ export function kickFromCall(ctx: Ctx, serverId: string, userId: string): void {
   // Only drop the slot if the call is on this server. A call the user holds in another server stays.
   const heldChannel = voiceChannelOf.get(userId);
   if (heldChannel && ctx.getChannel(heldChannel)?.serverId === serverId) leaveVoice(ctx, userId);
-  const rooms = new RoomServiceClient(ctx.config.livekit.apiUrl, ctx.config.livekit.apiKey, ctx.config.livekit.apiSecret);
   const channels = ctx.db.prepare("SELECT id FROM channels WHERE server_id=? AND kind='voice'").all(serverId) as { id: string }[];
-  for (const { id } of channels) {
-    // Fails for rooms the user is not in, which is expected. A real failure is logged.
-    rooms.removeParticipant(id, userId).catch((err: unknown) => console.warn('livekit removeParticipant failed', id, err));
-  }
+  for (const { id } of channels) evictFromRoom(ctx, id, userId);
 }
 
 /**
@@ -84,23 +89,53 @@ export function endCallOnOtherDevices(ctx: Ctx, userId: string, keepDeviceId: st
   endCall(ctx, userId);
 }
 
+/** For an account delete, which signs out every device. If the account is in a call on any device, the call ends. */
+export function endAccountCall(ctx: Ctx, userId: string): void {
+  if (voiceChannelOf.has(userId)) endCall(ctx, userId);
+}
+
 /** Drops the account's call and its LiveKit session, in one place for the device-based endings above. */
 function endCall(ctx: Ctx, userId: string): void {
   const channelId = voiceChannelOf.get(userId);
   leaveVoice(ctx, userId);
-  if (channelId) removeFromRoom(ctx, channelId, userId);
+  if (channelId) evictFromRoom(ctx, channelId, userId);
 }
 
 /** Drops the user from the channel's voice slot and from the LiveKit room, so they stop hearing the call now. */
 function kickFromChannelCall(ctx: Ctx, channelId: string, userId: string): void {
   leaveChannel(ctx, channelId, userId);
-  removeFromRoom(ctx, channelId, userId);
+  evictFromRoom(ctx, channelId, userId);
 }
 
 /** Ends the user's LiveKit session in a room. Fails if LiveKit no longer has them (already left or still connecting). */
-function removeFromRoom(ctx: Ctx, channelId: string, userId: string): void {
+function removeFromRoom(ctx: Ctx, channelId: string, userId: string, quiet = false): void {
   const rooms = new RoomServiceClient(ctx.config.livekit.apiUrl, ctx.config.livekit.apiKey, ctx.config.livekit.apiSecret);
-  rooms.removeParticipant(channelId, userId).catch((err: unknown) => console.warn('livekit removeParticipant failed', err));
+  rooms.removeParticipant(channelId, userId).catch((err: unknown) => {
+    if (!quiet) console.warn('livekit removeParticipant failed', err);
+  });
+}
+
+/**
+ * For a removal (kick, ban, leave from the server, deleted channel or device): ends the session now, then keeps ending it
+ * until the user's token from before the removal has expired. Failing while the user is not in the room is expected.
+ */
+function evictFromRoom(ctx: Ctx, channelId: string, userId: string): void {
+  removeFromRoom(ctx, channelId, userId);
+  stopEviction(channelId, userId);
+  const key = `${channelId}:${userId}`;
+  const repeat = setInterval(() => removeFromRoom(ctx, channelId, userId, true), EVICT_EVERY_MS);
+  const end = setTimeout(() => stopEviction(channelId, userId), TOKEN_TTL_MS);
+  evictions.set(key, { repeat, end });
+}
+
+/** Ends the repeated removal for a room, e.g. once the user has a fresh token for it. */
+function stopEviction(channelId: string, userId: string): void {
+  const key = `${channelId}:${userId}`;
+  const pending = evictions.get(key);
+  if (!pending) return;
+  clearInterval(pending.repeat);
+  clearTimeout(pending.end);
+  evictions.delete(key);
 }
 
 /** Puts the user in the channel's voice slot, leaving any other voice channel they hold. */
@@ -122,13 +157,15 @@ function occupy(ctx: Ctx, channelId: string, userId: string, deviceId: string | 
 export function clearVoiceChannel(ctx: Ctx, channelId: string): void {
   for (const userId of [...(occupants.get(channelId) ?? [])]) {
     leaveChannel(ctx, channelId, userId);
-    removeFromRoom(ctx, channelId, userId);
+    evictFromRoom(ctx, channelId, userId);
   }
 }
 
 function leaveChannel(ctx: Ctx, channelId: string, userId: string): boolean {
   const set = occupants.get(channelId);
   if (!set?.has(userId)) return false;
+  // The slot is going away, so a grace timer started for it must not run later and touch whatever the account joins next.
+  cancelGrace(userId);
   set.delete(userId);
   if (set.size === 0) occupants.delete(channelId);
   voiceChannelOf.delete(userId);
@@ -155,11 +192,15 @@ export function register(app: Express, ctx: Ctx): void {
     const slotFree = slotDevice ? deviceId === slotDevice && !online.device : !online.user;
     if (!slotFree) return;
     cancelGrace(userId);
+    const channelId = voiceChannelOf.get(userId);
+    if (!channelId) return;
     const timer = setTimeout(() => {
       graceTimers.delete(userId);
+      // Only end the slot this timer was started for. If the account has since joined another call or device, leave it alone.
+      if (voiceChannelOf.get(userId) !== channelId || (voiceDeviceOf.get(userId) ?? null) !== slotDevice) return;
       leaveVoice(ctx, userId);
     }, VOICE_GRACE_MS);
-    graceTimers.set(userId, { deviceId: slotDevice, timer });
+    graceTimers.set(userId, { channelId, deviceId: slotDevice, timer });
   });
   // A reconnect cancels the grace only for the device it waits on. Another device connecting leaves it running.
   ctx.onConnect.push((userId, deviceId) => {
@@ -178,12 +219,14 @@ export function register(app: Express, ctx: Ctx): void {
     if (channel.kind !== 'voice') { res.status(400).json({ error: 'not a voice channel' }); return; }
 
     // Every device of an account uses the same LiveKit identity, and LiveKit drops the older session when a second one
-    // joins the same room. So a second device is refused while the first is still in the call. Our own device always
-    // sends /voice/leave before joining again, so this only blocks another device.
-    if (voiceChannelOf.get(userId) === channelId) {
+    // joins the same room. So a second device is refused while the first is still in the call. A slot held by this
+    // device itself is a leftover (for example a missed leave), so the device may take it again.
+    if (voiceChannelOf.get(userId) === channelId && heldByOtherDevice(userId, (req as AuthedRequest).deviceId)) {
       res.status(409).json({ error: 'You are already in this call on another device. Leave the call there first.' });
       return;
     }
+    // A fresh token means the user is allowed in this room again, so stop clearing it for an earlier removal.
+    stopEviction(channelId, userId);
 
     // Joining a channel implicitly leaves any other voice channel. The account may still hold that channel on another
     // device. LiveKit keeps that device's session in the old room, so end it there and tell the account's sockets, so
@@ -259,13 +302,15 @@ export function register(app: Express, ctx: Ctx): void {
     if (channel.kind !== 'voice') { res.status(400).json({ error: 'not a voice channel' }); return; }
     if (actorRole === 'member') { res.status(403).json({ error: 'admins only' }); return; }
     if (targetId === actorId) { res.status(400).json({ error: 'use Leave voice to leave yourself' }); return; }
-    if (!occupants.get(channelId)?.has(targetId)) { res.status(404).json({ error: 'they are not in this call' }); return; }
     // Same rule as removing a member from the server: admins cannot touch the owner or other admins.
     const targetRole = ctx.roleIn(channel.serverId, targetId);
+    if (!targetRole) { res.status(404).json({ error: 'they are not in this server' }); return; }
     if (targetRole === 'owner' || (targetRole === 'admin' && actorRole !== 'owner')) {
       res.status(403).json({ error: 'you cannot kick this member' });
       return;
     }
+    // Always ends the LiveKit session, even when the voice slot is already gone (a dropped socket or a restart) and
+    // media still flows. LiveKit ignores a removal for someone who is not in the room.
     kickFromChannelCall(ctx, channelId, targetId);
     // Tells the kicked user's open sockets why their call ended. Joining again is still allowed.
     ctx.sendToUser(targetId, { t: 'voice.kicked', channelId });
