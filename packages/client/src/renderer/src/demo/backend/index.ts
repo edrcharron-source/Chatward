@@ -291,6 +291,9 @@ on('PATCH', /^\/api\/servers\/([^/]+)\/channels\/([^/]+)$/, (r) => {
 on('DELETE', /^\/api\/servers\/([^/]+)\/channels\/([^/]+)$/, (r) => {
   serverGuard(r.match[1]);
   const channel = requireChannel(r.match[2]);
+  if (channel.kind === 'text' && world.channels.filter((c) => c.kind === 'text').length <= 1) {
+    throw new HttpError(409, 'a server needs at least one text channel');
+  }
   world.channels = world.channels.filter((c) => c.id !== channel.id);
   delete world.messages[channel.id];
   delete world.watch[channel.id];

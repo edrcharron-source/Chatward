@@ -371,6 +371,16 @@ async function main() {
     assert.ok(!fs.existsSync(soundFile), 'sound file removed when its server is deleted');
     log('deleting a server removes its soundboard files from disk');
 
+    // A server keeps at least one text channel, since voice calls take their key from the first one.
+    const chanServer = (await api(alice.token, 'POST', '/api/servers', { name: 'Chan' })).json;
+    const chanBase = `/api/servers/${chanServer.server.id as string}/channels`;
+    const onlyText = chanServer.channels.find((c: { kind: string }) => c.kind === 'text').id as string;
+    assert.equal((await api(alice.token, 'DELETE', `${chanBase}/${onlyText}`)).status, 409, 'last text channel is kept');
+    const extraText = (await api(alice.token, 'POST', chanBase, { name: 'extra', kind: 'text' })).json.channel.id as string;
+    assert.equal((await api(alice.token, 'DELETE', `${chanBase}/${onlyText}`)).status, 200, 'a text channel can go while another remains');
+    assert.equal((await api(alice.token, 'DELETE', `${chanBase}/${extraText}`)).status, 409, 'the new last text channel is kept');
+    log('deleting the last text channel is refused');
+
     console.log('\nE2E MLS: all checks passed');
   } catch (err) {
     failed = true;
