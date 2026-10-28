@@ -31,6 +31,7 @@ services:
       LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:?set LIVEKIT_API_KEY in deploy/.env}
       LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:?set LIVEKIT_API_SECRET in deploy/.env}
       NODE_ENV: production
+      TRUST_PROXY: 1   # Caddy is in front of this server, so it sends the real client IP in X-Forwarded-For
       KLIPY_API_KEY: ${KLIPY_API_KEY:-}
     volumes: ["chatward-data:/data"]
     expose: ["3000"]
