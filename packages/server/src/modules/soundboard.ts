@@ -138,17 +138,21 @@ export function register(app: Express, ctx: Ctx): void {
     }
   });
 
-  app.get('/api/sounds/:id/file', ctx.requireAuth, async (req, res) => {
-    const row = soundById(req.params.id);
-    if (!row || !ctx.roleIn(row.server_id, (req as AuthedRequest).userId)) { res.status(404).json({ error: 'sound not found' }); return; }
+  app.get('/api/sounds/:id/file', ctx.requireAuth, async (req, res, next) => {
     try {
-      const data = await fs.promises.readFile(filePath(row.id));
-      res.setHeader('Content-Type', row.mime);
-      res.setHeader('Cache-Control', 'private, max-age=86400');
-      res.setHeader('X-Content-Type-Options', 'nosniff');
-      res.send(data);
-    } catch {
-      res.status(404).json({ error: 'sound file missing' });
+      const row = soundById(req.params.id);
+      if (!row || !ctx.roleIn(row.server_id, (req as AuthedRequest).userId)) { res.status(404).json({ error: 'sound not found' }); return; }
+      try {
+        const data = await fs.promises.readFile(filePath(row.id));
+        res.setHeader('Content-Type', row.mime);
+        res.setHeader('Cache-Control', 'private, max-age=86400');
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+        res.send(data);
+      } catch {
+        res.status(404).json({ error: 'sound file missing' });
+      }
+    } catch (err) {
+      next(err);
     }
   });
 

@@ -4,14 +4,20 @@ export class ApiError extends Error {
   constructor(public status: number, message: string) { super(message); }
 }
 
-async function req<T>(method: string, path: string, body?: unknown, opts: { raw?: BodyInit; contentType?: string } = {}): Promise<T> {
+// A request that never gets an answer would leave the screen waiting forever, so each one gives up after this long.
+const DEFAULT_TIMEOUT_MS = 20_000;
+// Uploads and downloads of files can take much longer on a slow connection, so they get a wider limit.
+const TRANSFER_TIMEOUT_MS = 10 * 60_000;
+
+async function req<T>(method: string, path: string, body?: unknown, opts: { raw?: BodyInit; contentType?: string; timeoutMs?: number } = {}): Promise<T> {
   const { serverUrl, token } = useSession.getState();
   const headers: Record<string, string> = {};
   if (token) headers.Authorization = `Bearer ${token}`;
   let payload: BodyInit | undefined;
   if (opts.raw !== undefined) { payload = opts.raw; headers['Content-Type'] = opts.contentType ?? 'application/octet-stream'; }
   else if (body !== undefined) { payload = JSON.stringify(body); headers['Content-Type'] = 'application/json'; }
-  const res = await fetch(serverUrl.replace(/\/$/, '') + path, { method, headers, body: payload });
+  const signal = AbortSignal.timeout(opts.timeoutMs ?? DEFAULT_TIMEOUT_MS);
+  const res = await fetch(serverUrl.replace(/\/$/, '') + path, { method, headers, body: payload, signal });
   if (!res.ok) {
     let msg = res.statusText;
     try { msg = (await res.json()).error ?? msg; } catch { /* ignore */ }
@@ -39,9 +45,9 @@ export const api = {
   del: <T>(path: string, body?: unknown) => req<T>('DELETE', path, body),
   /** raw-bytes upload (encrypted blobs, avatars, sounds) */
   putRaw: <T>(method: 'POST' | 'PUT', path: string, bytes: BodyInit, contentType: string) =>
-    req<T>(method, path, undefined, { raw: bytes, contentType }),
+    req<T>(method, path, undefined, { raw: bytes, contentType, timeoutMs: TRANSFER_TIMEOUT_MS }),
   /** GET bytes (needs auth header, so can't be a plain <img src>) */
-  getBytes: (path: string) => req<ArrayBuffer>('GET', path),
+  getBytes: (path: string) => req<ArrayBuffer>('GET', path, undefined, { timeoutMs: TRANSFER_TIMEOUT_MS }),
 };
 
 /** Fetch an authed image/audio and return an object URL (caller revokes when done). */

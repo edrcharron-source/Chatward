@@ -217,47 +217,47 @@ export function register(app: Express, ctx: Ctx): void {
   });
 
   app.post('/api/voice/token', ctx.requireAuth, async (req, res, next) => {
-    const userId = (req as AuthedRequest).userId;
-    const channelId = (req.body as { channelId?: unknown } | undefined)?.channelId;
-    if (typeof channelId !== 'string') { res.status(400).json({ error: 'channelId required' }); return; }
-
-    const serverId = ctx.serverIdForChannelMember(channelId, userId);
-    const channel = serverId ? ctx.getChannel(channelId) : null;
-    if (!channel) { res.status(404).json({ error: 'channel not found' }); return; }
-    if (channel.kind !== 'voice') { res.status(400).json({ error: 'not a voice channel' }); return; }
-
-    // Every device of an account uses the same LiveKit identity, and LiveKit drops the older session when a second one
-    // joins the same room. So a second device is refused while the first is still in the call. A slot held by this
-    // device itself is a leftover (for example a missed leave), so the device may take it again.
-    if (voiceChannelOf.get(userId) === channelId && heldByOtherDevice(userId, (req as AuthedRequest).deviceId)) {
-      res.status(409).json({ error: 'You are already in this call on another device. Leave the call there first.' });
-      return;
-    }
-    // A fresh token means the user is allowed in this room again, so stop clearing it for an earlier removal.
-    stopEviction(channelId, userId);
-    lastToken.set(`${channelId}:${userId}`, Date.now());
-
-    // Joining a channel implicitly leaves any other voice channel. The account may still hold that channel on another
-    // device. LiveKit keeps that device's session in the old room, so end it there and tell the account's sockets, so
-    // the other device hangs up instead of staying silently in the call.
-    const previous = voiceChannelOf.get(userId);
-    if (previous && previous !== channelId) {
-      removeFromRoom(ctx, previous, userId);
-      ctx.sendToUser(userId, { t: 'voice.moved', channelId: previous });
-    }
-    occupy(ctx, channelId, userId, (req as AuthedRequest).deviceId);
-    // The client sends its mute state with the join, so soundboard refuses a muted joiner from the first moment.
-    // Older clients send nothing here, which counts as unmuted, as before.
-    const body = (req.body ?? {}) as { muted?: unknown; deafened?: unknown };
-    selfState.set(userId, { muted: body.muted === true, deafened: body.deafened === true });
-
-    const at = new AccessToken(ctx.config.livekit.apiKey, ctx.config.livekit.apiSecret, {
-      identity: userId,
-      name: ctx.getUser(userId)?.displayName,
-      ttl: TOKEN_TTL,
-    });
-    at.addGrant({ roomJoin: true, room: channelId, canPublish: true, canSubscribe: true });
     try {
+      const userId = (req as AuthedRequest).userId;
+      const channelId = (req.body as { channelId?: unknown } | undefined)?.channelId;
+      if (typeof channelId !== 'string') { res.status(400).json({ error: 'channelId required' }); return; }
+
+      const serverId = ctx.serverIdForChannelMember(channelId, userId);
+      const channel = serverId ? ctx.getChannel(channelId) : null;
+      if (!channel) { res.status(404).json({ error: 'channel not found' }); return; }
+      if (channel.kind !== 'voice') { res.status(400).json({ error: 'not a voice channel' }); return; }
+
+      // Every device of an account uses the same LiveKit identity, and LiveKit drops the older session when a second one
+      // joins the same room. So a second device is refused while the first is still in the call. A slot held by this
+      // device itself is a leftover (for example a missed leave), so the device may take it again.
+      if (voiceChannelOf.get(userId) === channelId && heldByOtherDevice(userId, (req as AuthedRequest).deviceId)) {
+        res.status(409).json({ error: 'You are already in this call on another device. Leave the call there first.' });
+        return;
+      }
+      // A fresh token means the user is allowed in this room again, so stop clearing it for an earlier removal.
+      stopEviction(channelId, userId);
+      lastToken.set(`${channelId}:${userId}`, Date.now());
+
+      // Joining a channel implicitly leaves any other voice channel. The account may still hold that channel on another
+      // device. LiveKit keeps that device's session in the old room, so end it there and tell the account's sockets, so
+      // the other device hangs up instead of staying silently in the call.
+      const previous = voiceChannelOf.get(userId);
+      if (previous && previous !== channelId) {
+        removeFromRoom(ctx, previous, userId);
+        ctx.sendToUser(userId, { t: 'voice.moved', channelId: previous });
+      }
+      occupy(ctx, channelId, userId, (req as AuthedRequest).deviceId);
+      // The client sends its mute state with the join, so soundboard refuses a muted joiner from the first moment.
+      // Older clients send nothing here, which counts as unmuted, as before.
+      const body = (req.body ?? {}) as { muted?: unknown; deafened?: unknown };
+      selfState.set(userId, { muted: body.muted === true, deafened: body.deafened === true });
+
+      const at = new AccessToken(ctx.config.livekit.apiKey, ctx.config.livekit.apiSecret, {
+        identity: userId,
+        name: ctx.getUser(userId)?.displayName,
+        ttl: TOKEN_TTL,
+      });
+      at.addGrant({ roomJoin: true, room: channelId, canPublish: true, canSubscribe: true });
       res.json({ url: ctx.config.livekit.url, token: await at.toJwt() });
     } catch (err) {
       next(err);
