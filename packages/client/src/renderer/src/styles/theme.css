@@ -1,21 +1,24 @@
+/* Chatward identity: teal accent, softer radii, slightly deeper surfaces. Same layout as before. */
 :root, :root[data-theme='dark'] {
-  --bg-0: #1e1f22; --bg-1: #2b2d31; --bg-2: #313338; --bg-3: #383a40; --bg-hover: #3f4147;
-  --text: #dbdee1; --text-muted: #949ba4; --text-strong: #f2f3f5;
-  --accent: #6c7bff; --accent-hover: #5865f2; --accent-text: #fff;
-  --danger: #f23f43; --ok: #23a55a; --warn: #f0b232; --border: #1a1b1e;
-  --shadow: 0 8px 24px rgba(0,0,0,.4); --radius: 10px;
+  --bg-0: #16181c; --bg-1: #1e2126; --bg-2: #24272d; --bg-3: #2c3037; --bg-hover: #32363e;
+  --text: #d7dce3; --text-muted: #8d95a3; --text-strong: #f4f6f8;
+  --accent: #34c9b4; --accent-hover: #2bb3a0; --accent-text: #062320;
+  --accent-tint: rgba(52,201,180,.14); --hover-tint: rgba(255,255,255,.035);
+  --danger: #f2566a; --ok: #3ccf8e; --warn: #f5b84a; --border: #101215;
+  --shadow: 0 10px 30px rgba(0,0,0,.35); --radius: 14px; --radius-sm: 10px;
 }
 :root[data-theme='light'] {
-  --bg-0: #e3e5e8; --bg-1: #f2f3f5; --bg-2: #ffffff; --bg-3: #ebedef; --bg-hover: #dfe1e5;
-  --text: #313338; --text-muted: #5c6068; --text-strong: #060607;
-  --accent: #5865f2; --accent-hover: #4752c4; --accent-text: #fff;
-  --danger: #d83c3e; --ok: #1a8f48; --warn: #b87500; --border: #d4d7dc;
-  --shadow: 0 8px 24px rgba(0,0,0,.15);
+  --bg-0: #e6e9ee; --bg-1: #f4f6f9; --bg-2: #ffffff; --bg-3: #eef1f5; --bg-hover: #e1e6ed;
+  --text: #2e3440; --text-muted: #626b7a; --text-strong: #0d1117;
+  --accent: #0f9d8c; --accent-hover: #0b8576; --accent-text: #ffffff;
+  --accent-tint: rgba(15,157,140,.12); --hover-tint: rgba(15,23,42,.04);
+  --danger: #d8394d; --ok: #17894f; --warn: #a86b00; --border: #d7dde5;
+  --shadow: 0 10px 30px rgba(15,23,42,.12);
 }
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; margin: 0; }
-body { background: var(--bg-2); color: var(--text); font: 14px/1.4 'Segoe UI', system-ui, sans-serif; overflow: hidden; }
-button { font: inherit; color: inherit; cursor: pointer; border: 0; border-radius: 8px; padding: 8px 14px; background: var(--bg-3); transition: background .12s; }
+body { background: var(--bg-2); color: var(--text); font: 14px/1.45 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; overflow: hidden; }
+button { font: inherit; color: inherit; cursor: pointer; border: 0; border-radius: var(--radius-sm); padding: 8px 14px; background: var(--bg-3); transition: background .12s; }
 button:hover { background: var(--bg-hover); }
 button.primary { background: var(--accent); color: var(--accent-text); }
 button.primary:hover { background: var(--accent-hover); }

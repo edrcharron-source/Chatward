@@ -31,7 +31,7 @@ export function App() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <DemoBanner />
-      <div style={{ flex: 1, minHeight: 0 }}>{token ? <Shell /> : <AuthScreen />}</div>
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>{token ? <Shell /> : <AuthScreen />}</div>
     </div>
   );
 }
@@ -108,7 +108,7 @@ function Shell() {
 
   if (!ready) return <div style={{ display: 'grid', placeItems: 'center', height: '100%' }} className="muted">Loading…</div>;
   return (
-    <div style={{ display: 'flex', height: '100%' }}>
+    <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
       <ServerSidebar onReload={loadServers} />
       <ChannelList onOpenSettings={() => setSettingsOpen(true)} onReload={loadServers} />
       <main style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>

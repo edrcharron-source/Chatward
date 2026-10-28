@@ -17,15 +17,15 @@
   padding: 0;
   display: grid;
   place-items: center;
-  border-radius: 24px;
+  border-radius: 16px;
   background: var(--bg-2);
   font-weight: 600;
   transition: border-radius .15s, background .15s;
   position: relative;
 }
 
-.cw-server-icon:hover,
-.cw-server-icon.active { border-radius: 14px; background: var(--accent); color: var(--accent-text); }
+.cw-server-icon:hover { border-radius: 12px; background: var(--accent-tint); color: var(--accent); }
+.cw-server-icon.active { border-radius: 12px; background: var(--accent); color: var(--accent-text); }
 .cw-server-icon.add { color: var(--ok); font-size: 22px; }
 .cw-server-icon.join { font-size: 18px; }
 .cw-server-icon:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -85,15 +85,16 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 8px;
-  border-radius: 6px;
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
   background: transparent;
   text-align: left;
   color: var(--text-muted);
 }
 
 .cw-channel:hover { background: var(--bg-hover); color: var(--text); }
-.cw-channel.active { background: var(--bg-hover); color: var(--text-strong); }
+.cw-channel.active { background: var(--accent-tint); color: var(--text-strong); }
+.cw-channel.active .cw-channel-icon { color: var(--accent); opacity: 1; }
 .cw-channel.unread:not(.active) { color: var(--text-strong); font-weight: 600; }
 .cw-channel-icon { width: 16px; text-align: center; opacity: .8; }
 .cw-channel-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -149,15 +150,15 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 5px 8px;
-  border-radius: 6px;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
   color: var(--text);
 }
 
 .cw-member:hover { background: var(--bg-hover); }
 .cw-member.offline { opacity: .5; }
 .cw-member-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cw-role { font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--accent); }
+.cw-role { font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--accent); background: var(--accent-tint); padding: 2px 7px; border-radius: 999px; }
 
 .cw-avatar-wrap { position: relative; flex: none; }
 .cw-dot {
