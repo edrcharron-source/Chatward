@@ -89,9 +89,13 @@ export function register(app: Express, ctx: Ctx): void {
       const id = newId();
       const tracked = req.query.tracked === '1' ? 1 : 0;
       if (!reserveUpload(id, userId, body.length, tracked)) {
-        const { used } = usedBytesFor.get(userId) as { used: number };
-        res.status(413).json({ error: storageFullMessage(used, uploadQuotaBytes) });
-        return;
+        // Space may be held by uploads whose messages are already gone. Sweep once and try again before refusing.
+        await sweep();
+        if (!reserveUpload(id, userId, body.length, tracked)) {
+          const { used } = usedBytesFor.get(userId) as { used: number };
+          res.status(413).json({ error: storageFullMessage(used, uploadQuotaBytes) });
+          return;
+        }
       }
       try {
         await fs.writeFile(filePathFor(id), body, { flag: 'wx', mode: 0o600 });
