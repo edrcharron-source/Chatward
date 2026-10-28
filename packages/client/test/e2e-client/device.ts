@@ -50,6 +50,22 @@ const handlers: Record<string, (args: any) => Promise<unknown>> = {
     return {};
   },
 
+  /** Posts bytes that are not a valid Commit, at this device's current epoch: what a member could send by mistake or on purpose. */
+  async junkCommit({ channelId, serverId }) {
+    const vault = JSON.parse(secureStoreContents.get('crypto.vault.v2') ?? '{}');
+    const { servers } = await api.get<{ servers: ServerBundle[] }>('/api/servers');
+    const bundle = servers.find((b) => b.server.id === serverId)!;
+    const members = bundle.members.flatMap((m) => m.devices.map((d) => d.deviceId));
+    await api.post(`/api/groups/${channelId}/commits`, {
+      deviceId: getDevice().deviceId,
+      epoch: vault.groups[channelId].epoch,
+      commit: Buffer.from([1, 2, 3, 4]).toString('base64'),
+      members,
+      welcomes: [],
+    });
+    return {};
+  },
+
   async kick({ serverId, userId }) {
     await api.del(`/api/servers/${serverId}/members/${userId}`);
     return {};

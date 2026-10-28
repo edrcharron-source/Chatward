@@ -49,6 +49,8 @@ export function register(app: Express, ctx: Ctx): void {
   const welcomesFor = db.prepare(
     'SELECT epoch, to_device_id, welcome FROM mls_welcomes WHERE group_id=? AND to_device_id IN (SELECT device_id FROM devices WHERE user_id=?) ORDER BY epoch');
   const groupDevices = db.prepare('SELECT device_id FROM mls_group_devices WHERE group_id=?');
+  const dropCommitsFrom = db.prepare('DELETE FROM mls_commits WHERE group_id=? AND epoch>=?');
+  const dropWelcomesAfter = db.prepare('DELETE FROM mls_welcomes WHERE group_id=? AND epoch>?');
 
   const devicesOwner = (deviceId: string): string =>
     (db.prepare('SELECT user_id FROM devices WHERE device_id=?').get(deviceId) as { user_id: string }).user_id;
@@ -186,6 +188,31 @@ export function register(app: Express, ctx: Ctx): void {
       epoch: current,
       commits: rows.map((r) => ({ epoch: r.epoch, senderDeviceId: r.sender_device_id, commit: r.commit_bytes })),
     });
+  });
+
+  // Drop a Commit that a member cannot apply, and every Commit after it, so the group can move on from `epoch`.
+  // The server cannot check MLS signatures, so a bad Commit is only found by the devices that try to apply it.
+  // The caller must be a member of the channel and name one of its own devices, and it keeps its own state.
+  app.post('/api/groups/:id/reset', ctx.requireAuth, (req: Request, res: Response) => {
+    const userId = (req as AuthedRequest).userId;
+    const ch = memberChannel(req.params.id, userId, res);
+    if (!ch) return;
+    const body = (req.body ?? {}) as { deviceId?: unknown; epoch?: unknown };
+    if (!requireOwnDevice(userId, body.deviceId, res)) return;
+    if (!isEpoch(body.epoch)) return void bad(res, 'invalid epoch');
+    const epoch = body.epoch;
+    const result = db.transaction(() => {
+      const current = (groupEpoch.get(ch.id) as { epoch: number } | undefined)?.epoch ?? 0;
+      if (epoch > current) return { ok: false as const, currentEpoch: current };
+      if (epoch < current) {
+        dropCommitsFrom.run(ch.id, epoch);
+        dropWelcomesAfter.run(ch.id, epoch);
+        upsertGroupEpoch.run(ch.id, epoch);
+      }
+      return { ok: true as const };
+    })();
+    if (!result.ok) return void res.status(409).json({ error: 'epoch is ahead of the group', currentEpoch: result.currentEpoch });
+    res.json({ epoch });
   });
 
   // Welcomes addressed to the caller's own devices. Only the target device can fetch its Welcome.

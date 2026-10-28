@@ -271,27 +271,41 @@ async function createGroup(channelId: string, members: Member[]): Promise<boolea
   return true;
 }
 
-/** Apply Commits we have not seen. A failure means we can no longer follow the group, usually because we were removed. */
+/**
+ * Apply Commits we have not seen. A Commit that will not apply is not ours to trust, and any member can post one, so we
+ * keep the last state we could apply and ask the server to drop that Commit. The group then moves on from its epoch.
+ */
 async function catchUp(channelId: string): Promise<boolean> {
   const stored = vault.groups[channelId];
   let state = groupOf(channelId)!;
   let epoch = stored.epoch;
   const res = await api.get<{ commits: { epoch: number; commit: string }[] }>(`/api/groups/${channelId}/commits?from=${epoch}`);
   if (res.commits.length === 0) return false;
-  try {
-    for (const c of res.commits) {
-      if (c.epoch !== epoch) break;
+  let stuck = false;
+  for (const c of res.commits) {
+    if (c.epoch !== epoch) break;
+    try {
       state = (await mls.receive(state, fromB64(c.commit))).state;
-      epoch += 1;
+    } catch {
+      stuck = true;
+      break;
     }
-  } catch {
-    delete vault.groups[channelId];
-    groupStates.delete(channelId);
-    return true;
+    epoch += 1;
   }
-  if (epoch === stored.epoch) return false;
-  await setGroup(channelId, state, epoch);
-  return true;
+  const moved = epoch !== stored.epoch;
+  if (moved) await setGroup(channelId, state, epoch);
+  if (stuck) await dropCommitsFrom(channelId, epoch);
+  return moved;
+}
+
+/** Ask the server to drop the Commit at `epoch` and everything after it. A failure here is logged, not fatal to sync. */
+async function dropCommitsFrom(channelId: string, epoch: number): Promise<void> {
+  const me = getDevice();
+  try {
+    await api.post(`/api/groups/${channelId}/reset`, { deviceId: me.deviceId, epoch });
+  } catch (err) {
+    console.warn(`Could not drop an unreadable commit in channel ${channelId}`, err);
+  }
 }
 
 /** Remove devices that left the server, then add devices that joined it. Each step is one Commit. */
