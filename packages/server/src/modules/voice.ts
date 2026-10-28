@@ -15,8 +15,9 @@ const TOKEN_TTL = '10m';
 // A dropped websocket does not end a call: LiveKit keeps the media flowing. Hold the voice slot this long so a
 // quick reconnect keeps it. Kicks and explicit leaves ignore this and still act at once.
 const VOICE_GRACE_MS = 30_000;
-// userId -> pending slot removal. deviceId is the device the timer waits on, or null when the slot is not tied to a device.
-const graceTimers = new Map<string, { deviceId: string | null; timer: ReturnType<typeof setTimeout> }>();
+// userId -> pending slot removal. channelId and deviceId identify the slot the timer was started for, so it never ends a
+// newer call. deviceId is null when the slot is not tied to a device.
+const graceTimers = new Map<string, { channelId: string; deviceId: string | null; timer: ReturnType<typeof setTimeout> }>();
 
 /** True if the user currently holds a voice slot in this channel. Used by soundboard. */
 export function isInVoiceChannel(channelId: string, userId: string): boolean {
@@ -129,6 +130,8 @@ export function clearVoiceChannel(ctx: Ctx, channelId: string): void {
 function leaveChannel(ctx: Ctx, channelId: string, userId: string): boolean {
   const set = occupants.get(channelId);
   if (!set?.has(userId)) return false;
+  // The slot is going away, so a grace timer started for it must not run later and touch whatever the account joins next.
+  cancelGrace(userId);
   set.delete(userId);
   if (set.size === 0) occupants.delete(channelId);
   voiceChannelOf.delete(userId);
@@ -155,11 +158,15 @@ export function register(app: Express, ctx: Ctx): void {
     const slotFree = slotDevice ? deviceId === slotDevice && !online.device : !online.user;
     if (!slotFree) return;
     cancelGrace(userId);
+    const channelId = voiceChannelOf.get(userId);
+    if (!channelId) return;
     const timer = setTimeout(() => {
       graceTimers.delete(userId);
+      // Only end the slot this timer was started for. If the account has since joined another call or device, leave it alone.
+      if (voiceChannelOf.get(userId) !== channelId || (voiceDeviceOf.get(userId) ?? null) !== slotDevice) return;
       leaveVoice(ctx, userId);
     }, VOICE_GRACE_MS);
-    graceTimers.set(userId, { deviceId: slotDevice, timer });
+    graceTimers.set(userId, { channelId, deviceId: slotDevice, timer });
   });
   // A reconnect cancels the grace only for the device it waits on. Another device connecting leaves it running.
   ctx.onConnect.push((userId, deviceId) => {
