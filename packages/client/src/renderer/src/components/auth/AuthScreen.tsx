@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { LIMITS, type User } from '@chatward/shared';
 import { api, ApiError } from '../../api/http';
 import { getDevice, initDevice } from '../../crypto';
+import { enterDemo } from '../../demo';
 import { useSession } from '../../state/session';
 import './auth.css';
 
@@ -101,6 +102,9 @@ export default function AuthScreen() {
 
         <button type="submit" className="primary cw-auth-submit" disabled={busy}>
           {busy ? 'Working…' : mode === 'login' ? 'Log in' : 'Create account'}
+        </button>
+        <button type="button" className="cw-auth-demo" disabled={busy} onClick={() => void enterDemo()}>
+          Try demo (offline, no server)
         </button>
       </form>
     </div>

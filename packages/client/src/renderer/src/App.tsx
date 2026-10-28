@@ -15,6 +15,7 @@ import ChatView from './components/chat/ChatView';
 import VoiceChannelView from './components/voice/VoiceChannelView';
 import { WatchPartyPanel } from './components/watchparty';
 import SettingsModal from './components/settings/SettingsModal';
+import DemoBanner from './demo/DemoBanner';
 
 export function App() {
   const token = useSession((s) => s.token);
@@ -27,7 +28,12 @@ export function App() {
     mq.addEventListener('change', h);
     return () => mq.removeEventListener('change', h);
   }, [theme]);
-  return token ? <Shell /> : <AuthScreen />;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <DemoBanner />
+      <div style={{ flex: 1, minHeight: 0 }}>{token ? <Shell /> : <AuthScreen />}</div>
+    </div>
+  );
 }
 
 function Shell() {

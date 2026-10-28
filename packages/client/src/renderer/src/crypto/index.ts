@@ -2,6 +2,8 @@
 // Threat model and key lifecycle: see ./README.md.
 import type { DeviceKeys, KeyEnvelope, Message, MessagePayload } from '@chatward/shared';
 import { api } from '../api/http';
+import { isDemo } from '../demo';
+import { demoDecode, demoEncode } from '../demo/codec';
 import { useSession, type ServerBundle } from '../state/session';
 import { openEnvelope, sealEnvelope } from './envelope';
 import {
@@ -93,7 +95,7 @@ export function getDevice(): DeviceKeys {
 /** Ensure every text channel has a key and this device has envelopes; create+wrap keys for all member devices when we hold/create the key. Idempotent; safe to call often. */
 export function syncChannelKeys(servers: ServerBundle[]): Promise<void> {
   return serial(async () => {
-    if (!device || !privates) return;
+    if (isDemo() || !device || !privates) return;
     let changed = false;
     for (const bundle of servers) {
       const devices = bundle.members.flatMap((m) => m.devices);
@@ -178,6 +180,7 @@ async function wrapFor(channelId: string, version: number, key: Bytes, targets: 
 /** Process an incoming key.envelope frame. */
 export function handleEnvelope(env: KeyEnvelope): Promise<void> {
   return serial(async () => {
+    if (isDemo()) return;
     if (await acceptEnvelope(env)) {
       await persistVault();
       notify();
@@ -281,6 +284,7 @@ function notify(): void {
 }
 
 export async function encryptPayload(channelId: string, authorId: string, payload: MessagePayload): Promise<{ ciphertext: string; keyVersion: number }> {
+  if (isDemo()) return { ciphertext: demoEncode(payload), keyVersion: 1 };
   const keyVersion = localLatest(channelId);
   const key = keyVersion > 0 ? aesKeyFor(channelId, keyVersion) : null;
   if (!key) throw new Error('No channel key yet');
@@ -290,6 +294,7 @@ export async function encryptPayload(channelId: string, authorId: string, payloa
 
 /** null if key not available (yet) or authentication fails */
 export async function decryptMessage(msg: Message): Promise<MessagePayload | null> {
+  if (isDemo()) return demoDecode(msg.ciphertext);
   try {
     const key = aesKeyFor(msg.channelId, msg.keyVersion);
     if (!key) return null;
@@ -308,6 +313,7 @@ export function onKeysChanged(cb: () => void): () => void {
 }
 
 export async function encryptBlob(bytes: Uint8Array): Promise<{ blob: Uint8Array; key: string; iv: string }> {
+  if (isDemo()) return { blob: bytes, key: '', iv: '' };
   const raw = generateAesKeyBytes();
   const iv = randomBytes(IV_BYTES);
   const blob = await aesEncryptWith(await importAesKey(raw), iv, new Uint8Array(bytes));
@@ -315,6 +321,7 @@ export async function encryptBlob(bytes: Uint8Array): Promise<{ blob: Uint8Array
 }
 
 export async function decryptBlob(blob: Uint8Array, key: string, iv: string): Promise<Uint8Array> {
+  if (isDemo()) return blob;
   return aesDecryptWith(await importAesKey(fromB64(key)), fromB64(iv), new Uint8Array(blob));
 }
 
