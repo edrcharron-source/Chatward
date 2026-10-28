@@ -39,6 +39,8 @@ interface Vault {
   trusted: Record<string, string>;
   /** userId -> the contact's new safety number and name, while it differs from the one we trusted. */
   changed: Record<string, { name: string; number: string }>;
+  /** Set while the server still holds packages this client cannot use and the replace request has not succeeded yet. */
+  replacePending?: boolean;
 }
 
 // Before accounts had their own keys, the PC's single device and vault lived under these two keys.
@@ -330,31 +332,35 @@ export function acceptContactKeys(userId: string): Promise<void> {
 }
 
 /**
- * True if any package in our pool fails the check that it belongs to this device. Packages made by v0.1.9 clients do:
+ * True if a package in our pool passes the check that it belongs to this device. Packages made by v0.1.9 clients do not:
  * they carry a plain device-id credential, and peers skip them, so they can never be added to anything.
  */
-async function poolHasUnverified(me: DeviceKeys): Promise<boolean> {
-  for (const kp of Object.keys(vault.pool)) {
-    try {
-      if (await mls.verifyKeyPackage(mls.decodeKeyPackage(kp), me)) continue;
-    } catch {
-      // A package that does not even decode is unusable, so it counts as unverified.
-    }
-    return true;
+async function poolEntryVerified(kp: string, me: DeviceKeys): Promise<boolean> {
+  try {
+    return await mls.verifyKeyPackage(mls.decodeKeyPackage(kp), me);
+  } catch {
+    // A package that does not even decode is unusable, so it counts as unverified.
+    return false;
   }
-  return false;
 }
 
 /**
  * Keep a supply of single-use KeyPackages on the server, plus one last-resort package that the server agrees is current.
  * Peers can only claim what the server holds, so a local last-resort package the server no longer has is dropped.
- * If any local package fails verification, the whole pool is dropped and the server's unclaimed packages are replaced.
+ * If any local package fails verification, the unverified packages are dropped and the server's unclaimed packages are replaced.
+ * The replace stays pending in the vault until the server accepts it, so a lost request is retried on the next run.
+ * Verified packages are kept even on a replace: peers may already have claimed them, and their Welcomes need the private parts.
  */
 async function ensureKeyPool(): Promise<boolean> {
   const me = getDevice();
   const count = await api.get<{ available: number; lastResort: string | null }>(`/api/devices/${encodeURIComponent(me.deviceId)}/keypackages/count`);
-  const replace = await poolHasUnverified(me);
-  if (replace) vault.pool = {};
+  let replace = vault.replacePending === true;
+  for (const kp of Object.keys(vault.pool)) {
+    if (await poolEntryVerified(kp, me)) continue;
+    delete vault.pool[kp];
+    replace = true;
+  }
+  if (replace) vault.replacePending = true;
   let pruned = false;
   let serverHasLastResort = false;
   for (const [kp, entry] of Object.entries(vault.pool)) {
@@ -375,11 +381,15 @@ async function ensureKeyPool(): Promise<boolean> {
   // Save the private parts before the server can hand these packages to a peer. If the upload reply is lost, the server
   // may still hold them, and a Welcome made for one of them must find its private part here.
   for (const m of made) vault.pool[m.kp] = mls.storeKeyPackage(m.keys, m.kp, m.lastResort);
-  if (made.length > 0) await persistVault();
+  if (replace || made.length > 0) await persistVault();
   await api.post(replace ? '/api/devices/keypackages/replace' : '/api/devices/keypackages', {
     deviceId: me.deviceId,
     keyPackages: made.map((m) => ({ kp: m.kp, lastResort: m.lastResort })),
   });
+  if (replace) {
+    vault.replacePending = false;
+    await persistVault();
+  }
   return replace || pruned || made.length > 0;
 }
 
