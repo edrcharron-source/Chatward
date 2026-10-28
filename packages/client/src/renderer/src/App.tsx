@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { Channel, Member } from '@chatward/shared';
 import { api } from './api/http';
-import { connectWs, disconnectWs, onFrame } from './api/ws';
+import { connectWs, disconnectWs, onFrame, sendFrame } from './api/ws';
 import { useSession, type ServerBundle } from './state/session';
 import { useSettings, applyTheme } from './state/settings';
 import { useVoice, rekeyActiveCall } from './state/voice';
@@ -102,7 +102,10 @@ function Shell() {
           case 'ready': {
             // Every (re)connect: rebuild what may have changed while the socket was down.
             st.setUser(f.user);
-            useSession.setState({ presence: f.presence });
+            // The server counts every new connection as online, so put back the status we picked.
+            const mine = st.myStatus;
+            useSession.setState({ presence: { ...f.presence, [f.user.id]: mine } });
+            if (mine !== 'online') sendFrame({ t: 'presence', status: mine });
             if (seenReady) loadServers().catch((e) => console.error('Could not refresh after reconnect', e));
             seenReady = true;
             break;
