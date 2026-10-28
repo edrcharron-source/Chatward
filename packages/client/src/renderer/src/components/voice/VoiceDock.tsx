@@ -1,3 +1,4 @@
+import { DEMO_URL } from '../../demo';
 import { useSession } from '../../state/session';
 import { useVoice } from '../../state/voice';
 import ShareControls from './ShareControls';
@@ -10,6 +11,9 @@ export default function VoiceDock() {
   const deafened = useVoice((s) => s.deafened);
   const toggleMute = useVoice((s) => s.toggleMute);
   const toggleDeafen = useVoice((s) => s.toggleDeafen);
+  const demo = useSession((s) => s.serverUrl === DEMO_URL);
+  const demoLoopback = useVoice((s) => s.demoLoopback);
+  const setDemoLoopback = useVoice((s) => s.setDemoLoopback);
   const leave = useVoice((s) => s.leave);
   const channelName = useSession((s) => s.servers.flatMap((b) => b.channels).find((c) => c.id === channelId)?.name);
 
@@ -49,6 +53,15 @@ export default function VoiceDock() {
         >
           {deafened ? 'Undeafen' : 'Deafen'}
         </button>
+        {demo && (
+          <button
+            aria-pressed={demoLoopback}
+            title="Hear your own microphone through the speakers (demo only)"
+            onClick={() => setDemoLoopback(!demoLoopback)}
+          >
+            {demoLoopback ? 'Loopback on' : 'Loopback off'}
+          </button>
+        )}
         <ShareControls />
         <button className="danger" onClick={() => void leave()}>Leave</button>
       </div>
