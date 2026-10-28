@@ -5,7 +5,7 @@ import { connectWs, disconnectWs, onFrame } from './api/ws';
 import { useSession, type ServerBundle } from './state/session';
 import { useSettings, applyTheme } from './state/settings';
 import { useVoice } from './state/voice';
-import { initDevice, syncChannelKeys, handleEnvelope } from './crypto';
+import { initDevice, syncChannelKeys, handleEnvelope, handleMemberLeave } from './crypto';
 import { installNotifications } from './notify/notify';
 import AuthScreen from './components/auth/AuthScreen';
 import ServerSidebar from './components/servers/ServerSidebar';
@@ -71,7 +71,7 @@ function Shell() {
             if (f.userId === st.user?.id) { st.setServers(st.servers.filter((b) => b.server.id !== f.serverId)); break; }
             const b = st.servers.find((x) => x.server.id === f.serverId);
             if (b) st.upsertServer({ ...b, members: b.members.filter((m) => m.user.id !== f.userId) });
-            void syncChannelKeys(useSession.getState().servers);
+            void handleMemberLeave(f.serverId, f.userId, useSession.getState().servers);
             break;
           }
           case 'member.devices': {
