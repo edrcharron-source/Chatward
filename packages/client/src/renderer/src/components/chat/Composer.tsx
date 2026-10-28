@@ -28,11 +28,16 @@ export default function Composer({ channelId, channelName, onSent }: Props) {
     if (!canSend) return;
     setBusy(true);
     setError(null);
+    const sentText = text;
+    const sentFiles = files;
+    const sentGif = gif;
     try {
-      await sendMessage(channelId, { text: text.trim(), files, gif: gif ?? undefined });
-      setDraft(channelId, '');
-      setFiles([]);
-      setGif(null);
+      await sendMessage(channelId, { text: sentText.trim(), files: sentFiles, gif: sentGif ?? undefined });
+      // Only remove what was sent. Anything typed, attached or picked while the send was in flight stays.
+      const latest = useChat.getState().drafts[channelId] ?? '';
+      if (latest.startsWith(sentText)) setDraft(channelId, latest.slice(sentText.length));
+      setFiles((cur) => cur.filter((f) => !sentFiles.includes(f)));
+      setGif((cur) => (cur === sentGif ? null : cur));
       onSent();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not send');
