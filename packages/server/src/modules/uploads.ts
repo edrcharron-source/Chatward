@@ -13,6 +13,12 @@ const SWEEP_INTERVAL_MS = 60 * 60 * 1000;
 // Binary route only: the global parser is JSON with a small limit.
 const rawBody = express.raw({ type: '*/*', limit: LIMITS.UPLOAD_MAX_BYTES });
 
+const MB = 1024 * 1024;
+/** The message people see when their upload space is used up. Plain words, and it says who can change it. */
+const storageFullMessage = (usedBytes: number, quotaBytes: number) =>
+  `Upload space is full: you have ${Math.round(usedBytes / MB)} MB of ${Math.round(quotaBytes / MB)} MB used on this server. ` +
+  'Ask the server owner to free up space or raise UPLOAD_QUOTA_MB.';
+
 /** Wraps express.raw so an oversized body answers 413 instead of reaching the 500 handler. */
 const readRawBody = (req: Request, res: Response, next: NextFunction) =>
   rawBody(req, res, (err?: unknown) => {
@@ -28,6 +34,17 @@ export function register(app: Express, ctx: Ctx): void {
   const { db } = ctx;
 
   const insertUpload = db.prepare('INSERT INTO uploads (id, owner_id, size, created_at, tracked) VALUES (?,?,?,?,?)');
+  const deleteUpload = db.prepare('DELETE FROM uploads WHERE id=?');
+  const usedBytesFor = db.prepare('SELECT COALESCE(SUM(size), 0) AS used FROM uploads WHERE owner_id=?');
+  const { uploadQuotaBytes } = ctx.config;
+  // Checks the quota and records the upload in one synchronous step, so two uploads from the same person
+  // arriving together cannot both squeeze under the limit. Returns false when the upload would go over.
+  const reserveUpload = db.transaction((id: string, userId: string, size: number, tracked: number): boolean => {
+    const { used } = usedBytesFor.get(userId) as { used: number };
+    if (uploadQuotaBytes > 0 && used + size > uploadQuotaBytes) return false;
+    insertUpload.run(id, userId, size, Date.now(), tracked);
+    return true;
+  });
   // The server an upload belongs to is the one its message was posted in. Unattached uploads have none.
   const findUpload = db.prepare(`
     SELECT u.owner_id, u.tracked, c.server_id FROM uploads u
@@ -71,8 +88,18 @@ export function register(app: Express, ctx: Ctx): void {
       }
       const id = newId();
       const tracked = req.query.tracked === '1' ? 1 : 0;
-      await fs.writeFile(filePathFor(id), body, { flag: 'wx', mode: 0o600 });
-      insertUpload.run(id, userId, body.length, Date.now(), tracked);
+      if (!reserveUpload(id, userId, body.length, tracked)) {
+        const { used } = usedBytesFor.get(userId) as { used: number };
+        res.status(413).json({ error: storageFullMessage(used, uploadQuotaBytes) });
+        return;
+      }
+      try {
+        await fs.writeFile(filePathFor(id), body, { flag: 'wx', mode: 0o600 });
+      } catch (err) {
+        // Give the space back so a failed write does not count against the person's quota.
+        deleteUpload.run(id);
+        throw err;
+      }
       res.status(201).json({ uploadId: id });
     } catch (err) {
       next(err);

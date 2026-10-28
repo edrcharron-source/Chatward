@@ -36,6 +36,7 @@ services:
       NODE_ENV: production
       TRUST_PROXY: 1   # Caddy is in front of this server, so it sends the real client IP in X-Forwarded-For
       KLIPY_API_KEY: ${KLIPY_API_KEY:-}
+      UPLOAD_QUOTA_MB: ${UPLOAD_QUOTA_MB:-1024}   # upload space per person, in MB. 0 = no limit
     volumes: ["chatward-data:/data", "./updates:/updates:ro"]
     expose: ["3000"]
     restart: unless-stopped

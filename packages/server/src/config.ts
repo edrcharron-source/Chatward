@@ -33,12 +33,24 @@ function livekitKeys(): { apiKey: string; apiSecret: string } {
   return { apiKey, apiSecret };
 }
 
+/** Per-person upload quota. 1 GB each keeps seven people well inside the Lightsail disk. */
+function uploadQuotaBytes(): number {
+  const raw = process.env.UPLOAD_QUOTA_MB ?? '1024';
+  const mb = Number(raw);
+  if (raw.trim() === '' || !Number.isFinite(mb) || mb < 0) {
+    throw new Error('UPLOAD_QUOTA_MB must be a number of megabytes (0 turns the limit off).');
+  }
+  return Math.round(mb * 1024 * 1024);
+}
+
 export const config = {
   port: Number(process.env.PORT ?? 3000),
   host: process.env.HOST ?? '0.0.0.0',
   dataDir,
   dbPath: path.join(dataDir, 'chatward.db'),
   uploadsDir: path.resolve(process.env.UPLOADS_DIR ?? path.join(dataDir, 'uploads')),
+  /** Total upload storage each person may keep, in bytes. 0 turns the limit off. Set UPLOAD_QUOTA_MB to change it. */
+  uploadQuotaBytes: uploadQuotaBytes(),
   /** Desktop installer, latest.yml and blockmap, served at /updates for the client auto-updater. */
   updatesDir: path.resolve(process.env.UPDATES_DIR ?? path.join(dataDir, 'updates')),
   /** Set by the update script from the installed release tag. */
