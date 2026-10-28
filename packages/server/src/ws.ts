@@ -35,7 +35,7 @@ export function attachWs(http: HttpServer, ctx: Ctx) {
       set.add(ws);
       deviceBySocket.set(ws, deviceId);
       statusByUser.set(userId, 'online');
-      for (const cb of ctx.onConnect) cb(userId);
+      for (const cb of ctx.onConnect) cb(userId, deviceId);
       send(ws, { t: 'ready', user: ctx.getUser(userId)!, presence: presenceFor(userId) });
       sendPresenceSnapshot(ws, userId);
       replayNewDeviceAlerts(ws, userId, deviceId);
@@ -53,7 +53,12 @@ export function attachWs(http: HttpServer, ctx: Ctx) {
       ws.on('close', () => {
         markDeviceSeen(deviceId);
         set!.delete(ws);
-        if (set!.size === 0) { socketsByUser.delete(userId); statusByUser.delete(userId); announce(userId, 'offline'); for (const cb of ctx.onDisconnect) cb(userId); }
+        if (set!.size === 0) { socketsByUser.delete(userId); statusByUser.delete(userId); announce(userId, 'offline'); }
+        const online = {
+          device: [...set!].some((other) => deviceBySocket.get(other) === deviceId),
+          user: set!.size > 0,
+        };
+        for (const cb of ctx.onDisconnect) cb(userId, deviceId, online);
       });
     });
   });
