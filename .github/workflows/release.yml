@@ -15,6 +15,7 @@ jobs:
       - run: npm ci
       - name: Set app version from the release tag
         env: { TAG: '${{ inputs.tag }}' }
+        shell: bash
         run: npm version "${TAG#v}" --no-git-tag-version -w @chatward/client
       - run: npm run build -w @chatward/shared
       - run: npm run dist:win
