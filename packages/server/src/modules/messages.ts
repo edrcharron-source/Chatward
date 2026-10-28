@@ -72,6 +72,8 @@ export function register(app: Express, ctx: Ctx): void {
     'SELECT * FROM messages WHERE channel_id=? ORDER BY id DESC LIMIT ?');
   const historyBefore = db.prepare(
     'SELECT * FROM messages WHERE channel_id=? AND id<? ORDER BY id DESC LIMIT ?');
+  const historyAfter = db.prepare(
+    'SELECT * FROM messages WHERE channel_id=? AND id>? ORDER BY id ASC LIMIT ?');
   const insertMessage = db.prepare(
     'INSERT INTO messages (id, channel_id, author_id, created_at, key_version, ciphertext) VALUES (?,?,?,?,?,?)');
   // Only uploads the caller made for this purpose, and not already attached to another message.
@@ -123,9 +125,16 @@ export function register(app: Express, ctx: Ctx): void {
     const userId = (req as AuthedRequest).userId;
     const ch = textChannelFor(userId, req.params.id, res);
     if (!ch) return;
-    const { before } = req.query;
+    const { before, after } = req.query;
     if (before !== undefined && (typeof before !== 'string' || !ID.test(before))) return void bad(res, 'invalid before');
+    if (after !== undefined && (typeof after !== 'string' || !ID.test(after))) return void bad(res, 'invalid after');
+    if (before !== undefined && after !== undefined) return void bad(res, 'use before or after, not both');
     const limit = parseLimit(req.query.limit);
+    // `after` pages forward, oldest first, so a client can walk from what it holds up to the newest message.
+    if (typeof after === 'string') {
+      const rows = historyAfter.all(ch.id, after, limit) as MessageRow[];
+      return void res.json({ messages: rows.map(toMessage) });
+    }
     const rows = (typeof before === 'string'
       ? historyBefore.all(ch.id, before, limit)
       : historyLatest.all(ch.id, limit)) as MessageRow[];
