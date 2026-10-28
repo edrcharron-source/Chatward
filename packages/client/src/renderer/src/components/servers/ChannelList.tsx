@@ -5,6 +5,7 @@ import { useSession } from '../../state/session';
 import { useVoice } from '../../state/voice';
 import VoiceDock from '../voice/VoiceDock';
 import Avatar from './Avatar';
+import ChannelSettingsDialog from './ChannelSettingsDialog';
 import Dialog from './Dialog';
 import { errorText, isAdmin } from './util';
 import './servers.css';
@@ -22,6 +23,7 @@ export default function ChannelList({ onOpenSettings, onReload }: { onOpenSettin
   const speaking = useVoice((s) => s.speaking);
   const [dialog, setDialog] = useState<DialogKind>(null);
   const [voiceError, setVoiceError] = useState<string | null>(null);
+  const [settingsChannel, setSettingsChannel] = useState<Channel | null>(null);
 
   const bundle = servers.find((b) => b.server.id === activeServerId);
   const admin = isAdmin(bundle?.members.find((m) => m.user.id === user?.id));
@@ -99,7 +101,7 @@ export default function ChannelList({ onOpenSettings, onReload }: { onOpenSettin
                 const active = c.id === activeChannelId;
                 const inCall = c.id === joinedVoiceId;
                 return (
-                  <div key={c.id}>
+                  <div key={c.id} className="cw-voice-row">
                     <button
                       type="button"
                       className={`cw-channel${active ? ' active' : ''}`}
@@ -110,6 +112,9 @@ export default function ChannelList({ onOpenSettings, onReload }: { onOpenSettin
                       <span className="cw-channel-name">{c.name}</span>
                       {inCall && <span className="cw-here">Connected</span>}
                     </button>
+                    {admin && (
+                      <button type="button" className="icon cw-channel-gear" title={`${c.name} settings`} aria-label={`${c.name} settings`} onClick={() => setSettingsChannel(c)}>⚙</button>
+                    )}
                     {occupants.length > 0 && (
                       <ul className="cw-occupants" aria-label={`In ${c.name}`}>
                         {occupants.map((u) => (
@@ -143,6 +148,9 @@ export default function ChannelList({ onOpenSettings, onReload }: { onOpenSettin
 
       {dialog === 'channel' && bundle && (
         <CreateChannelDialog serverId={bundle.server.id} onClose={() => setDialog(null)} onReload={onReload} />
+      )}
+      {settingsChannel && (
+        <ChannelSettingsDialog channel={settingsChannel} onClose={() => setSettingsChannel(null)} onReload={onReload} />
       )}
       {dialog === 'invite' && bundle && (
         <InviteDialog serverId={bundle.server.id} onClose={() => setDialog(null)} />
