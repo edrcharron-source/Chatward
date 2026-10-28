@@ -21,10 +21,22 @@ import { register as watchparty } from './modules/watchparty.js';
 const db = openDb();
 const { signToken, verifyToken, requireAuth } = makeAuth(db);
 
-type UserRow = { id: string; username: string; display_name: string; avatar_path: string | null };
+type UserRow = {
+  id: string; username: string; display_name: string; avatar_path: string | null; created_at: number;
+  bio: string; pronouns: string; accent_color: string | null; banner_color: string | null; banner_path: string | null;
+};
+const USER_COLUMNS = `id, username, display_name, avatar_path, created_at, bio, pronouns, accent_color, banner_color, banner_path`;
 const toUser = (r: UserRow): User => ({
   id: r.id, username: r.username, displayName: r.display_name,
   avatarUrl: r.avatar_path ? `/api/avatars/${r.id}` : null,
+  profile: {
+    bio: r.bio,
+    pronouns: r.pronouns,
+    accentColor: r.accent_color,
+    bannerColor: r.banner_color,
+    bannerUrl: r.banner_path ? `/api/banners/${r.id}` : null,
+    createdAt: r.created_at,
+  },
 });
 
 const ctx: Ctx = {
@@ -33,7 +45,7 @@ const ctx: Ctx = {
   sendToUser: () => {},
   onDisconnect: [],
   getUser: (id) => {
-    const r = db.prepare('SELECT id, username, display_name, avatar_path FROM users WHERE id=?').get(id) as UserRow | undefined;
+    const r = db.prepare(`SELECT ${USER_COLUMNS} FROM users WHERE id=?`).get(id) as UserRow | undefined;
     return r ? toUser(r) : null;
   },
   getDevices: (userId) =>

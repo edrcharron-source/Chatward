@@ -11,16 +11,31 @@ export const LIMITS = {
   SOUND_MAX_BYTES: 1024 * 1024,
   SOUND_MAX_SECONDS: 10,
   HISTORY_PAGE: 50,
+  BIO_MAX: 190,
+  PRONOUNS_MAX: 40,
+  BANNER_MAX_BYTES: 1024 * 1024,
 } as const;
 
 export const VOICE_BITRATES_KBPS = [8, 16, 32, 64, 96, 128] as const;
 export const DEFAULT_VOICE_BITRATE_KBPS = 64;
+
+/** Public profile fields, shown in the profile card. Colors are #rrggbb or null. */
+export interface UserProfile {
+  bio: string;
+  pronouns: string;
+  accentColor: string | null;
+  /** Used behind the banner, or as the banner itself when there is no banner image. */
+  bannerColor: string | null;
+  bannerUrl: string | null; // e.g. /api/banners/<id>
+  createdAt: number; // ms epoch, shown as "member since"
+}
 
 export interface User {
   id: string;
   username: string;
   displayName: string;
   avatarUrl: string | null; // e.g. /api/avatars/<id>
+  profile: UserProfile;
 }
 
 /** A device's public keys (base64, raw). Server only relays these. */

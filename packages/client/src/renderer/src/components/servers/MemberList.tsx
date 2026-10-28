@@ -2,6 +2,7 @@ import type { Member } from '@chatward/shared';
 import { useSession } from '../../state/session';
 import Avatar from './Avatar';
 import './servers.css';
+import ProfileTrigger from '../profile/ProfileTrigger';
 
 type Presence = 'online' | 'idle' | 'dnd' | 'offline';
 
@@ -31,11 +32,13 @@ function Group({ title, list, statusOf }: { title: string; list: Member[]; statu
           const status = statusOf(m);
           return (
             <li key={m.user.id} className={`cw-member${status === 'offline' ? ' offline' : ''}`}>
-              <div className="cw-avatar-wrap">
-                <Avatar user={m.user} size={32} />
-                <span className={`cw-dot ${status}`} aria-label={status} />
-              </div>
-              <span className="cw-member-name">{m.user.displayName}</span>
+              <ProfileTrigger user={m.user} className="cw-member-profile">
+                <span className="cw-avatar-wrap">
+                  <Avatar user={m.user} size={32} />
+                  <span className={`cw-dot ${status}`} aria-label={status} />
+                </span>
+                <span className="cw-member-name">{m.user.displayName}</span>
+              </ProfileTrigger>
               {m.role !== 'member' && <span className="cw-role">{m.role}</span>}
             </li>
           );

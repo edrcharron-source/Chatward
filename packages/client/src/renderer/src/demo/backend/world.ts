@@ -21,17 +21,26 @@ export const YOU_ID = 'demo-you';
 export const SERVER_ID = 'demo-srv';
 const HOUR = 3_600_000;
 
+const DEMO_EPOCH = Date.UTC(2025, 2, 14);
+
+// Profile seeds: bio, pronouns and colors make the profile cards look different from each other.
 const BOT_SEEDS = [
-  { id: 'demo-avery', name: 'Avery', hue: 200 },
-  { id: 'demo-blake', name: 'Blake', hue: 320 },
-  { id: 'demo-casey', name: 'Casey', hue: 40 },
-  { id: 'demo-dev', name: 'Dev', hue: 150 },
+  { id: 'demo-avery', name: 'Avery', hue: 200, profile: { bio: 'Keeps the playlist. Will not stop talking about it.', pronouns: 'she/her', accentColor: '#4aa3ff', bannerColor: '#1d3b5c' } },
+  { id: 'demo-blake', name: 'Blake', hue: 320, profile: { bio: 'Night owl. Speedrunner in training.', pronouns: 'he/him', accentColor: '#e0588a', bannerColor: '#5c1d3b' } },
+  { id: 'demo-casey', name: 'Casey', hue: 40, profile: { bio: '', pronouns: '', accentColor: '#e0a33c', bannerColor: null } },
+  { id: 'demo-dev', name: 'Dev', hue: 150, profile: { bio: 'Builds things at 2am. Ask me about the soundboard.', pronouns: 'they/them', accentColor: '#3cc27a', bannerColor: '#1d5c3b' } },
 ];
 
 export function createWorld(): World {
-  const you: User = { id: YOU_ID, username: 'you', displayName: 'You', avatarUrl: `/api/avatars/${YOU_ID}` };
+  const you: User = {
+    id: YOU_ID, username: 'you', displayName: 'You', avatarUrl: `/api/avatars/${YOU_ID}`,
+    profile: { bio: 'Trying out Chatward.', pronouns: 'they/them', accentColor: '#34c9b4', bannerColor: '#34c9b4', bannerUrl: null, createdAt: DEMO_EPOCH },
+  };
   const bots = BOT_SEEDS.map((b) => ({
-    user: { id: b.id, username: b.name.toLowerCase(), displayName: b.name, avatarUrl: `/api/avatars/${b.id}` },
+    user: {
+      id: b.id, username: b.name.toLowerCase(), displayName: b.name, avatarUrl: `/api/avatars/${b.id}`,
+      profile: { ...b.profile, bannerUrl: null, createdAt: DEMO_EPOCH },
+    },
     hue: b.hue,
   }));
   const server: Server = { id: SERVER_ID, name: 'Demo Squad', ownerId: YOU_ID };

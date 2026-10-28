@@ -7,6 +7,7 @@ import { demoVoice } from '../../demo/voice';
 import { useSession } from '../../state/session';
 import { useSettings } from '../../state/settings';
 import { useVoice } from '../../state/voice';
+import ProfileTrigger from '../profile/ProfileTrigger';
 
 const NOBODY: string[] = [];
 
@@ -135,7 +136,9 @@ function Tile({ user, joined, local, micOff, speaking, screen, video, volume = 1
       >
         {video
           ? <VideoView feed={video} mirror={local && !screen} />
-          : <Avatar user={user} size={64} />}
+          : user
+            ? <ProfileTrigger user={user}><Avatar user={user} size={64} /></ProfileTrigger>
+            : <Avatar user={user} size={64} />}
         <div style={{ position: 'absolute', left: 8, bottom: 6, fontSize: 12, color: '#fff', textShadow: '0 1px 2px #000' }}>
           {name}{local ? ' (you)' : ''}{screen ? ' · screen' : ''}{micOff && !screen ? ' · muted' : ''}
         </div>

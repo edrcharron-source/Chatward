@@ -130,6 +130,21 @@ function serverGuard(id: string) {
   if (id !== SERVER_ID) throw new HttpError(404, 'server not found');
 }
 
+/** Mirrors the server's profile text rules, so demo and real mode reject the same input. */
+function demoText(v: unknown, max: number, multiline: boolean): string {
+  if (typeof v !== 'string') throw new HttpError(400, 'invalid text');
+  const s = v.trim();
+  const control = multiline ? /[\u0000-\u0009\u000b-\u001f\u007f]/ : /[\u0000-\u001f\u007f]/;
+  if (s.length > max || control.test(s)) throw new HttpError(400, 'invalid text');
+  return s;
+}
+
+function demoColor(v: unknown): string | null {
+  if (v === null || v === '') return null;
+  if (typeof v !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(v)) throw new HttpError(400, 'invalid color');
+  return v.toLowerCase();
+}
+
 function str(v: unknown, field: string, max = 200): string {
   if (typeof v !== 'string' || v.trim() === '' || v.length > max) throw new HttpError(400, `invalid ${field}`);
   return v.trim();
@@ -138,11 +153,40 @@ function str(v: unknown, field: string, max = 200): string {
 on('POST', /^\/api\/auth\/(login|register)$/, () => json({ token: DEMO_TOKEN, user: world.you }));
 on('GET', /^\/api\/me$/, () => json({ user: world.you }));
 on('PATCH', /^\/api\/me$/, (r) => {
-  const name = str((r.body as { displayName?: unknown })?.displayName, 'displayName', 48);
-  world.you = { ...world.you, displayName: name };
+  const body = (r.body ?? {}) as Record<string, unknown>;
+  const name = body.displayName === undefined ? world.you.displayName : str(body.displayName, 'displayName', 48);
+  const p = world.you.profile;
+  const profile = {
+    ...p,
+    bio: body.bio === undefined ? p.bio : demoText(body.bio, 190, true),
+    pronouns: body.pronouns === undefined ? p.pronouns : demoText(body.pronouns, 40, false),
+    accentColor: body.accentColor === undefined ? p.accentColor : demoColor(body.accentColor),
+    bannerColor: body.bannerColor === undefined ? p.bannerColor : demoColor(body.bannerColor),
+  };
+  world.you = { ...world.you, displayName: name, profile };
   world.members = world.members.map((m) => (m.user.id === YOU_ID ? { ...m, user: world.you } : m));
   emit({ t: 'user.update', user: world.you });
   return json({ user: world.you });
+});
+on('PUT', /^\/api\/me\/banner$/, (r) => {
+  if (!r.bytes) throw new HttpError(400, 'missing image');
+  world.blobs.set(`banner:${YOU_ID}`, { bytes: r.bytes, mime: r.type });
+  world.you = { ...world.you, profile: { ...world.you.profile, bannerUrl: `/api/banners/${YOU_ID}` } };
+  world.members = world.members.map((m) => (m.user.id === YOU_ID ? { ...m, user: world.you } : m));
+  emit({ t: 'user.update', user: world.you });
+  return json({ user: world.you });
+});
+on('DELETE', /^\/api\/me\/banner$/, () => {
+  world.blobs.delete(`banner:${YOU_ID}`);
+  world.you = { ...world.you, profile: { ...world.you.profile, bannerUrl: null } };
+  world.members = world.members.map((m) => (m.user.id === YOU_ID ? { ...m, user: world.you } : m));
+  emit({ t: 'user.update', user: world.you });
+  return json({ user: world.you });
+});
+on('GET', /^\/api\/banners\/([^/]+)$/, (r) => {
+  const banner = world.blobs.get(`banner:${r.match[1]}`);
+  if (!banner) throw new HttpError(404, 'no banner');
+  return bytesResponse(banner.bytes, banner.mime);
 });
 on('PUT', /^\/api\/me\/avatar$/, (r) => {
   if (!r.bytes) throw new HttpError(400, 'missing image');

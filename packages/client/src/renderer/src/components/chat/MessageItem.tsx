@@ -4,6 +4,7 @@ import { AttachmentView, GifView, LinkPreviewCard } from '../media';
 import { deleteMessage, editMessage } from '../../state/chat';
 import Avatar from './Avatar';
 import MessageText from './MessageText';
+import ProfileTrigger from '../profile/ProfileTrigger';
 
 interface Props {
   message: Message;
@@ -85,12 +86,14 @@ export default function MessageItem({ message, payload, author, grouped, canEdit
       {grouped ? (
         <time className="cv-time-gutter">{new Date(message.createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</time>
       ) : (
-        <Avatar user={author} />
+        author ? <ProfileTrigger user={author}><Avatar user={author} /></ProfileTrigger> : <Avatar user={author} />
       )}
       <div className="cv-msg-main">
         {!grouped && (
           <div className="cv-msg-head">
-            <span className="cv-name">{author?.displayName ?? 'Unknown user'}</span>
+            {author
+              ? <ProfileTrigger user={author} className="cv-name"><span>{author.displayName}</span></ProfileTrigger>
+              : <span className="cv-name">Unknown user</span>}
             <time className="cv-time">{formatTime(message.createdAt)}</time>
           </div>
         )}
