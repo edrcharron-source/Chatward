@@ -18,6 +18,7 @@ interface GifPage {
   results: GifResult[];
   next?: string;
   disabled?: boolean;
+  hint?: string;
 }
 
 const SEARCH_DEBOUNCE_MS = 300;
@@ -27,6 +28,7 @@ function GifPanel({ onPick }: { onPick: (gif: Gif) => void }) {
   const [results, setResults] = useState<GifResult[]>([]);
   const [next, setNext] = useState<string | undefined>();
   const [disabled, setDisabled] = useState(false);
+  const [hint, setHint] = useState<string | undefined>();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Only the newest request may update state, so a slow old search can't overwrite newer results.
@@ -43,6 +45,7 @@ function GifPanel({ onPick }: { onPick: (gif: Gif) => void }) {
       const page = await api.get<GifPage>(`/api/gifs/${q ? 'search' : 'trending'}?${params}`);
       if (request !== latest.current) return;
       setDisabled(Boolean(page.disabled));
+      setHint(page.hint);
       setResults((prev) => (pos ? [...prev, ...page.results] : page.results));
       setNext(page.next);
     } catch (err) {
@@ -70,7 +73,7 @@ function GifPanel({ onPick }: { onPick: (gif: Gif) => void }) {
         onChange={(e) => setQuery(e.target.value)}
         autoFocus
       />
-      {disabled && <p className="muted media-note">GIF search isn't set up on this server yet.</p>}
+      {disabled && <p className="muted media-note">{hint ?? "GIF search isn't set up on this server yet."}</p>}
       {error && <p className="media-error">{error}</p>}
       <div className="media-gif-grid">
         {results.map((g) => (

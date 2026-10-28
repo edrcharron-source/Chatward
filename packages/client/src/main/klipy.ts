@@ -57,7 +57,9 @@ export async function searchGifs(
   }
   if (body.result === false) return { status: 502, body: { error: 'gif provider unavailable' } };
 
-  const items = Array.isArray(body.data?.data) ? (body.data!.data as KlipyItem[]) : [];
+  // A body without the expected list is a schema mismatch. Report it so the tab shows an error, not "No GIFs found".
+  if (!Array.isArray(body.data?.data)) return { status: 502, body: { error: 'unexpected KLIPY response' } };
+  const items = body.data.data as KlipyItem[];
   const results = items.map(toResult).filter((r): r is GifResult => r !== null);
   return { status: 200, body: body.data?.has_next === true ? { results, next: String(page + 1) } : { results } };
 }
