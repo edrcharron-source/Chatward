@@ -1,0 +1,42 @@
+import { useEffect, useState } from 'react';
+import type { User } from '@chatward/shared';
+import { fetchObjectUrl } from '../../api/http';
+
+// Avatars need the auth header, so they are fetched once and shared by every message from that user.
+const TTL_MS = 10 * 60_000;
+const cache = new Map<string, { at: number; src: Promise<string> }>();
+
+function avatarSrc(path: string): Promise<string> {
+  const hit = cache.get(path);
+  if (hit && Date.now() - hit.at < TTL_MS) return hit.src;
+  const src = fetchObjectUrl(path);
+  cache.set(path, { at: Date.now(), src });
+  src.catch(() => cache.delete(path));
+  return src;
+}
+
+export default function Avatar({ user, size = 36 }: { user?: User; size?: number }) {
+  const path = user?.avatarUrl ?? null;
+  const [src, setSrc] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!path) {
+      setSrc(null);
+      return;
+    }
+    let alive = true;
+    avatarSrc(path).then(
+      (u) => { if (alive) setSrc(u); },
+      () => { if (alive) setSrc(null); },
+    );
+    return () => { alive = false; };
+  }, [path]);
+
+  const style = { width: size, height: size };
+  if (src) return <img className="avatar cv-avatar" src={src} alt="" style={style} />;
+  return (
+    <div className="avatar cv-avatar cv-avatar-fallback" style={style} aria-hidden>
+      {(user?.displayName ?? '?').slice(0, 1).toUpperCase()}
+    </div>
+  );
+}
