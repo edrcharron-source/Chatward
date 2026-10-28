@@ -32,7 +32,8 @@ export interface VoiceState {
   /** a short note shown after a call ends for a reason the user did not choose, e.g. a kick; cleared on the next join */
   notice: string | null;
   join: (serverId: string, channelId: string) => Promise<void>;
-  leave: () => Promise<void>;
+  /** Hangs up. Pass false to skip the server's leave call, for when the token is gone. */
+  leave: (notifyServer?: boolean) => Promise<void>;
   toggleMute: () => void;
   toggleDeafen: () => void;
   setDemoLoopback: (on: boolean) => void;
@@ -202,7 +203,7 @@ export const useVoice = create<VoiceState>((set, get) => {
   }
 
   /** Ends the current call. State is cleared first so the old room's events are ignored. */
-  async function hangUp(): Promise<void> {
+  async function hangUp(notifyServer = true): Promise<void> {
     const { room, channelId } = get();
     if (!channelId) return;
     set({ room: null, channelId: null, serverId: null, status: 'idle', error: null, cameraOn: false, screenOn: false, theaterKey: null, speaking: [], notice: null });
@@ -210,7 +211,7 @@ export const useVoice = create<VoiceState>((set, get) => {
     closeAudio();
     demoVoice.leave(); // no-op outside a demo call
     if (room) await room.disconnect();
-    if (isDemo()) return;
+    if (!notifyServer || isDemo()) return;
     await api.post('/api/voice/leave', { channelId }).catch(() => {});
   }
 
@@ -304,9 +305,9 @@ export const useVoice = create<VoiceState>((set, get) => {
       }
     },
 
-    leave: async () => {
+    leave: async (notifyServer = true) => {
       ++joinAttempt; // also cancels a join that is still connecting
-      await hangUp();
+      await hangUp(notifyServer);
     },
 
     toggleMute: () => {
@@ -367,7 +368,8 @@ export const useVoice = create<VoiceState>((set, get) => {
 });
 
 // Leave the call on logout (or a 401 sign-out) while the token is still set, so the server accepts the leave.
-onBeforeSignOut(() => useVoice.getState().leave());
+// After an account delete there is no token left to leave with, so only tear down the local call.
+onBeforeSignOut(({ serverAvailable }) => useVoice.getState().leave(serverAvailable));
 
 // An admin changed this channel's bitrate: apply it to the live call.
 useSession.subscribe((s, prev) => {
