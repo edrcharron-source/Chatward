@@ -3,12 +3,14 @@
 # Usage: ./update-cloud.sh [version]
 # First put the new code in the checkout (git pull, or git checkout v0.2.0). The version defaults to the tag on HEAD.
 # deploy/.env, deploy/updates/ (desktop installers from the release workflow) and deploy/backups/ are kept.
+# Backups hold the login secret and password hashes, so they are private to the user running this script.
 #
 # 1. Checks deploy/.env (DOMAIN and the LiveKit keys).
 # 2. Stops the server and backs up the data volume (database, avatars, uploads) to backups/. Only the newest 3 backups are kept.
 # 3. Refreshes the LiveKit and Caddy images, rebuilds the server image and starts everything.
 # 4. Waits for the server to answer inside Docker. If it does not, the rollback steps are printed.
 set -Eeuo pipefail
+umask 077
 cd "$(dirname "$0")"
 
 read_env() { grep -E "^$1=" .env 2>/dev/null | cut -d= -f2- || true; }
@@ -27,6 +29,7 @@ VERSION=${1:-${TAG#v}}
 VERSION=${VERSION:-dev}
 STAMP=$(date -u +%Y%m%d-%H%M%S)
 mkdir -p backups updates
+chmod 700 backups
 
 # Backup names carry a UTC timestamp, so sorting by name sorts by age. Keep the newest $KEEP_BACKUPS.
 KEEP_BACKUPS=3
@@ -69,8 +72,9 @@ if [ -n "$SERVER_ID" ]; then
   trap 'echo "Update failed. The server is stopped; start the previous one with: docker compose start server" >&2' ERR
   docker compose stop server
   echo "==> Backing up volume $VOLUME to backups/chatward-data-$STAMP.tar.gz"
+  # umask runs inside the container too, so the archive is not world-readable when it lands in backups/.
   docker run --rm -v "$VOLUME":/data:ro -v "$PWD/backups":/backup alpine \
-    tar czf "/backup/chatward-data-$STAMP.tar.gz" -C /data .
+    sh -c "umask 077 && tar czf '/backup/chatward-data-$STAMP.tar.gz' -C /data ."
   prune_backups
 else
   echo "==> No server container yet (first install), so there is nothing to back up."

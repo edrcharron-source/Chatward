@@ -28,11 +28,28 @@ The first account on a new server becomes its owner, so the server asks for a se
 ## One-time setup (GitHub repo secrets)
 Settings → Secrets and variables → Actions:
 - `UPDATE_SSH_HOST`: the server's address, e.g. the Lightsail static IP.
-- `UPDATE_SSH_USER`: the SSH user on the server, e.g. `ubuntu`.
-- `UPDATE_SSH_KEY`: a private SSH key that can log in as that user. Its public key goes in `~/.ssh/authorized_keys` on the server.
+- `UPDATE_SSH_USER`: the deploy user on the server, `chatward-deploy` (set up below). Do not use `ubuntu`, which is an admin account.
+- `UPDATE_SSH_KEY`: the private key for the deploy user. Its public key goes in the deploy user's `authorized_keys` (below).
+- `UPDATE_SSH_HOST_KEY`: the server's SSH host key, so the release refuses to talk to any other machine. Put in the whole line `ssh-ed25519 AAAA…` copied from the server (step 4 below).
 - `UPDATE_DEPLOY_DIR`: the folder that holds `docker-compose.yml` on the server, e.g. `/home/ubuntu/chatward`.
 
-If `UPDATE_SSH_HOST` is not set, the release still publishes to GitHub and the upload step is skipped.
+If `UPDATE_SSH_HOST` is not set, the release still publishes to GitHub and the upload step is skipped. If `UPDATE_SSH_HOST` is set but `UPDATE_SSH_HOST_KEY` is not, the upload fails on purpose.
+
+### Set up the deploy user on the server (plain steps)
+This user can only put files into the `updates/` folder. It cannot run Docker, change the server or log in as an admin.
+1. Log in to the server over SSH as `ubuntu`.
+2. Create the user with no password: `sudo adduser --disabled-password --gecos "" chatward-deploy`
+3. Make a new key on your PC, with no passphrase: `ssh-keygen -t ed25519 -f chatward-deploy -N ""`. Paste the whole contents of the file `chatward-deploy` (the private key, no `.pub`) into `UPDATE_SSH_KEY`.
+   Then on the server, put the public key (the contents of `chatward-deploy.pub`) in the deploy user's list of allowed keys:
+   `sudo mkdir -p /home/chatward-deploy/.ssh && sudo tee -a /home/chatward-deploy/.ssh/authorized_keys` (paste the line, press Enter, then Ctrl+D), then `sudo chown -R chatward-deploy:chatward-deploy /home/chatward-deploy/.ssh && sudo chmod 700 /home/chatward-deploy/.ssh && sudo chmod 600 /home/chatward-deploy/.ssh/authorized_keys`.
+4. Get the host key: `cat /etc/ssh/ssh_host_ed25519_key.pub`. Paste the whole line into `UPDATE_SSH_HOST_KEY`. Check it once: `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` should show the same fingerprint you see the first time you connect from your PC.
+5. Let the deploy user into the folder and give it only the `updates/` folder: `sudo chmod o+x /home/ubuntu` (only if `ls -ld /home/ubuntu` shows no `x` for others; this lets it pass through, not look inside), then `sudo chown chatward-deploy:chatward-deploy /home/ubuntu/chatward/deploy/updates` (use your `UPDATE_DEPLOY_DIR`/`updates`). Do not give it ownership of anything else.
+6. Test from your PC: `ssh -i chatward-deploy chatward-deploy@SERVER_ADDRESS "ls /home/ubuntu/chatward/deploy/updates"` should list the files and log you in without a password.
+7. Set the `UPDATE_SSH_USER` secret to `chatward-deploy`. Ubuntu's own login stays for you to manage the server; just do not put it in any GitHub secret.
+8. Turn on two-step login for the GitHub account that owns the repo, since anyone with access to its secrets can publish updates.
+
+### Backups are secrets
+`update-cloud.sh` backs up the database, avatars and uploads to `deploy/backups/`. The backup holds the login-signing secret and password hashes, so anyone with a copy can sign in as any member. The script makes the folder private (`chmod 700`) and the archive private (`umask 077`). Do not copy a backup off the server to a PC, email or cloud storage unless you protect it, and delete old ones you no longer need.
 
 ## Releasing a new version
 1. Run the Release workflow with a new tag, e.g. `v0.2.0`. Never reuse a tag.

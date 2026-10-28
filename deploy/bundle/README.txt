@@ -1,4 +1,5 @@
 Chatward server (PC-only, local test). Not for cloud servers.
+WARNING: do not port-forward this server on your router. It uses plain HTTP, so passwords and login tokens would travel unencrypted to anyone on the internet. Friends outside this PC need the cloud setup below, which uses HTTPS.
 1. Install and start Docker Desktop (docker.com/products/docker-desktop).
 2. Double-click start-server.bat. First run builds the server (a few minutes).
 3. Install Chatward-Setup.exe, open it, register, and you're in. Server address: http://localhost:3000
