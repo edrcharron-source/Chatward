@@ -87,6 +87,12 @@ function Shell() {
   const chatChannel = channel?.kind === 'text' ? channel : textChannels.find((c) => c.id === chatChannelId) ?? textChannels[0];
   const theaterWithChat = theaterKey !== null && callChannel !== undefined && chatChannel !== undefined;
   const hideSidebars = theaterKey !== null && sidebarsCollapsed;
+  // The chat under the share is on screen, so its new messages should not count as unread.
+  const theaterChatId = theaterWithChat && chatChannel ? chatChannel.id : null;
+  useEffect(() => {
+    useSession.getState().setTheaterChatId(theaterChatId);
+    return () => useSession.getState().setTheaterChatId(null);
+  }, [theaterChatId]);
 
   useEffect(() => {
     let off: (() => void) | undefined;
