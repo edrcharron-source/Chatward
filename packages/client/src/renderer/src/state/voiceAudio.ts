@@ -44,13 +44,15 @@ async function getMic(deviceId: string): Promise<MediaStream> {
   }
 }
 
-/** Builds the outgoing mic graph and returns the track to publish. */
-export async function openMic(): Promise<MediaStreamTrack> {
+/** Builds the outgoing mic graph and returns the track to publish. `transmitting` false starts the gate closed. */
+export async function openMic(transmitting = true): Promise<MediaStreamTrack> {
   const ctx = new AudioContext({ sampleRate: 48000, latencyHint: 'interactive' });
   const gain = ctx.createGain();
   gain.gain.value = useSettings.getState().micGain;
   const mix = ctx.createGain();
   const gate = ctx.createGain();
+  // Start closed when the user joins muted or deafened, so nothing goes out before syncMic runs.
+  gate.gain.value = transmitting ? 1 : 0;
   const dest = ctx.createMediaStreamDestination();
   // the meter sits after the gate, so muting and deafening read as silence
   const meter = ctx.createAnalyser();

@@ -311,7 +311,9 @@ export const useVoice = create<VoiceState>((set, get) => {
         const voice = await voiceKey(channelId);
         if (stale()) { abandon(channelId, room, mic); return; }
         if (!voice) throw new Error('Channel encryption key is not available yet');
-        const { url, token } = await api.post<{ url: string; token: string }>('/api/voice/token', { channelId });
+        // The server needs the mute state now, so a muted person is silenced for soundboard from the first moment.
+        const { muted, deafened } = get();
+        const { url, token } = await api.post<{ url: string; token: string }>('/api/voice/token', { channelId, muted, deafened });
         if (stale()) { abandon(channelId, room, mic); return; }
 
         const keyProvider = new IndexedKeyProvider();
@@ -333,7 +335,7 @@ export const useVoice = create<VoiceState>((set, get) => {
         await room.setE2EEEnabled(true);
         if (stale()) { abandon(channelId, room, mic); return; }
 
-        mic = await openMic();
+        mic = await openMic(!muted && !deafened);
         if (stale()) { abandon(channelId, room, mic); return; }
         const bitrate = channelBitrate(useSession.getState().servers.flatMap((b) => b.channels).find((c) => c.id === channelId));
         await room.localParticipant.publishTrack(mic, { source: Track.Source.Microphone, ...micPublish(bitrate) });
