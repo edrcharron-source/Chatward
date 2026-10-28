@@ -201,3 +201,6 @@
   text-align: center;
   user-select: all;
 }
+
+.cw-role-list { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.cw-role-list li { display: flex; align-items: center; justify-content: space-between; gap: 8px; }

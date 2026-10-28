@@ -115,6 +115,23 @@ function Shell() {
             if (b) st.upsertServer({ ...b, channels: b.channels.map((c) => (c.id === f.channel.id ? f.channel : c)) });
             break;
           }
+          case 'channel.delete': {
+            // leave the call if it was in the deleted voice channel, since the server has already dropped everyone
+            if (useVoice.getState().channelId === f.channelId) void useVoice.getState().leave();
+            st.removeChannel(f.serverId, f.channelId);
+            break;
+          }
+          case 'server.update': {
+            const b = st.servers.find((x) => x.server.id === f.server.id);
+            if (b) st.upsertServer({ ...b, server: f.server });
+            break;
+          }
+          case 'server.delete': st.removeServer(f.serverId); break;
+          case 'member.role': {
+            const b = st.servers.find((x) => x.server.id === f.serverId);
+            if (b) st.upsertServer({ ...b, members: b.members.map((m) => (m.user.id === f.userId ? { ...m, role: f.role } : m)) });
+            break;
+          }
           case 'member.join': {
             const b = st.servers.find((x) => x.server.id === f.serverId);
             if (b) st.upsertServer({ ...b, members: [...b.members.filter((m) => m.user.id !== f.member.user.id), f.member] });
@@ -122,7 +139,7 @@ function Shell() {
             break;
           }
           case 'member.leave': {
-            if (f.userId === st.user?.id) { st.setServers(st.servers.filter((b) => b.server.id !== f.serverId)); break; }
+            if (f.userId === st.user?.id) { st.removeServer(f.serverId); break; }
             const b = st.servers.find((x) => x.server.id === f.serverId);
             if (b) st.upsertServer({ ...b, members: b.members.filter((m) => m.user.id !== f.userId) });
             void handleMemberLeave(f.serverId, f.userId, useSession.getState().servers);

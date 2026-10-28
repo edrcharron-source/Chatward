@@ -19,6 +19,11 @@ export function leaveVoice(ctx: Ctx, userId: string): void {
   if (channelId) leaveChannel(ctx, channelId, userId);
 }
 
+/** Empties a voice channel, e.g. when the channel is deleted. */
+export function clearVoiceChannel(ctx: Ctx, channelId: string): void {
+  for (const userId of [...(occupants.get(channelId) ?? [])]) leaveChannel(ctx, channelId, userId);
+}
+
 function leaveChannel(ctx: Ctx, channelId: string, userId: string): boolean {
   const set = occupants.get(channelId);
   if (!set?.has(userId)) return false;
