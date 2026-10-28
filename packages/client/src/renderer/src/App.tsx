@@ -137,7 +137,8 @@ function Shell() {
             if (mine !== 'online') sendFrame({ t: 'presence', status: mine });
             if (seenReady) {
               const run = ++refreshRun;
-              retryWithBackoff(loadServers, () => active && run === refreshRun)
+              const stillWanted = () => active && run === refreshRun;
+              retryWithBackoff(() => loadServers(stillWanted), stillWanted)
                 .catch((e) => console.error('Could not refresh after reconnect', e));
               resumeVoiceSlot();
             } else {
@@ -267,14 +268,17 @@ function Shell() {
     return () => { active = false; off?.(); stopNotify?.(); stopTokenCheck?.(); disconnectWs(); window.removeEventListener('pagehide', leaveCallOnExit); };
   }, []);
 
-  async function loadServers() {
+  /** A reconnect refresh passes stillWanted: once a newer refresh has started, this answer may be older, so it is dropped. */
+  async function loadServers(stillWanted: () => boolean = () => true) {
     const { servers } = await api.get<{ servers: ServerBundle[] }>('/api/servers');
+    if (!stillWanted()) return;
     useSession.getState().setServers(servers);
     // Channels removed while we were offline are missing from the new list, so their cached chat is dropped here.
     forgetChatChannels(Object.keys(useChat.getState().channels).filter((id) => !isLiveChannel(id)));
     void refreshUnread().catch(() => {});
     for (const b of servers) {
       const { channels } = await api.get<{ channels: Record<string, string[]> }>(`/api/servers/${b.server.id}/voice-state`);
+      if (!stillWanted()) return;
       for (const [cid, ids] of Object.entries(channels)) useSession.getState().setVoiceOccupants(cid, ids);
     }
     await syncChannelKeys(servers);

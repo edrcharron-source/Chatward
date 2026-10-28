@@ -164,6 +164,13 @@ export function openDb(): DB {
     last_read_id TEXT NOT NULL,
     PRIMARY KEY (user_id, channel_id)
   );
+  -- Users removed from a voice call whose removal was still being enforced when its window ended. Rejoin is refused
+  -- until a fresh join token for the room clears the row.
+  CREATE TABLE IF NOT EXISTS voice_removals (
+    room_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    PRIMARY KEY (room_id, user_id)
+  );
   `);
   // Read positions start with the release that added channel_reads. Everything already in a channel counts as read,
   // so upgrading does not flag all old history as unread.
