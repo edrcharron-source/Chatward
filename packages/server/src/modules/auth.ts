@@ -8,7 +8,7 @@ import { LIMITS, type DeviceKeys } from '@chatward/shared';
 import type { AuthedRequest, Ctx } from '../ctx.js';
 import { clearSetupCode, setupCode } from '../config.js';
 import { newId } from '../db.js';
-import { endCallOnDevice } from './voice.js';
+import { endCallOnDevice, endCallOnOtherDevices } from './voice.js';
 import {
   ApiError,
   announceJoin,
@@ -321,6 +321,9 @@ export function register(app: Express, ctx: Ctx): void {
     // A reset code issued before this change would let someone overwrite the password just set.
     ctx.db.prepare('DELETE FROM password_resets WHERE user_id=?').run(uid);
     res.json({ token: ctx.signToken(uid, deviceId), user: mustUser(ctx, uid) });
+    // The other devices are signed out, so a call running on one of them must end too. Its socket closing alone would
+    // leave the LiveKit session running.
+    endCallOnOtherDevices(ctx, uid, deviceId);
     ctx.revokeSockets(uid);
   }));
 
@@ -371,6 +374,7 @@ export function register(app: Express, ctx: Ctx): void {
     if (devicesChanged) broadcastDevices(ctx, user!.id);
     if (newDevice) announceNewDevice(ctx, user!.id, device.deviceId);
     res.json({ token: ctx.signToken(user!.id, device.deviceId), user: mustUser(ctx, user!.id) });
+    endCallOnOtherDevices(ctx, user!.id, device.deviceId);
     ctx.revokeSockets(user!.id);
   }));
 
