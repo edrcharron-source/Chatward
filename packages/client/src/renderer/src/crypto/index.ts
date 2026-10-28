@@ -72,9 +72,13 @@ function emptyVault(): Vault {
   return { channels: {}, groups: {}, shared: {}, pool: {} };
 }
 
-/** Each account on this PC has its own device keys and vault. The key is the server address plus the username. */
+/**
+ * Each account on this PC has its own device keys and vault. The key is the server address plus the username.
+ * The server treats usernames case-insensitively ("Ed" and "ed" are one account), so the username is lowercased here
+ * no matter how it was typed or how the server returns it.
+ */
 export function accountKey(serverUrl: string, username: string): string {
-  return `${serverUrl.replace(/\/$/, '')}|${username}`;
+  return `${serverUrl.replace(/\/$/, '')}|${username.toLowerCase()}`;
 }
 
 const deviceStore = (acct: string) => `crypto.device.v2|${acct}`;
