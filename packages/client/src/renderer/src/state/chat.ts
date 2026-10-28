@@ -15,6 +15,8 @@ export interface ChannelChat {
   loaded: boolean;
   hasMore: boolean;
   loading: boolean;
+  /** Why the last load failed, shown in the channel until a load succeeds. */
+  error: string | null;
 }
 
 interface ChatState {
@@ -28,7 +30,7 @@ interface ChatState {
   setDraft: (channelId: string, text: string) => void;
 }
 
-const EMPTY: ChannelChat = { messages: [], loaded: false, hasMore: false, loading: false };
+const EMPTY: ChannelChat = { messages: [], loaded: false, hasMore: false, loading: false, error: null };
 const TYPING_SEND_MS = 3000;
 
 export const useChat = create<ChatState>(() => ({
@@ -113,7 +115,7 @@ export async function loadHistory(channelId: string, mode: 'initial' | 'older' =
   if (mode === 'initial' && cur.loaded) return;
   if (mode === 'older' && (!cur.hasMore || cur.messages.length === 0)) return;
 
-  patchChannel(channelId, { loading: true });
+  patchChannel(channelId, { loading: true, error: null });
   try {
     const before = mode === 'older' ? `&before=${cur.messages[0].id}` : '';
     const { messages } = await api.get<{ messages: Message[] }>(
@@ -123,7 +125,8 @@ export async function loadHistory(channelId: string, mode: 'initial' | 'older' =
     endLoad(channelId, { loaded: true, hasMore: messages.length >= LIMITS.HISTORY_PAGE });
     void decryptAll(channelId, messages);
   } catch (e) {
-    endLoad(channelId);
+    const fallback = mode === 'older' ? 'Could not load older messages' : 'Could not load messages';
+    endLoad(channelId, { error: e instanceof Error ? e.message : fallback });
     throw e;
   }
 }
@@ -276,9 +279,12 @@ onFrame((f) => {
       noteTyping(f.channelId, f.userId);
       return;
     case 'ready':
-      // After a (re)connect, frames may have been missed: catch up every channel we already hold.
+      // After a (re)connect, frames may have been missed: catch up every channel we already hold. A channel whose
+      // first load failed (or never finished) is loaded again, and one still loading is caught up when it ends.
       for (const [id, c] of Object.entries(useChat.getState().channels)) {
         if (c.loaded) void catchUp(id).catch(() => {});
+        else if (c.loading) catchUpWanted.add(id);
+        else void loadHistory(id).catch(() => {});
       }
       void refreshUnread().catch(() => {});
       return;

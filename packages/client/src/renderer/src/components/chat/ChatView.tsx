@@ -25,7 +25,6 @@ export default function ChatView({ channel }: { channel: Channel }) {
   const typing = useChat((s) => s.typing[channel.id]);
   const me = useSession((s) => s.user);
   const members = useSession((s) => s.servers.find((b) => b.server.id === channel.serverId)?.members ?? NO_MEMBERS);
-  const [error, setError] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
 
   const listRef = useRef<HTMLDivElement>(null);
@@ -39,10 +38,10 @@ export default function ChatView({ channel }: { channel: Channel }) {
   const memberOf = (id: string) => members.find((m) => m.user.id === id);
 
   useEffect(() => {
-    setError(null);
     stick.current = true;
     useSession.getState().clearUnread(channel.id);
-    loadHistory(channel.id).catch((e: unknown) => setError(e instanceof Error ? e.message : 'Could not load messages'));
+    // The failure is kept in the channel's store entry, so it shows here and the reconnect retry can clear it.
+    loadHistory(channel.id).catch(() => {});
 
     // Reading the channel clears its unread count, including when the window regains focus.
     const markRead = () => { if (!document.hidden) useSession.getState().clearUnread(channel.id); };
@@ -79,7 +78,7 @@ export default function ChatView({ channel }: { channel: Channel }) {
     if (!el) return;
     stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_PX;
     if (el.scrollTop < NEAR_TOP_PX && chat?.hasMore && !chat.loading) {
-      loadHistory(channel.id, 'older').catch((e: unknown) => setError(e instanceof Error ? e.message : 'Could not load older messages'));
+      loadHistory(channel.id, 'older').catch(() => {});
     }
   };
 
@@ -99,7 +98,16 @@ export default function ChatView({ channel }: { channel: Channel }) {
           <div className="cv-start">This is the start of #{channel.name}</div>
         )}
         {chat?.loading && messages.length > 0 && <div className="cv-hint muted">Loading older messages…</div>}
-        {error && <div className="cv-error">{error}</div>}
+        {chat?.error && (
+          <div className="cv-error">
+            {chat.error}
+            {!chat.loaded && (
+              <button className="cv-retry" disabled={chat.loading} onClick={() => loadHistory(channel.id).catch(() => {})}>
+                Retry
+              </button>
+            )}
+          </div>
+        )}
         {chat?.loaded && messages.length === 0 && <div className="cv-empty muted">No messages yet. Say hi 👋</div>}
         {messages.map((m, i) => {
           const before = messages[i - 1];
