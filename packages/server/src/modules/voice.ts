@@ -178,9 +178,9 @@ export function register(app: Express, ctx: Ctx): void {
     if (channel.kind !== 'voice') { res.status(400).json({ error: 'not a voice channel' }); return; }
 
     // Every device of an account uses the same LiveKit identity, and LiveKit drops the older session when a second one
-    // joins the same room. So a second device is refused while the first is still in the call. Our own device always
-    // sends /voice/leave before joining again, so this only blocks another device.
-    if (voiceChannelOf.get(userId) === channelId) {
+    // joins the same room. So a second device is refused while the first is still in the call. A slot held by this
+    // device itself is a leftover (for example a missed leave), so the device may take it again.
+    if (voiceChannelOf.get(userId) === channelId && heldByOtherDevice(userId, (req as AuthedRequest).deviceId)) {
       res.status(409).json({ error: 'You are already in this call on another device. Leave the call there first.' });
       return;
     }
