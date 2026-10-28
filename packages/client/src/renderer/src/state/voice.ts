@@ -50,7 +50,14 @@ export interface VoiceState {
 export function resumeVoiceSlot(): void {
   const { channelId, room } = useVoice.getState();
   if (!channelId || !room || isDemo()) return;
-  void api.post('/api/voice/rejoin', { channelId }).catch((e) => console.warn('could not restore voice slot', e));
+  // The server clears mute and deafen state along with the slot. Report ours again once the slot is back, or a muted
+  // person could play soundboard sounds until their next mute toggle. Read the state now, not when the call started.
+  void api.post('/api/voice/rejoin', { channelId })
+    .then(() => {
+      const { muted, deafened } = useVoice.getState();
+      return api.post('/api/voice/state', { channelId, muted, deafened });
+    })
+    .catch((e) => console.warn('could not restore voice slot', e));
 }
 
 /**
