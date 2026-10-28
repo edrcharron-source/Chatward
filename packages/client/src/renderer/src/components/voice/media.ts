@@ -1,5 +1,5 @@
 // OWNER: voice-media thread. Called by state/voice.ts (voice-core). Contract:
-import { VideoPresets, type Room } from 'livekit-client';
+import { Track, VideoPresets, createLocalVideoTrack, type LocalVideoTrack, type Room } from 'livekit-client';
 
 export interface ScreenShareOptions {
   height: 720 | 1080;
@@ -21,23 +21,42 @@ function screenBitrate({ height, frameRate }: ScreenShareOptions): number {
   return frameRate === 60 ? 4_000_000 : 2_500_000;
 }
 
+function cameraPublication(room: Room) {
+  return room.localParticipant.getTrackPublication(Track.Source.Camera);
+}
+
 export async function startCamera(room: Room, deviceId?: string): Promise<void> {
   const preset = VideoPresets.h720;
+  // A muted camera track is only unmuted by setCameraEnabled, which ignores the chosen camera, so apply it after.
+  const resumed = cameraPublication(room)?.isMuted === true;
   await room.localParticipant.setCameraEnabled(true, { deviceId, resolution: preset.resolution }, { videoEncoding: preset.encoding });
+  if (resumed) await applyCameraChoice(room, deviceId ?? '');
 }
 
 export async function stopCamera(room: Room): Promise<void> {
   await room.localParticipant.setCameraEnabled(false);
 }
 
-/** Swaps the camera of a live call. '' means the system default, which LiveKit can't name, so restart on it. */
-export async function switchCamera(room: Room, deviceId: string): Promise<void> {
+/**
+ * Makes the live camera track use the chosen camera. '' means the system default, which LiveKit can't name,
+ * so the old track is unpublished and a fresh one is published on the default.
+ */
+async function applyCameraChoice(room: Room, deviceId: string): Promise<void> {
+  const track = cameraPublication(room)?.track as LocalVideoTrack | undefined;
+  if (!track) return;
   if (deviceId) {
-    await room.switchActiveDevice('videoinput', deviceId);
+    if ((await track.getDeviceId(false)) !== deviceId) await room.switchActiveDevice('videoinput', deviceId);
     return;
   }
-  await stopCamera(room);
-  await startCamera(room);
+  const preset = VideoPresets.h720;
+  await room.localParticipant.unpublishTrack(track, true);
+  const fresh = await createLocalVideoTrack({ resolution: preset.resolution });
+  await room.localParticipant.publishTrack(fresh, { videoEncoding: preset.encoding });
+}
+
+/** Swaps the camera of a live call. */
+export async function switchCamera(room: Room, deviceId: string): Promise<void> {
+  await applyCameraChoice(room, deviceId);
 }
 
 /** sourceId from window.chatward.getScreenSources(); calls selectScreenSource then publishes screen (+system audio if available) */
