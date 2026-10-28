@@ -48,8 +48,10 @@ export function playSound(kind: SoundKind) {
 
 function onNewMessage(m: Message) {
   const { messageSounds, mutedChannels } = useSettings.getState();
-  const { user, activeChannelId } = useSession.getState();
+  const { user, activeChannelId, myStatus } = useSession.getState();
   if (!messageSounds || m.authorId === user?.id) return;
+  // Do Not Disturb: the user asked not to be interrupted, so stay silent.
+  if (myStatus === 'dnd') return;
   if (mutedChannels.includes(m.channelId)) return;
   // The channel is on screen and the window has focus: the user already sees it.
   if (m.channelId === activeChannelId && document.hasFocus()) return;
@@ -64,8 +66,8 @@ function onVoiceState(channelId: string, userIds: string[]) {
   occupants[channelId] = userIds;
 
   const { voiceJoinLeaveSounds } = useSettings.getState();
-  const { user } = useSession.getState();
-  if (!voiceJoinLeaveSounds || useVoice.getState().channelId !== channelId) return;
+  const { user, myStatus } = useSession.getState();
+  if (!voiceJoinLeaveSounds || myStatus === 'dnd' || useVoice.getState().channelId !== channelId) return;
 
   // Our own join or leave also changes the list. Stay silent for that transition.
   const me = user?.id;
