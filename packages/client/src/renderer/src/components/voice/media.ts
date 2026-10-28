@@ -30,6 +30,16 @@ export async function stopCamera(room: Room): Promise<void> {
   await room.localParticipant.setCameraEnabled(false);
 }
 
+/** Swaps the camera of a live call. '' means the system default, which LiveKit can't name, so restart on it. */
+export async function switchCamera(room: Room, deviceId: string): Promise<void> {
+  if (deviceId) {
+    await room.switchActiveDevice('videoinput', deviceId);
+    return;
+  }
+  await stopCamera(room);
+  await startCamera(room);
+}
+
 /** sourceId from window.chatward.getScreenSources(); calls selectScreenSource then publishes screen (+system audio if available) */
 export async function startScreen(room: Room, sourceId: string): Promise<void> {
   const opts = screenOptions;

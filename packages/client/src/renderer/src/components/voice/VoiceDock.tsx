@@ -43,6 +43,12 @@ export default function VoiceDock() {
         </div>
       </div>
       {error && <div role="alert" style={{ color: 'var(--danger)', fontSize: 12 }}>{error}</div>}
+      {notice && (
+        <div role="status" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div style={{ color: 'var(--danger)', fontSize: 12 }}>{notice}</div>
+          <button type="button" onClick={() => useVoice.setState({ notice: null })} style={{ alignSelf: 'flex-start' }}>Dismiss</button>
+        </div>
+      )}
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
         <button
           className={muted ? 'danger' : undefined}
