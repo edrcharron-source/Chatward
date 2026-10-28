@@ -13,6 +13,7 @@ export function openDb(): DB {
   const db = new Database(config.dbPath);
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
+  const seenDevicesExisted = db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='mls_group_seen_devices'").get() !== undefined;
   db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
@@ -130,7 +131,30 @@ export function openDb(): DB {
     device_id TEXT NOT NULL,
     PRIMARY KEY (group_id, device_id)
   );
+  -- Every device that has ever been in a group. Unlike mls_group_devices this is never trimmed, so a Commit from
+  -- someone who has since left can still be checked against that device's registered key.
+  CREATE TABLE IF NOT EXISTS mls_group_seen_devices (
+    group_id TEXT NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+    device_id TEXT NOT NULL,
+    PRIMARY KEY (group_id, device_id)
+  );
+  -- The highest epoch each device has confirmed it reached. A reset may not drop a Commit someone else built on.
+  CREATE TABLE IF NOT EXISTS mls_group_acks (
+    group_id TEXT NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+    device_id TEXT NOT NULL,
+    epoch INTEGER NOT NULL,
+    PRIMARY KEY (group_id, device_id)
+  );
   `);
+  // Groups created before mls_group_seen_devices existed: seed it from the devices the server already recorded.
+  if (!seenDevicesExisted) {
+    db.exec(`
+    INSERT OR IGNORE INTO mls_group_seen_devices (group_id, device_id)
+      SELECT group_id, sender_device_id FROM mls_commits
+      UNION SELECT group_id, to_device_id FROM mls_welcomes
+      UNION SELECT group_id, device_id FROM mls_group_devices;
+    `);
+  }
   // Profile columns were added after the first release; existing databases get them here.
   const userCols = new Set((db.pragma('table_info(users)') as { name: string }[]).map((c) => c.name));
   const profileCols: Record<string, string> = {

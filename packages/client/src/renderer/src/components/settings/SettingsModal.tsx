@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useSession } from '../../state/session';
-import { useVoice } from '../../state/voice';
+import { signOut } from '../../state/session';
 import AccountTab from './AccountTab';
 import AppearanceTab from './AppearanceTab';
 import VoiceVideoTab from './VoiceVideoTab';
@@ -30,9 +29,8 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  async function logOut() {
-    try { await useVoice.getState().leave(); } catch { /* leaving is best effort */ }
-    useSession.getState().logout();
+  function logOut() {
+    void signOut();
   }
 
   return (

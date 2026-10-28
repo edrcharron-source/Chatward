@@ -63,6 +63,20 @@ function kickFromChannelCall(ctx: Ctx, channelId: string, userId: string): void 
   rooms.removeParticipant(channelId, userId).catch((err: unknown) => console.warn('livekit removeParticipant failed', err));
 }
 
+/** Puts the user in the channel's voice slot, leaving any other voice channel they hold. */
+function occupy(ctx: Ctx, channelId: string, userId: string): void {
+  const previous = voiceChannelOf.get(userId);
+  if (previous && previous !== channelId) leaveChannel(ctx, previous, userId);
+
+  let set = occupants.get(channelId);
+  if (!set) occupants.set(channelId, (set = new Set()));
+  if (!set.has(userId)) {
+    set.add(userId);
+    voiceChannelOf.set(userId, channelId);
+    broadcastState(ctx, channelId);
+  }
+}
+
 /** Empties a voice channel, e.g. when the channel is deleted. */
 export function clearVoiceChannel(ctx: Ctx, channelId: string): void {
   for (const userId of [...(occupants.get(channelId) ?? [])]) leaveChannel(ctx, channelId, userId);
@@ -108,17 +122,16 @@ export function register(app: Express, ctx: Ctx): void {
     if (!channel) { res.status(404).json({ error: 'channel not found' }); return; }
     if (channel.kind !== 'voice') { res.status(400).json({ error: 'not a voice channel' }); return; }
 
-    // Joining a channel implicitly leaves any other voice channel.
-    const previous = voiceChannelOf.get(userId);
-    if (previous && previous !== channelId) leaveChannel(ctx, previous, userId);
-
-    let set = occupants.get(channelId);
-    if (!set) occupants.set(channelId, (set = new Set()));
-    if (!set.has(userId)) {
-      set.add(userId);
-      voiceChannelOf.set(userId, channelId);
-      broadcastState(ctx, channelId);
+    // Every device of an account uses the same LiveKit identity, and LiveKit drops the older session when a second one
+    // joins the same room. So a second device is refused while the first is still in the call. Our own device always
+    // sends /voice/leave before joining again, so this only blocks another device.
+    if (voiceChannelOf.get(userId) === channelId) {
+      res.status(409).json({ error: 'You are already in this call on another device. Leave the call there first.' });
+      return;
     }
+
+    // Joining a channel implicitly leaves any other voice channel.
+    occupy(ctx, channelId, userId);
 
     const at = new AccessToken(ctx.config.livekit.apiKey, ctx.config.livekit.apiSecret, {
       identity: userId,
@@ -127,6 +140,22 @@ export function register(app: Express, ctx: Ctx): void {
     });
     at.addGrant({ roomJoin: true, room: channelId, canPublish: true, canSubscribe: true });
     res.json({ url: ctx.config.livekit.url, token: await at.toJwt() });
+  });
+
+  // The client calls this after its websocket reconnects while it is still in a call. A server restart clears the
+  // occupancy above, but LiveKit keeps the media flowing, so the client puts its slot back. No new token is issued.
+  app.post('/api/voice/rejoin', ctx.requireAuth, (req, res) => {
+    const userId = (req as AuthedRequest).userId;
+    const channelId = (req.body as { channelId?: unknown } | undefined)?.channelId;
+    if (typeof channelId !== 'string') { res.status(400).json({ error: 'channelId required' }); return; }
+
+    const serverId = ctx.serverIdForChannelMember(channelId, userId);
+    const channel = serverId ? ctx.getChannel(channelId) : null;
+    if (!channel) { res.status(404).json({ error: 'channel not found' }); return; }
+    if (channel.kind !== 'voice') { res.status(400).json({ error: 'not a voice channel' }); return; }
+
+    occupy(ctx, channelId, userId);
+    res.json({ ok: true });
   });
 
   app.post('/api/voice/leave', ctx.requireAuth, (req, res) => {

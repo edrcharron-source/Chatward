@@ -238,6 +238,18 @@ async function main() {
     bob2.state.set(CHANNEL, got.state);
     log('message round trip: alice to bob second device');
 
+    // `after` pages forward from a known message, oldest first, so a reconnecting client can walk up to the newest.
+    for (let i = 0; i < 4; i++) {
+      const r = await api(alice.token, 'POST', `/api/channels/${CHANNEL}/messages`, { ciphertext: b64(new Uint8Array([i + 1])), keyVersion: 4 });
+      assert.equal(r.status, 201, 'filler message accepted');
+    }
+    const all = (await api(bob2.token, 'GET', `/api/channels/${CHANNEL}/messages`)).json.messages as { id: string }[];
+    const page1 = (await api(bob2.token, 'GET', `/api/channels/${CHANNEL}/messages?after=${all[0].id}&limit=2`)).json.messages as { id: string }[];
+    const page2 = (await api(bob2.token, 'GET', `/api/channels/${CHANNEL}/messages?after=${page1[1].id}&limit=2`)).json.messages as { id: string }[];
+    assert.deepEqual([...page1, ...page2].map((m) => m.id), all.slice(1).map((m) => m.id), 'after pages through every newer message');
+    assert.equal((await api(bob2.token, 'GET', `/api/channels/${CHANNEL}/messages?after=${all[0].id}&before=${all[0].id}`)).status, 400, 'after and before cannot be combined');
+    log('history paging with after walks forward oldest first');
+
     // 5. Kick carol: the server removes her membership, then a remaining device commits the Remove.
     const kick = await api(alice.token, 'DELETE', `/api/servers/${serverId}/members/${carol.user}`);
     assert.equal(kick.status, 200, 'owner kicks carol');
@@ -346,6 +358,21 @@ async function main() {
     assert.equal(new TextDecoder().decode((await mls.receive(bob.state.get(CHANNEL)!, healed.ciphertext)).plaintext!), 'back in sync');
     log('junk Commit at epoch 4 cannot be applied; reset refused for outsiders and future epochs; after reset a valid Commit moves the group on');
 
+    // Epoch reports: a device that applied a Commit reports it, and a reset may not drop that Commit.
+    const futureAck = await api(bob.token, 'POST', `/api/groups/${CHANNEL}/epoch`, { deviceId: bob.id, epoch: 9 });
+    assert.equal(futureAck.status, 409, 'a device cannot report an epoch the group has not reached');
+    const bobAck = await api(bob.token, 'POST', `/api/groups/${CHANNEL}/epoch`, { deviceId: bob.id, epoch: 5 });
+    assert.equal(bobAck.status, 200, 'bob reports he applied the Commit at epoch 4');
+    const rewind = await api(alice.token, 'POST', `/api/groups/${CHANNEL}/reset`, { deviceId: alice.id, epoch: 4 });
+    assert.equal(rewind.status, 409, 'reset refused: bob already built on the Commit at epoch 4');
+    assert.equal(rewind.json.currentEpoch, 5);
+    log('a reset cannot drop a Commit another device has already applied');
+
+    // Removed devices stay in the group device list, so Commits from before their removal still verify.
+    const groupDeviceList = await api(alice.token, 'GET', `/api/groups/${CHANNEL}/devices`);
+    assert.ok(groupDeviceList.json.devices.some((d: DeviceKeys) => d.deviceId === carol.id), 'removed carol is still listed');
+    log('removed devices stay in the group device list with their registered keys');
+
     // Deleting a server removes its soundboard audio from disk, not just the database rows.
     const doomedId = (await api(alice.token, 'POST', '/api/servers', { name: 'Doomed' })).json.server.id as string;
     const oggFile = Buffer.concat([Buffer.from('OggS'), Buffer.alloc(16)]);
@@ -358,6 +385,16 @@ async function main() {
     assert.equal((await api(alice.token, 'DELETE', `/api/servers/${doomedId}`)).status, 200);
     assert.ok(!fs.existsSync(soundFile), 'sound file removed when its server is deleted');
     log('deleting a server removes its soundboard files from disk');
+
+    // A server keeps at least one text channel, since voice calls take their key from the first one.
+    const chanServer = (await api(alice.token, 'POST', '/api/servers', { name: 'Chan' })).json;
+    const chanBase = `/api/servers/${chanServer.server.id as string}/channels`;
+    const onlyText = chanServer.channels.find((c: { kind: string }) => c.kind === 'text').id as string;
+    assert.equal((await api(alice.token, 'DELETE', `${chanBase}/${onlyText}`)).status, 409, 'last text channel is kept');
+    const extraText = (await api(alice.token, 'POST', chanBase, { name: 'extra', kind: 'text' })).json.channel.id as string;
+    assert.equal((await api(alice.token, 'DELETE', `${chanBase}/${onlyText}`)).status, 200, 'a text channel can go while another remains');
+    assert.equal((await api(alice.token, 'DELETE', `${chanBase}/${extraText}`)).status, 409, 'the new last text channel is kept');
+    log('deleting the last text channel is refused');
 
     console.log('\nE2E MLS: all checks passed');
   } catch (err) {

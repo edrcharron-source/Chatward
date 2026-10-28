@@ -48,6 +48,8 @@ let privates: { ecdh: CryptoKey; sign: CryptoKey } | null = null;
 let vault: Vault = emptyVault();
 const aesCache = new Map<string, Promise<CryptoKey>>();
 const groupStates = new Map<string, ClientState>();
+/** Devices that have been in one of our groups but may no longer be on any server we are in. From the server's group device list. */
+const groupDevices = new Map<string, DeviceKeys>();
 const listeners = new Set<() => void>();
 // Every mutation of the vault goes through this queue so syncs and frames cannot interleave.
 let queue: Promise<unknown> = Promise.resolve();
@@ -202,10 +204,32 @@ async function syncChannel(channelId: string, members: Member[]): Promise<boolea
   let dirty = false;
   const mine = await api.get<{ envelopes: KeyEnvelope[] }>(`/api/channels/${channelId}/keys?deviceId=${encodeURIComponent(me.deviceId)}`);
   for (const env of mine.envelopes) dirty = (await acceptEnvelope(env)) || dirty;
+  await loadGroupDevices(channelId);
   dirty = (await ensureGroup(channelId, members)) || dirty;
   dirty = (await reconcile(channelId, members)) || dirty;
   dirty = (await shareHistory(channelId, members.flatMap((m) => m.devices))) || dirty;
+  await reportEpoch(channelId);
   return dirty;
+}
+
+/** Pull the registered keys of every device that has ever been in this group, so old Commits still verify. */
+async function loadGroupDevices(channelId: string): Promise<void> {
+  const res = await api.get<{ devices: DeviceKeys[] }>(`/api/groups/${channelId}/devices`);
+  for (const d of res.devices) groupDevices.set(d.deviceId, { deviceId: d.deviceId, ecdhPublic: d.ecdhPublic, signPublic: d.signPublic });
+}
+
+/**
+ * Tell the server which epoch this device has reached, so a reset cannot drop Commits this device already built on.
+ * Sent on every sync, so a report lost to the network is repeated on the next one.
+ */
+async function reportEpoch(channelId: string): Promise<void> {
+  const stored = vault.groups[channelId];
+  if (!stored) return;
+  try {
+    await api.post(`/api/groups/${channelId}/epoch`, { deviceId: getDevice().deviceId, epoch: stored.epoch });
+  } catch (err) {
+    console.warn(`Could not report the epoch for channel ${channelId}`, err);
+  }
 }
 
 /** Keep a supply of single-use KeyPackages on the server, plus one last-resort package. */
@@ -250,20 +274,25 @@ async function setGroup(channelId: string, state: ClientState, epoch: number): P
 }
 
 async function ensureGroup(channelId: string, members: Member[]): Promise<boolean> {
-  if (groupOf(channelId)) return catchUp(channelId);
+  let changed = false;
+  if (groupOf(channelId)) {
+    changed = await catchUp(channelId);
+    // Still in the group: nothing more to do. Otherwise catchUp forgot it, and we rejoin below.
+    if (groupOf(channelId)) return changed;
+  }
   const me = getDevice();
   const welcomes = await api.get<{ welcomes: { epoch: number; toDeviceId: string; welcome: string }[] }>(`/api/groups/${channelId}/welcomes`);
   const latest = welcomes.welcomes.filter((w) => w.toDeviceId === me.deviceId).at(-1);
   if (latest) {
     const state = await joinFromPool(latest.welcome);
-    if (!state) return false;
+    if (!state) return changed;
     await setGroup(channelId, state, latest.epoch);
     return true;
   }
   // No Welcome for us. Create the group only if nobody has committed yet; otherwise an existing member adds us.
   const info = await api.get<{ epoch: number }>(`/api/groups/${channelId}/commits?from=0`);
-  if (info.epoch !== 0) return false;
-  return createGroup(channelId, members);
+  if (info.epoch !== 0) return changed;
+  return (await createGroup(channelId, members)) || changed;
 }
 
 async function joinFromPool(welcome: string): Promise<ClientState | null> {
@@ -301,7 +330,13 @@ async function catchUp(channelId: string): Promise<boolean> {
   const stored = vault.groups[channelId];
   let state = groupOf(channelId)!;
   let epoch = stored.epoch;
-  const res = await api.get<{ commits: { epoch: number; commit: string }[] }>(`/api/groups/${channelId}/commits?from=${epoch}`);
+  const res = await api.get<{ epoch: number; commits: { epoch: number; commit: string }[] }>(`/api/groups/${channelId}/commits?from=${epoch}`);
+  if (res.epoch < stored.epoch) {
+    // The server is behind us: it dropped Commits we had applied. Our state no longer matches the server, so forget
+    // the group and rejoin from a Welcome on the next step. Keys we already hold are kept.
+    forgetGroup(channelId);
+    return true;
+  }
   if (res.commits.length === 0) return false;
   let stuck = false;
   for (const c of res.commits) {
@@ -318,6 +353,11 @@ async function catchUp(channelId: string): Promise<boolean> {
   if (moved) await setGroup(channelId, state, epoch);
   if (stuck) await dropCommitsFrom(channelId, epoch);
   return moved;
+}
+
+function forgetGroup(channelId: string): void {
+  delete vault.groups[channelId];
+  groupStates.delete(channelId);
 }
 
 /** Ask the server to drop the Commit at `epoch` and everything after it. A failure here is logged, not fatal to sync. */
@@ -477,7 +517,7 @@ function knownDevices(): Map<string, DeviceKeys> {
 
 /** MLS credentials are accepted only if they name a device from this list and are signed by that device's key. */
 function deviceDirectory(): mls.DeviceDirectory {
-  return (deviceId) => knownDevices().get(deviceId)?.signPublic;
+  return (deviceId) => (knownDevices().get(deviceId) ?? groupDevices.get(deviceId))?.signPublic;
 }
 
 function localVersions(channelId: string): number[] {

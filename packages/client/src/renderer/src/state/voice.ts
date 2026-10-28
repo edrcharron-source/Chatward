@@ -6,7 +6,7 @@ import { api } from '../api/http';
 import { voiceKey } from '../crypto';
 import { startCamera, stopCamera, startScreen, stopScreen } from '../components/voice/media';
 import { attachRemote, closeAudio, detachRemote, micLevel, openMic, setDeafened, setTransmitting, startPlayback } from './voiceAudio';
-import { useSession } from './session';
+import { onBeforeSignOut, useSession } from './session';
 import { useSettings } from './settings';
 import { demoVoice } from '../demo/voice';
 import { isDemo } from '../demo';
@@ -40,6 +40,16 @@ export interface VoiceState {
   setCamera: (on: boolean) => Promise<void>;
   setScreen: (on: boolean, sourceId?: string) => Promise<void>;
   setTheater: (key: string | null) => void;
+}
+
+/**
+ * Called when the websocket reconnects. If we are still in a call, the server may have lost our voice slot (it is
+ * in memory, so a restart clears it). Put the slot back so others see us and kicks reach us. The media is untouched.
+ */
+export function resumeVoiceSlot(): void {
+  const { channelId, room } = useVoice.getState();
+  if (!channelId || !room || isDemo()) return;
+  void api.post('/api/voice/rejoin', { channelId }).catch((e) => console.warn('could not restore voice slot', e));
 }
 
 /** The channel's bitrate, or the default when unset or not one of the allowed values. */
@@ -336,10 +346,8 @@ export const useVoice = create<VoiceState>((set, get) => {
   };
 });
 
-// Leave the call when the user logs out (or is signed out by a 401).
-useSession.subscribe((s, prev) => {
-  if (prev.token && !s.token) void useVoice.getState().leave();
-});
+// Leave the call on logout (or a 401 sign-out) while the token is still set, so the server accepts the leave.
+onBeforeSignOut(() => useVoice.getState().leave());
 
 // An admin changed this channel's bitrate: apply it to the live call.
 useSession.subscribe((s, prev) => {

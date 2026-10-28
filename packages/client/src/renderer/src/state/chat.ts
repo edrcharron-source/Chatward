@@ -4,7 +4,7 @@ import { api } from '../api/http';
 import { onFrame, sendFrame } from '../api/ws';
 import { buildLinkPreviews, extractUrls, uploadAttachment } from '../components/media';
 import { decryptMessage, encryptPayload, onKeysChanged } from '../crypto';
-import { useSession } from './session';
+import { onBeforeSignOut, useSession } from './session';
 
 export type Gif = NonNullable<MessagePayload['gif']>;
 
@@ -38,6 +38,9 @@ export const useChat = create<ChatState>(() => ({
   setDraft: (channelId, text) => useChat.setState((s) => ({ drafts: { ...s.drafts, [channelId]: text } })),
 }));
 
+// On logout, drop the cache so the next person on this computer never sees the previous account's messages or drafts.
+onBeforeSignOut(() => useChat.setState({ channels: {}, payloads: {}, typing: {}, drafts: {} }));
+
 const channelOf = (id: string) => useChat.getState().channels[id] ?? EMPTY;
 
 function patchChannel(channelId: string, patch: Partial<ChannelChat>) {
@@ -58,13 +61,17 @@ function mergeMessages(channelId: string, incoming: Message[]) {
   });
 }
 
-function removeMessage(channelId: string, messageId: string) {
+function removeMessages(channelId: string, messageIds: string[]) {
+  if (messageIds.length === 0) return;
+  const gone = new Set(messageIds);
   useChat.setState((s) => {
     const cur = s.channels[channelId];
     if (!cur) return {};
-    return { channels: { ...s.channels, [channelId]: { ...cur, messages: cur.messages.filter((m) => m.id !== messageId) } } };
+    return { channels: { ...s.channels, [channelId]: { ...cur, messages: cur.messages.filter((m) => !gone.has(m.id)) } } };
   });
 }
+
+const removeMessage = (channelId: string, messageId: string) => removeMessages(channelId, [messageId]);
 
 /** Decrypt messages that are still in the cache. A result is dropped if the message changed meanwhile. */
 async function decryptAll(channelId: string, msgs: Message[]) {
@@ -90,7 +97,7 @@ function retryPending() {
   }
 }
 
-export async function loadHistory(channelId: string, mode: 'initial' | 'older' | 'refresh' = 'initial') {
+export async function loadHistory(channelId: string, mode: 'initial' | 'older' = 'initial') {
   const cur = channelOf(channelId);
   if (cur.loading) return;
   if (mode === 'initial' && cur.loaded) return;
@@ -106,9 +113,45 @@ export async function loadHistory(channelId: string, mode: 'initial' | 'older' |
     patchChannel(channelId, {
       loaded: true,
       loading: false,
-      hasMore: mode === 'refresh' ? cur.hasMore : messages.length >= LIMITS.HISTORY_PAGE,
+      hasMore: messages.length >= LIMITS.HISTORY_PAGE,
     });
     void decryptAll(channelId, messages);
+  } catch (e) {
+    patchChannel(channelId, { loading: false });
+    throw e;
+  }
+}
+
+/**
+ * After a reconnect, frames may have been missed. Walk forward one page at a time from the oldest message we
+ * hold until the server has nothing newer, so a gap of any length is filled. Messages we held inside that walk
+ * which the server no longer returns were deleted while we were away, so they are dropped.
+ */
+export async function catchUp(channelId: string) {
+  const cur = channelOf(channelId);
+  if (cur.loading || !cur.loaded) return;
+
+  patchChannel(channelId, { loading: true });
+  try {
+    const anchor = cur.messages[0]?.id;
+    // Snapshot first: messages that arrive over the socket during the walk are new, not deleted.
+    const held = cur.messages.map((m) => m.id);
+    const seen = new Set<string>();
+    let cursor = anchor;
+    for (;;) {
+      const after = cursor ? `&after=${cursor}` : '';
+      const { messages } = await api.get<{ messages: Message[] }>(
+        `/api/channels/${channelId}/messages?limit=${LIMITS.HISTORY_PAGE}${after}`,
+      );
+      for (const m of messages) seen.add(m.id);
+      mergeMessages(channelId, messages);
+      void decryptAll(channelId, messages);
+      if (messages.length < LIMITS.HISTORY_PAGE) break;
+      cursor = messages[messages.length - 1].id;
+    }
+    const gone = anchor ? held.filter((id) => id > anchor && !seen.has(id)) : [];
+    removeMessages(channelId, gone);
+    patchChannel(channelId, { loading: false });
   } catch (e) {
     patchChannel(channelId, { loading: false });
     throw e;
@@ -202,9 +245,9 @@ onFrame((f) => {
       noteTyping(f.channelId, f.userId);
       return;
     case 'ready':
-      // After a (re)connect, frames may have been missed: refresh every channel we already hold.
+      // After a (re)connect, frames may have been missed: catch up every channel we already hold.
       for (const [id, c] of Object.entries(useChat.getState().channels)) {
-        if (c.loaded) void loadHistory(id, 'refresh').catch(() => {});
+        if (c.loaded) void catchUp(id).catch(() => {});
       }
       return;
   }

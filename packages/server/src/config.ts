@@ -45,6 +45,11 @@ export const config = {
   serverVersion: process.env.CHATWARD_VERSION ?? '0.0.0-dev',
   /** Clients older than this are blocked until they update. */
   minClientVersion: process.env.MIN_CLIENT_VERSION ?? '0.0.0',
+  /**
+   * Set to 1 only when a reverse proxy (Caddy) is in front of the server. Otherwise clients could send their own
+   * X-Forwarded-For header and dodge the login rate limit.
+   */
+  trustProxy: process.env.TRUST_PROXY === '1',
   jwtSecret: jwtSecret(),
   klipyApiKey: process.env.KLIPY_API_KEY ?? '',
   livekit: {

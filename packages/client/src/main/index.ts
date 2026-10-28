@@ -1,6 +1,6 @@
 import { app, BrowserWindow, ipcMain, safeStorage, desktopCapturer, session, shell } from 'electron';
 import { join } from 'node:path';
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync, renameSync } from 'node:fs';
 import { fetchLinkPreview } from './linkPreview';
 import { searchGifs } from './klipy';
 import { setupUpdater } from './updater';
@@ -8,8 +8,24 @@ import { setupUpdater } from './updater';
 const KLIPY_KEY_STORE = 'klipyApiKey';
 
 const storeFile = () => join(app.getPath('userData'), 'secure-store.json');
+const storeBackupFile = () => `${storeFile()}.bak`;
+
+// Returns the parsed store, or null if the file is missing or unreadable (e.g. cut off by a crash mid-write).
+function readStoreFile(path: string): Record<string, string> | null {
+  try { return existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : null; } catch { return null; }
+}
 function readStore(): Record<string, string> {
-  try { return existsSync(storeFile()) ? JSON.parse(readFileSync(storeFile(), 'utf8')) : {}; } catch { return {}; }
+  return readStoreFile(storeFile()) ?? readStoreFile(storeBackupFile()) ?? {};
+}
+
+// Write to a temp file first and rename it over the real one, so a crash can never leave a half-written store.
+// The last good store is copied to a .bak file first, so it can be recovered if the main file is ever damaged.
+function writeStore(s: Record<string, string>) {
+  const file = storeFile();
+  const tmp = `${file}.tmp`;
+  writeFileSync(tmp, JSON.stringify(s), { mode: 0o600 });
+  if (readStoreFile(file)) copyFileSync(file, storeBackupFile());
+  renameSync(tmp, file);
 }
 
 const readSecret = (key: string): string | null => {
@@ -84,7 +100,7 @@ app.whenReady().then(() => {
   ipcMain.handle('secure:set', (_e, key: string, value: string) => {
     const s = readStore();
     s[key] = (safeStorage.isEncryptionAvailable() ? safeStorage.encryptString(value) : Buffer.from(value, 'utf8')).toString('base64');
-    writeFileSync(storeFile(), JSON.stringify(s), { mode: 0o600 });
+    writeStore(s);
   });
   ipcMain.handle('screen:sources', async () => {
     const sources = await desktopCapturer.getSources({ types: ['screen', 'window'], thumbnailSize: { width: 320, height: 180 }, fetchWindowIcons: true });

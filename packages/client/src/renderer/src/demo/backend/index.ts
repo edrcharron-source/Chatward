@@ -110,6 +110,14 @@ function demoTarget(actorId: string, targetId: string): Member {
   return target;
 }
 
+/** Past members are not in the member list, but any user the demo knows about can be banned by id. */
+function demoFormerUser(userId: string) {
+  if (userId === YOU_ID) throw new HttpError(400, 'you cannot ban yourself');
+  const bot = world.bots.find((b) => b.user.id === userId);
+  if (!bot) throw new HttpError(404, 'user not found');
+  return bot.user;
+}
+
 /** Takes a member out of the server, their voice call, and the member list, then tells every open socket. */
 function removeDemoMember(userId: string) {
   world.members = world.members.filter((m) => m.user.id !== userId);
@@ -283,6 +291,9 @@ on('PATCH', /^\/api\/servers\/([^/]+)\/channels\/([^/]+)$/, (r) => {
 on('DELETE', /^\/api\/servers\/([^/]+)\/channels\/([^/]+)$/, (r) => {
   serverGuard(r.match[1]);
   const channel = requireChannel(r.match[2]);
+  if (channel.kind === 'text' && world.channels.filter((c) => c.kind === 'text').length <= 1) {
+    throw new HttpError(409, 'a server needs at least one text channel');
+  }
   world.channels = world.channels.filter((c) => c.id !== channel.id);
   delete world.messages[channel.id];
   delete world.watch[channel.id];
@@ -321,6 +332,23 @@ on('DELETE', /^\/api\/servers\/([^/]+)\/members\/([^/]+)$/, (r) => {
   removeDemoMember(r.match[2]);
   return json({ ok: true });
 });
+// Same as the server's transfer route: the old owner becomes an admin and the target becomes the owner.
+on('POST', /^\/api\/servers\/([^/]+)\/transfer$/, (r) => {
+  serverGuard(r.match[1]);
+  const targetId = (r.body as { userId?: unknown })?.userId;
+  if (typeof targetId !== 'string' || !targetId) throw new HttpError(400, 'userId is required');
+  if (targetId === YOU_ID) throw new HttpError(400, 'you already own this server');
+  memberOrThrow(targetId);
+  world.members = world.members.map((m) => {
+    if (m.user.id === YOU_ID) return { ...m, role: 'admin' };
+    if (m.user.id === targetId) return { ...m, role: 'owner' };
+    return m;
+  });
+  world.server = { ...world.server, ownerId: targetId };
+  emit({ t: 'member.role', serverId: SERVER_ID, userId: YOU_ID, role: 'admin' });
+  emit({ t: 'member.role', serverId: SERVER_ID, userId: targetId, role: 'owner' });
+  return json({ ok: true });
+});
 on('POST', /^\/api\/servers\/([^/]+)\/invites$/, (r) => {
   serverGuard(r.match[1]);
   return json({ code: 'DEMO-INVITE', expiresAt: Date.now() + 7 * 24 * 3600_000 }, 201);
@@ -342,10 +370,22 @@ on('POST', /^\/api\/servers\/([^/]+)\/bans$/, (r) => {
   serverGuard(r.match[1]);
   const targetId = (r.body as { userId?: unknown })?.userId;
   if (typeof targetId !== 'string') throw new HttpError(400, 'userId is required');
-  const target = demoTarget(YOU_ID, targetId);
-  world.bans = [...world.bans.filter((b) => b.user.id !== targetId), { user: target.user, bannedAt: Date.now() }];
+  const user = world.members.some((m) => m.user.id === targetId) ? demoTarget(YOU_ID, targetId).user : demoFormerUser(targetId);
+  world.bans = [...world.bans.filter((b) => b.user.id !== targetId), { user, bannedAt: Date.now() }];
   removeDemoMember(targetId);
   return json({ ok: true });
+});
+on('GET', /^\/api\/servers\/([^/]+)\/former-members$/, (r) => {
+  serverGuard(r.match[1]);
+  const current = new Set([...world.members.map((m) => m.user.id), ...world.bans.map((b) => b.user.id)]);
+  const users = new Map<string, User>();
+  for (const msgs of Object.values(world.messages)) {
+    for (const msg of msgs) {
+      const bot = world.bots.find((b) => b.user.id === msg.authorId);
+      if (bot && !current.has(bot.user.id)) users.set(bot.user.id, bot.user);
+    }
+  }
+  return json({ users: [...users.values()] });
 });
 on('DELETE', /^\/api\/servers\/([^/]+)\/bans\/([^/]+)$/, (r) => {
   serverGuard(r.match[1]);
@@ -363,7 +403,13 @@ on('GET', /^\/api\/channels\/([^/]+)\/messages$/, (r) => {
   const ch = requireChannel(r.match[1]);
   const list = world.messages[ch.id] ?? [];
   const before = r.url.searchParams.get('before');
+  const after = r.url.searchParams.get('after');
   const limit = Math.min(50, Number(r.url.searchParams.get('limit')) || 50);
+  if (after) {
+    // Demo ids are "m-<n>" and count up, so compare the number: the cursor may already be deleted.
+    const num = (id: string) => Number(id.split('-').pop());
+    return json({ messages: list.filter((m) => num(m.id) > num(after)).slice(0, limit) });
+  }
   const end = before ? list.findIndex((m) => m.id === before) : list.length;
   return json({ messages: list.slice(Math.max(0, end - limit), Math.max(0, end)) });
 });

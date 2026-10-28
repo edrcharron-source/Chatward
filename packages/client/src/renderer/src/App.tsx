@@ -4,7 +4,7 @@ import { api } from './api/http';
 import { connectWs, disconnectWs, onFrame, sendFrame } from './api/ws';
 import { useSession, type ServerBundle } from './state/session';
 import { useSettings, applyTheme } from './state/settings';
-import { useVoice, rekeyActiveCall } from './state/voice';
+import { useVoice, rekeyActiveCall, resumeVoiceSlot } from './state/voice';
 import { accountKey, adoptLegacyIfOwned, initDevice, syncChannelKeys, handleEnvelope, handleMemberLeave } from './crypto';
 import { installNotifications } from './notify/notify';
 import AuthScreen from './components/auth/AuthScreen';
@@ -107,7 +107,10 @@ function Shell() {
             const mine = st.myStatus;
             useSession.setState({ presence: { ...f.presence, [f.user.id]: mine } });
             if (mine !== 'online') sendFrame({ t: 'presence', status: mine });
-            if (seenReady) loadServers().catch((e) => console.error('Could not refresh after reconnect', e));
+            if (seenReady) {
+              loadServers().catch((e) => console.error('Could not refresh after reconnect', e));
+              resumeVoiceSlot();
+            }
             seenReady = true;
             break;
           }
@@ -133,6 +136,8 @@ function Shell() {
             // leave the call if it was in the deleted voice channel, since the server has already dropped everyone
             if (useVoice.getState().channelId === f.channelId) void useVoice.getState().leave();
             st.removeChannel(f.serverId, f.channelId);
+            // Calls key off the server's first text channel. Deleting that one moves them to the next channel's key.
+            void syncChannelKeys(useSession.getState().servers).then(rekeyActiveCall).catch((e) => console.error(e));
             break;
           }
           case 'server.update': {
