@@ -66,7 +66,7 @@ export function resumeVoiceSlot(): void {
  */
 export function clearLeftoverVoiceSlot(): void {
   if (useVoice.getState().channelId || isDemo()) return;
-  void api.post('/api/voice/clear').catch((e) => console.warn('could not clear leftover voice slot', e));
+  leftoverClear = api.post('/api/voice/clear').then(() => {}, (e) => console.warn('could not clear leftover voice slot', e));
 }
 
 /**
@@ -152,6 +152,8 @@ onEpochChange(() => void rekeyActiveCall().catch((e) => console.warn('rekey afte
 
 // Bumps on every join and leave. A join still connecting when this has moved on is stale and tears down what it built.
 let joinAttempt = 0;
+// The startup clear must land before a join takes a slot, or the clear could drop the slot the join just took.
+let leftoverClear: Promise<void> = Promise.resolve();
 
 // Your own speaking state comes from your mic level, so it works without LiveKit's active-speaker data.
 const METER_MS = 100;
@@ -311,6 +313,8 @@ export const useVoice = create<VoiceState>((set, get) => {
         const voice = await voiceKey(channelId);
         if (stale()) { abandon(channelId, room, mic); return; }
         if (!voice) throw new Error('Channel encryption key is not available yet');
+        await leftoverClear;
+        if (stale()) { abandon(channelId, room, mic); return; }
         const { url, token } = await api.post<{ url: string; token: string }>('/api/voice/token', { channelId });
         if (stale()) { abandon(channelId, room, mic); return; }
 

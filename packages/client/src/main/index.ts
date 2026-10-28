@@ -54,6 +54,13 @@ function sendReferrerForYouTube() {
   });
 }
 
+// True for the app's own page (and the dev server while developing). Embedded third-party frames are not.
+function isAppPage(url: string | undefined): boolean {
+  if (!url) return false;
+  const dev = process.env['ELECTRON_RENDERER_URL'];
+  return url.startsWith(APP_ORIGIN + '/') || (!!dev && url.startsWith(dev));
+}
+
 // Never navigate away from the app; open links in the OS browser.
 function guardWebContents(wc: Electron.WebContents) {
   wc.setWindowOpenHandler(({ url }) => {
@@ -121,13 +128,15 @@ app.whenReady().then(() => {
     return true;
   });
 
-  // Permissions: only media (mic/camera/screen) + clipboard-sanitized-write.
-  session.defaultSession.setPermissionRequestHandler((_wc, perm, cb) =>
-    cb(['media', 'display-capture', 'clipboard-sanitized-write', 'fullscreen'].includes(perm)));
+  // Permissions: only media (mic/camera/screen) + clipboard-sanitized-write, and only for the app's own page.
+  // Frames embedded in messages (YouTube, X previews) must not get the microphone, camera or screen.
+  session.defaultSession.setPermissionRequestHandler((_wc, perm, cb, details) =>
+    cb(['media', 'display-capture', 'clipboard-sanitized-write', 'fullscreen'].includes(perm) && isAppPage(details.requestingUrl)));
 
   // Screen share: renderer first calls chatward.getScreenSources(), user picks, then
   // chatward.selectScreenSource(id) and getDisplayMedia() resolves with that source.
-  session.defaultSession.setDisplayMediaRequestHandler(async (_req, cb) => {
+  session.defaultSession.setDisplayMediaRequestHandler(async (req, cb) => {
+    if (!isAppPage(req.frame?.url)) return cb({});
     const sources = await desktopCapturer.getSources({ types: ['screen', 'window'] });
     const chosen = sources.find((s) => s.id === pendingSourceId);
     pendingSourceId = null;

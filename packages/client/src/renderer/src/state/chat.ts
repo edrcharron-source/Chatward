@@ -124,9 +124,10 @@ export async function loadHistory(channelId: string, mode: 'initial' | 'older' =
 }
 
 /**
- * After a reconnect, frames may have been missed. Walk forward one page at a time from the oldest message we
- * hold until the server has nothing newer, so a gap of any length is filled. Messages we held inside that walk
- * which the server no longer returns were deleted while we were away, so they are dropped.
+ * After a reconnect, frames may have been missed. Fetch only what is newer than the newest message we hold, one
+ * page at a time, so a gap of any length is filled. Then read the latest page once more: held messages inside
+ * that page's range which it no longer returns were deleted while we were away, so they are dropped. Held
+ * messages older than that page are not re-checked; a fresh load of the channel picks those up.
  */
 export async function catchUp(channelId: string) {
   const cur = channelOf(channelId);
@@ -134,24 +135,27 @@ export async function catchUp(channelId: string) {
 
   patchChannel(channelId, { loading: true });
   try {
-    const anchor = cur.messages[0]?.id;
-    // Snapshot first: messages that arrive over the socket during the walk are new, not deleted.
+    // Snapshot first: messages that arrive over the socket during the catch-up are new, not deleted.
     const held = cur.messages.map((m) => m.id);
-    const seen = new Set<string>();
-    let cursor = anchor;
+    let cursor = held[held.length - 1];
     for (;;) {
       const after = cursor ? `&after=${cursor}` : '';
       const { messages } = await api.get<{ messages: Message[] }>(
         `/api/channels/${channelId}/messages?limit=${LIMITS.HISTORY_PAGE}${after}`,
       );
-      for (const m of messages) seen.add(m.id);
       mergeMessages(channelId, messages);
       void decryptAll(channelId, messages);
       if (messages.length < LIMITS.HISTORY_PAGE) break;
       cursor = messages[messages.length - 1].id;
     }
-    const gone = anchor ? held.filter((id) => id > anchor && !seen.has(id)) : [];
-    removeMessages(channelId, gone);
+
+    const { messages: latest } = await api.get<{ messages: Message[] }>(
+      `/api/channels/${channelId}/messages?limit=${LIMITS.HISTORY_PAGE}`,
+    );
+    // A short page means it holds the whole channel, so every held message is in its range.
+    const floor = latest.length < LIMITS.HISTORY_PAGE ? '' : latest.reduce((min, m) => (m.id < min ? m.id : min), latest[0].id);
+    const present = new Set(latest.map((m) => m.id));
+    removeMessages(channelId, held.filter((id) => id >= floor && !present.has(id)));
     patchChannel(channelId, { loading: false });
   } catch (e) {
     patchChannel(channelId, { loading: false });

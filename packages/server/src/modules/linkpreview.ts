@@ -5,6 +5,7 @@ import net from 'node:net';
 import type { Express } from 'express';
 import type { LinkPreview } from '@chatward/shared';
 import type { Ctx } from '../ctx.js';
+import { perMember } from '../userLimit.js';
 
 const TIMEOUT_MS = 5000;
 const MAX_REDIRECTS = 3;
@@ -148,7 +149,7 @@ async function fetchImage(src: string, base: URL): Promise<string | undefined> {
 
 export function register(app: Express, ctx: Ctx): void {
   // Sender-side only: the sending client fetches here and embeds the result in the encrypted message.
-  app.get('/api/linkpreview', ctx.requireAuth, async (req, res) => {
+  app.get('/api/linkpreview', ctx.requireAuth, perMember(60_000, 30), async (req, res) => {
     const raw = typeof req.query.url === 'string' ? req.query.url : '';
     if (!raw || raw.length > 2048) { res.status(400).json({ error: 'url required' }); return; }
     let url: URL;
