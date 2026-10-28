@@ -429,6 +429,9 @@ async function catchUp(channelId: string): Promise<boolean> {
       forgetGroup(channelId);
       return true;
     }
+    // Keep this epoch's history key. Messages sent in it are only readable with this key, and setGroup below only
+    // stores the final epoch's key.
+    putKey(channelId, epoch + 1, await mls.historyKey(state));
   }
   const moved = epoch !== stored.epoch;
   if (moved) await setGroup(channelId, state, epoch);
@@ -701,10 +704,24 @@ export async function decryptBlob(blob: Uint8Array, key: string, iv: string): Pr
  * LiveKit E2EE key for a voice channel. Voice has no group of its own: it uses the MLS exporter of the first text
  * channel of the same server, so everyone in the server's current epoch derives the same key. null if unavailable.
  */
-export async function voiceKey(channelId: string): Promise<Uint8Array | null> {
-  const textChannel = textChannelOf(channelId) ?? channelId;
-  const state = groupOf(textChannel);
-  return state ? mls.voiceKey(state) : null;
+export function voiceKey(channelId: string): Promise<Uint8Array | null> {
+  return serial(async () => {
+    const textChannel = textChannelOf(channelId) ?? channelId;
+    // Catch up first. A device that is behind the server's epoch derives a different voice key from everyone else.
+    if (!isDemo() && groupOf(textChannel)) {
+      try {
+        if (await catchUp(textChannel)) {
+          await persistVault();
+          notify();
+        }
+      } catch (err) {
+        // Offline: use the epoch we have. The sync retry catches up later.
+        console.warn(`Could not catch up before joining voice in channel ${textChannel}`, err);
+      }
+    }
+    const state = groupOf(textChannel);
+    return state ? mls.voiceKey(state) : null;
+  });
 }
 
 function textChannelOf(channelId: string): string | null {
