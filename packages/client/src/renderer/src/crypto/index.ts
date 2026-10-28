@@ -53,6 +53,8 @@ const KEYPACKAGE_BATCH = 10;
 const ADD_BATCH_SIZE = 4;
 /** A Commit post can wait on the server to store it and fan out Welcomes, so it gets longer than a normal request. */
 const COMMIT_TIMEOUT_MS = 90_000;
+/** After a Commit post gets no answer, how long to wait before each re-check that the server stored it. */
+const STORED_CHECK_DELAYS_MS = [2_000, 5_000, 10_000];
 
 let account: string | null = null;
 let device: DeviceKeys | null = null;
@@ -60,6 +62,11 @@ let privates: { ecdh: CryptoKey; sign: CryptoKey } | null = null;
 let vault: Vault = emptyVault();
 const aesCache = new Map<string, Promise<CryptoKey>>();
 const groupStates = new Map<string, ClientState>();
+/**
+ * A Commit we posted that got no answer. The POST may still reach the server late, and then the server moves to the
+ * epoch this step makes. Catch-up adopts the step when it sees our Commit there, instead of replaying our own Commit.
+ */
+const pendingCommits = new Map<string, { epoch: number; commit: string; step: mls.GroupStep }>();
 /** Devices that have been in one of our groups but may no longer be on any server we are in. From the server's group device list. */
 const groupDevices = new Map<string, DeviceKeys>();
 const listeners = new Set<() => void>();
@@ -504,9 +511,10 @@ async function catchUp(channelId: string): Promise<boolean> {
 /** One request's worth of Commits. `more` is true only when the server has more and this chunk applied in full. */
 async function catchUpChunk(channelId: string): Promise<{ moved: boolean; more: boolean }> {
   const stored = vault.groups[channelId];
+  const me = getDevice();
   let state = groupOf(channelId)!;
   let epoch = stored.epoch;
-  const res = await api.get<{ epoch: number; commits: { epoch: number; commit: string }[]; more?: boolean }>(`/api/groups/${channelId}/commits?from=${epoch}`);
+  const res = await api.get<{ epoch: number; commits: { epoch: number; senderDeviceId: string; commit: string }[]; more?: boolean }>(`/api/groups/${channelId}/commits?from=${epoch}`);
   if (res.epoch < stored.epoch) {
     // The server is behind us: it dropped Commits we had applied. Our state no longer matches the server, so forget
     // the group and rejoin from a Welcome on the next step. Keys we already hold are kept.
@@ -517,10 +525,24 @@ async function catchUpChunk(channelId: string): Promise<{ moved: boolean; more: 
   let stuck = false;
   for (const c of res.commits) {
     if (c.epoch !== epoch) break;
+    // Our own Commit arriving after we gave up waiting for its answer. The server is at the epoch it makes, so adopt the
+    // state we built for it. Replaying it would fail, since a sender cannot apply its own Commit.
+    const pending = pendingCommits.get(channelId);
+    if (pending?.epoch === epoch && c.senderDeviceId === me.deviceId && c.commit === pending.commit) {
+      state = pending.step.state;
+      mls.settle(pending.step);
+      pendingCommits.delete(channelId);
+      epoch += 1;
+      putKey(channelId, epoch + 1, await mls.historyKey(state));
+      continue;
+    }
     try {
       state = (await mls.receive(state, fromB64(c.commit))).state;
     } catch {
       stuck = true;
+      if (c.senderDeviceId === me.deviceId) {
+        console.warn(`Our own Commit in channel ${channelId} cannot be applied, and no pending step matches it. The device may need re-adding.`);
+      }
       break;
     }
     epoch += 1;
@@ -535,6 +557,9 @@ async function catchUpChunk(channelId: string): Promise<{ moved: boolean; more: 
   }
   const moved = epoch !== stored.epoch;
   if (moved) await setGroup(channelId, state, epoch);
+  // A pending step is only good for its own epoch. Once the group moves past it, or a Commit fails, it is stale.
+  const pending = pendingCommits.get(channelId);
+  if (stuck || (pending && pending.epoch < epoch)) pendingCommits.delete(channelId);
   if (stuck) await dropCommitsFrom(channelId, epoch);
   const applied = epoch - stored.epoch === res.commits.length;
   return { moved, more: !stuck && !!res.more && applied };
@@ -543,6 +568,7 @@ async function catchUpChunk(channelId: string): Promise<{ moved: boolean; more: 
 function forgetGroup(channelId: string): void {
   delete vault.groups[channelId];
   groupStates.delete(channelId);
+  pendingCommits.delete(channelId);
 }
 
 /** Ask the server to drop the Commit at `epoch` and everything after it. A failure here is logged, not fatal to sync. */
@@ -646,15 +672,33 @@ async function postCommit(channelId: string, epoch: number, step: mls.GroupStep,
       throw err;
     }
     // No answer came back (timeout or dropped connection), but the server may have stored the Commit anyway. If it did,
-    // it is ours and already the group's next epoch, so we move on. Otherwise the failure is real.
-    if (!(await storedAsOurs(channelId, epoch, me.deviceId, commit))) throw err;
+    // it is ours and already the group's next epoch, so we move on. Otherwise keep the step: the POST can still arrive
+    // late, and catch-up adopts it then.
+    if (!(await storedAsOurs(channelId, epoch, me.deviceId, commit))) {
+      pendingCommits.set(channelId, { epoch, commit, step });
+      throw err;
+    }
   }
+  pendingCommits.delete(channelId);
   mls.settle(step);
   return 'ok';
 }
 
-/** True when the server holds exactly this Commit at `epoch`, sent by this device. Any failure to check counts as no. */
+/**
+ * True when the server holds exactly this Commit at `epoch`, sent by this device. The POST may still be in flight, so
+ * this checks again after each delay in STORED_CHECK_DELAYS_MS before it counts as no.
+ */
 async function storedAsOurs(channelId: string, epoch: number, deviceId: string, commit: string): Promise<boolean> {
+  for (let attempt = 0; ; attempt++) {
+    if (await storedAsOursOnce(channelId, epoch, deviceId, commit)) return true;
+    const delay = STORED_CHECK_DELAYS_MS[attempt];
+    if (delay === undefined) return false;
+    await new Promise((resolve) => setTimeout(resolve, delay));
+  }
+}
+
+/** One check of storedAsOurs. Any failure to check counts as no. */
+async function storedAsOursOnce(channelId: string, epoch: number, deviceId: string, commit: string): Promise<boolean> {
   try {
     const res = await api.get<{ commits: { epoch: number; senderDeviceId: string; commit: string }[] }>(`/api/groups/${channelId}/commits?from=${epoch}`);
     return res.commits.some((c) => c.epoch === epoch && c.senderDeviceId === deviceId && c.commit === commit);

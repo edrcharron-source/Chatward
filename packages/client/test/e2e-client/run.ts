@@ -224,6 +224,26 @@ async function main() {
     assert.ok(frankSees.includes('hello frank'), `frank reads after joining: ${JSON.stringify(frankSees)}`);
     log('alice\'s Commit reply is lost; she recognises the stored Commit as hers and carries on');
 
+    // 5f. Grace's device is added, and alice's Commit is held back so she gets no answer and gives up on it. The Commit
+    // then reaches the server late. Alice must adopt the step she kept, not replay her own Commit and get stuck.
+    await bob.call('init', { serverUrl: BASE, username: 'grace' });
+    const graceInvite = await alice.call('invite', { serverId });
+    await bob.call('register', { username: 'grace', inviteCode: graceInvite.code });
+    await bob.call('sync');
+    const epochBeforeGrace = (await alice.call('status', { channelId })).epoch;
+    await alice.call('holdNextCommit');
+    await alice.call('sync'); // alice's Commit adds grace; she waits for an answer that never comes, then keeps the step
+    assert.equal((await alice.call('status', { channelId })).epoch, epochBeforeGrace, 'alice stays at her epoch while the Commit is held');
+    await alice.call('sendHeldCommit'); // the Commit reaches the server late
+    await alice.call('sync');
+    assert.equal((await alice.call('status', { channelId })).epoch, epochBeforeGrace + 1, 'alice adopts her late Commit and moves on');
+    await alice.call('send', { channelId, text: 'hello grace' });
+    await bob.call('sync');
+    await bob.call('sync');
+    const graceSees = (await bob.call('read', { channelId })).texts;
+    assert.ok(graceSees.includes('hello grace'), `grace reads after a late Commit: ${JSON.stringify(graceSees)}`);
+    log('alice\'s Commit arrives after she gave up on it; she adopts the step she kept and grace can read');
+
     // Ten devices join a channel that already has a group. They are added four at a time, one Commit per batch, so no
     // Commit grows past the server's body limit. Alice's Commits (1 -> 4) go out in three batches.
     const big = await alice.call('createServer', { name: 'Big' });

@@ -12,6 +12,7 @@ import { secureStoreContents } from './shim';
 
 const PASSWORD = 'correct-horse-1';
 let accountId = '';
+let heldCommit: (() => Promise<unknown>) | null = null;
 const sha256 = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
 
 interface Message { id: string; channelId: string; authorId: string; keyVersion: number; ciphertext: string }
@@ -75,6 +76,25 @@ const handlers: Record<string, (args: any) => Promise<unknown>> = {
       await realPost(path, body, timeoutMs);
       throw new Error('reply lost');
     }) as typeof api.post;
+    return {};
+  },
+
+  /** The next Commit is not sent yet: this device gets no reply, as if the network dropped it. sendHeldCommit delivers it late. */
+  async holdNextCommit() {
+    const realPost = api.post;
+    api.post = (async (path: string, body?: unknown, timeoutMs?: number) => {
+      if (!path.endsWith('/commits')) return realPost(path, body, timeoutMs);
+      api.post = realPost;
+      heldCommit = () => realPost(path, body, timeoutMs);
+      throw new Error('reply lost');
+    }) as typeof api.post;
+    return {};
+  },
+
+  /** Delivers the Commit that holdNextCommit kept back, after this device has already given up on it. */
+  async sendHeldCommit() {
+    await heldCommit?.();
+    heldCommit = null;
     return {};
   },
 
