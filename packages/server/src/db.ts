@@ -140,10 +140,14 @@ export function openDb(): DB {
     PRIMARY KEY (group_id, device_id)
   );
   -- Every device that has ever been in a group. Unlike mls_group_devices this is never trimmed, so a Commit from
-  -- someone who has since left can still be checked against that device's registered key.
+  -- someone who has since left can still be checked against that device's registered key. The user and public keys
+  -- are copied here, not read from devices, because a deleted device has no devices row left to read.
   CREATE TABLE IF NOT EXISTS mls_group_seen_devices (
     group_id TEXT NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
     device_id TEXT NOT NULL,
+    user_id TEXT,
+    ecdh_public TEXT,
+    sign_public TEXT,
     PRIMARY KEY (group_id, device_id)
   );
   -- The highest epoch each device has confirmed it reached. A reset may not drop a Commit someone else built on.
@@ -175,10 +179,26 @@ export function openDb(): DB {
   // Groups created before mls_group_seen_devices existed: seed it from the devices the server already recorded.
   if (!seenDevicesExisted) {
     db.exec(`
-    INSERT OR IGNORE INTO mls_group_seen_devices (group_id, device_id)
-      SELECT group_id, sender_device_id FROM mls_commits
-      UNION SELECT group_id, to_device_id FROM mls_welcomes
-      UNION SELECT group_id, device_id FROM mls_group_devices;
+    INSERT OR IGNORE INTO mls_group_seen_devices (group_id, device_id, user_id, ecdh_public, sign_public)
+      SELECT s.group_id, d.device_id, d.user_id, d.ecdh_public, d.sign_public FROM (
+        SELECT group_id, sender_device_id AS device_id FROM mls_commits
+        UNION SELECT group_id, to_device_id FROM mls_welcomes
+        UNION SELECT group_id, device_id FROM mls_group_devices
+      ) s JOIN devices d ON d.device_id=s.device_id;
+    `);
+  }
+  // Seen devices written before the key copy existed: fill it in from devices while the row still exists.
+  // A device deleted before this runs has no keys left to copy, so its rows stay empty and are skipped on read.
+  const seenCols = new Set((db.pragma('table_info(mls_group_seen_devices)') as { name: string }[]).map((c) => c.name));
+  if (!seenCols.has('ecdh_public')) {
+    db.exec(`
+    ALTER TABLE mls_group_seen_devices ADD COLUMN user_id TEXT;
+    ALTER TABLE mls_group_seen_devices ADD COLUMN ecdh_public TEXT;
+    ALTER TABLE mls_group_seen_devices ADD COLUMN sign_public TEXT;
+    UPDATE mls_group_seen_devices SET
+      user_id=(SELECT d.user_id FROM devices d WHERE d.device_id=mls_group_seen_devices.device_id),
+      ecdh_public=(SELECT d.ecdh_public FROM devices d WHERE d.device_id=mls_group_seen_devices.device_id),
+      sign_public=(SELECT d.sign_public FROM devices d WHERE d.device_id=mls_group_seen_devices.device_id);
     `);
   }
   // Profile columns were added after the first release; existing databases get them here.
