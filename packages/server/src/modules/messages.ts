@@ -246,7 +246,7 @@ export function register(app: Express, ctx: Ctx): void {
     res.json({ message });
   });
 
-  app.delete('/api/messages/:id', ctx.requireAuth, (req, res) => {
+  app.delete('/api/messages/:id', ctx.requireAuth, async (req, res) => {
     const userId = (req as AuthedRequest).userId;
     const row = messageFor(userId, req.params.id, res);
     if (!row) return;
@@ -257,12 +257,11 @@ export function register(app: Express, ctx: Ctx): void {
     }
     const uploadIds = deleteMessageAndUploads(row.id);
     ctx.broadcastToServer(row.server_id, { t: 'message.delete', channelId: row.channel_id, messageId: row.id });
-    res.json({ ok: true });
     // Free the disk space too. A failed removal is logged; the upload rows are already gone, so nothing points at the file.
-    for (const id of uploadIds) {
+    await Promise.all(uploadIds.map((id) =>
       fs.rm(path.join(ctx.config.uploadsDir, id), { force: true })
-        .catch((err) => console.error(`upload ${id} cleanup failed`, err));
-    }
+        .catch((err) => console.error(`upload ${id} cleanup failed`, err))));
+    res.json({ ok: true });
   });
 
   // ---------- channel keys ----------
