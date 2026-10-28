@@ -1,38 +1,49 @@
-// E2EE module — OWNER: crypto agent. Signatures below are the contract; do not change them.
-// Threat model and key lifecycle: see ./README.md.
-import type { DeviceKeys, KeyEnvelope, Message, MessagePayload } from '@chatward/shared';
-import { api } from '../api/http';
+// E2EE module. The exported API is the one the app uses; internals run on MLS (RFC 9420) via ./mls.
+// Membership and epoch changes come from Commits. Message keys are per-epoch history keys derived from each epoch's
+// MLS exporter, so they are never sent on the wire. A device that joins gets the current key from its Welcome and
+// older keys from existing members as v1 envelopes. Threat model and tradeoffs: see ./README.md.
+import type { DeviceKeys, KeyEnvelope, Member, Message, MessagePayload } from '@chatward/shared';
+import type { ClientState } from 'ts-mls';
+import { api, ApiError } from '../api/http';
 import { useSession, type ServerBundle } from '../state/session';
 import { openEnvelope, sealEnvelope } from './envelope';
+import * as mls from './mls';
 import {
-  aesDecryptWith, aesEncryptWith, aesOpen, aesSeal, Bytes, concat, exportJwk, exportRawPublic, fromB64,
-  generateAesKeyBytes, generateEcdh, generateSigning, hkdf, importAesKey, importEcdhPrivate, importSignPrivate,
-  importSignPublic, IV_BYTES, KEY_BYTES, randomBytes, toB64, utf8,
+  aesDecryptWith, aesEncryptWith, aesOpen, aesSeal, Bytes, exportJwk, exportRawPublic, fromB64, generateAesKeyBytes,
+  generateEcdh, generateSigning, importAesKey, importEcdhPrivate, importSignPrivate, importSignPublic, IV_BYTES, randomBytes,
+  toB64, utf8,
 } from './primitives';
 
 export { safetyNumber } from './safety';
 
-// Local vault: every channel key we hold (plus the device list the latest version was wrapped for).
-// Stored only through window.chatward.secureStore, which the main process encrypts with safeStorage.
+// Local vault. Stored only through window.chatward.secureStore, which the main process encrypts with safeStorage.
 interface StoredDevice extends DeviceKeys {
   ecdhPrivate: JsonWebKey;
   signPrivate: JsonWebKey;
 }
 
 interface Vault {
-  /** channelId -> keyVersion -> base64 AES-256 key */
+  /** channelId -> keyVersion -> base64 AES-256 history key. keyVersion = MLS epoch + 1. */
   channels: Record<string, Record<string, string>>;
-  /** channelId -> recipients of the latest version we know about */
-  recipients: Record<string, { version: number; deviceIds: string[] }>;
+  /** channelId -> serialized MLS group state at `epoch` */
+  groups: Record<string, { epoch: number; state: string }>;
+  /** channelId -> devices that already received every history key we hold */
+  shared: Record<string, string[]>;
+  /** KeyPackage wire string -> private parts. Single-use entries are removed once a Welcome consumes them. */
+  pool: Record<string, mls.StoredKeyPackage>;
 }
 
 const DEVICE_STORE = 'crypto.device.v1';
-const VAULT_STORE = 'crypto.vault.v1';
+const VAULT_STORE = 'crypto.vault.v2';
+/** Refill the single-use KeyPackage pool when the server reports fewer than this. */
+const KEYPACKAGE_LOW_WATER = 5;
+const KEYPACKAGE_BATCH = 10;
 
 let device: DeviceKeys | null = null;
 let privates: { ecdh: CryptoKey; sign: CryptoKey } | null = null;
-let vault: Vault = { channels: {}, recipients: {} };
+let vault: Vault = { channels: {}, groups: {}, shared: {}, pool: {} };
 const aesCache = new Map<string, Promise<CryptoKey>>();
+const groupStates = new Map<string, ClientState>();
 const listeners = new Set<() => void>();
 // Every mutation of the vault goes through this queue so syncs and frames cannot interleave.
 let queue: Promise<unknown> = Promise.resolve();
@@ -90,15 +101,15 @@ export function getDevice(): DeviceKeys {
   return device;
 }
 
-/** Ensure every text channel has a key and this device has envelopes; create+wrap keys for all member devices when we hold/create the key. Idempotent; safe to call often. */
+/** Bring every text channel of every server up to date: join or create its group, follow Commits, reconcile members, share history. Idempotent. */
 export function syncChannelKeys(servers: ServerBundle[]): Promise<void> {
   return serial(async () => {
     if (!device || !privates) return;
-    let changed = false;
+    let changed = await ensureKeyPool();
     for (const bundle of servers) {
-      const devices = bundle.members.flatMap((m) => m.devices);
       for (const channel of bundle.channels) {
-        changed = (await syncChannel(channel.id, devices)) || changed;
+        if (channel.kind !== 'text') continue;
+        changed = (await syncChannel(channel.id, bundle.members)) || changed;
       }
     }
     if (changed) {
@@ -108,63 +119,200 @@ export function syncChannelKeys(servers: ServerBundle[]): Promise<void> {
   });
 }
 
-async function syncChannel(channelId: string, devices: DeviceKeys[]): Promise<boolean> {
+async function syncChannel(channelId: string, members: Member[]): Promise<boolean> {
   const me = getDevice();
   let dirty = false;
-
   const mine = await api.get<{ envelopes: KeyEnvelope[] }>(`/api/channels/${channelId}/keys?deviceId=${encodeURIComponent(me.deviceId)}`);
   for (const env of mine.envelopes) dirty = (await acceptEnvelope(env)) || dirty;
-
-  const status = await api.get<{ latestVersion: number; devicesMissing: string[] }>(`/api/channels/${channelId}/key-status`);
-  const serverLatest = status.latestVersion;
-
-  // First key for this channel: we create it and wrap it for every member device.
-  if (serverLatest === 0) {
-    if (localLatest(channelId) > 0) return dirty;
-    const key = generateAesKeyBytes();
-    putKey(channelId, 1, key);
-    await publishKey(channelId, 1, key, devices);
-    return true;
-  }
-
-  const key = localKey(channelId, serverLatest);
-  if (!key) return dirty; // no envelope for us yet; a member who holds the key will wrap one
-
-  const current = new Set(devices.map((d) => d.deviceId));
-  const record = vault.recipients[channelId];
-
-  // A device that received the latest key has left the server (kick): rotate to a new version for the remaining members.
-  if (record?.version === serverLatest && record.deviceIds.some((id) => !current.has(id))) {
-    const next = serverLatest + 1;
-    const fresh = generateAesKeyBytes();
-    putKey(channelId, next, fresh);
-    await publishKey(channelId, next, fresh, devices);
-    return true;
-  }
-
-  // We hold the latest key: wrap every version we hold for any member device the server reports as missing the latest.
-  // A new device needs the full history, so older versions go to it too.
-  const missing = devices.filter((d) => status.devicesMissing.includes(d.deviceId));
-  if (missing.length > 0) {
-    for (const version of localVersions(channelId)) {
-      await wrapFor(channelId, version, localKey(channelId, version)!, missing);
-    }
-    vault.recipients[channelId] = {
-      version: serverLatest,
-      deviceIds: [...new Set([...(record?.version === serverLatest ? record.deviceIds : []), ...missing.map((d) => d.deviceId)])],
-    };
-    dirty = true;
-  } else if (!record || record.version !== serverLatest) {
-    // No record of who got this version (e.g. we received it over the socket): trust the current member list as the baseline.
-    vault.recipients[channelId] = { version: serverLatest, deviceIds: [...current] };
-    dirty = true;
-  }
+  dirty = (await ensureGroup(channelId, members)) || dirty;
+  dirty = (await reconcile(channelId, members)) || dirty;
+  dirty = (await shareHistory(channelId, members.flatMap((m) => m.devices))) || dirty;
   return dirty;
 }
 
-async function publishKey(channelId: string, version: number, key: Bytes, targets: DeviceKeys[]): Promise<void> {
-  await wrapFor(channelId, version, key, targets);
-  vault.recipients[channelId] = { version, deviceIds: targets.map((d) => d.deviceId) };
+/** Keep a supply of single-use KeyPackages on the server, plus one last-resort package. */
+async function ensureKeyPool(): Promise<boolean> {
+  const me = getDevice();
+  const count = await api.get<{ available: number }>(`/api/devices/${encodeURIComponent(me.deviceId)}/keypackages/count`);
+  const needLastResort = !Object.values(vault.pool).some((entry) => entry.lastResort);
+  if (count.available >= KEYPACKAGE_LOW_WATER && !needLastResort) return false;
+  const size = count.available >= KEYPACKAGE_LOW_WATER ? 0 : KEYPACKAGE_BATCH;
+  const made: { kp: string; keys: mls.MemberKeys; lastResort: boolean }[] = [];
+  for (let i = 0; i < size; i++) made.push(await newKeyPackage(false));
+  if (needLastResort) made.push(await newKeyPackage(true));
+  await api.post('/api/devices/keypackages', {
+    deviceId: me.deviceId,
+    keyPackages: made.map((m) => ({ kp: m.kp, lastResort: m.lastResort })),
+  });
+  for (const m of made) vault.pool[m.kp] = mls.storeKeyPackage(m.keys, m.kp, m.lastResort);
+  return made.length > 0;
+}
+
+async function newKeyPackage(lastResort: boolean) {
+  const keys = await mls.newMemberKeys(getDevice().deviceId);
+  return { kp: await mls.encodeKeyPackage(keys), keys, lastResort };
+}
+
+/** Group state for a channel, or null if we are not in it. */
+function groupOf(channelId: string): ClientState | null {
+  const cached = groupStates.get(channelId);
+  if (cached) return cached;
+  const stored = vault.groups[channelId];
+  if (!stored) return null;
+  const state = mls.decodeGroup(fromB64(stored.state));
+  groupStates.set(channelId, state);
+  return state;
+}
+
+/** Save a new group state and derive the history key for its epoch. */
+async function setGroup(channelId: string, state: ClientState, epoch: number): Promise<void> {
+  groupStates.set(channelId, state);
+  vault.groups[channelId] = { epoch, state: toB64(mls.encodeGroup(state) as Bytes as Uint8Array<ArrayBuffer>) };
+  putKey(channelId, epoch + 1, await mls.historyKey(state));
+}
+
+async function ensureGroup(channelId: string, members: Member[]): Promise<boolean> {
+  if (groupOf(channelId)) return catchUp(channelId);
+  const me = getDevice();
+  const welcomes = await api.get<{ welcomes: { epoch: number; toDeviceId: string; welcome: string }[] }>(`/api/groups/${channelId}/welcomes`);
+  const latest = welcomes.welcomes.filter((w) => w.toDeviceId === me.deviceId).at(-1);
+  if (latest) {
+    const state = await joinFromPool(latest.welcome);
+    if (!state) return false;
+    await setGroup(channelId, state, latest.epoch);
+    return true;
+  }
+  // No Welcome for us. Create the group only if nobody has committed yet; otherwise an existing member adds us.
+  const info = await api.get<{ epoch: number }>(`/api/groups/${channelId}/commits?from=0`);
+  if (info.epoch !== 0) return false;
+  return createGroup(channelId, members);
+}
+
+async function joinFromPool(welcome: string): Promise<ClientState | null> {
+  for (const [kp, entry] of Object.entries(vault.pool)) {
+    try {
+      const state = await mls.joinFromWelcome(fromB64(welcome), mls.restoreKeyPackage(entry));
+      if (!entry.lastResort) delete vault.pool[kp];
+      return state;
+    } catch {
+      // Not the KeyPackage this Welcome was made for.
+    }
+  }
+  return null;
+}
+
+async function createGroup(channelId: string, members: Member[]): Promise<boolean> {
+  const me = getDevice();
+  const solo = await mls.createMlsGroup(channelId, await mls.newMemberKeys(me.deviceId));
+  const added = await claimFor(members, new Set(members.flatMap((m) => m.devices).map((d) => d.deviceId).filter((id) => id !== me.deviceId)));
+  const step = added.length ? await mls.addMembers(solo, added.map((a) => a.kp)) : await mls.selfUpdate(solo);
+  // Publishing the commit is what makes this the group. A 409 means another device created it first; we join by Welcome.
+  const outcome = await postCommit(channelId, 0, step, [me.deviceId, ...added.map((a) => a.deviceId)], added.map((a) => a.deviceId));
+  if (outcome === 'conflict') return false;
+  await setGroup(channelId, step.state, 1);
+  return true;
+}
+
+/** Apply Commits we have not seen. A failure means we can no longer follow the group, usually because we were removed. */
+async function catchUp(channelId: string): Promise<boolean> {
+  const stored = vault.groups[channelId];
+  let state = groupOf(channelId)!;
+  let epoch = stored.epoch;
+  const res = await api.get<{ commits: { epoch: number; commit: string }[] }>(`/api/groups/${channelId}/commits?from=${epoch}`);
+  if (res.commits.length === 0) return false;
+  try {
+    for (const c of res.commits) {
+      if (c.epoch !== epoch) break;
+      state = (await mls.receive(state, fromB64(c.commit))).state;
+      epoch += 1;
+    }
+  } catch {
+    delete vault.groups[channelId];
+    groupStates.delete(channelId);
+    return true;
+  }
+  if (epoch === stored.epoch) return false;
+  await setGroup(channelId, state, epoch);
+  return true;
+}
+
+/** Remove devices that left the server, then add devices that joined it. Each step is one Commit. */
+async function reconcile(channelId: string, members: Member[]): Promise<boolean> {
+  const me = getDevice();
+  let state = groupOf(channelId);
+  if (!state) return false;
+  let epoch = vault.groups[channelId].epoch;
+  const live = new Set(members.flatMap((m) => m.devices).map((d) => d.deviceId));
+  let changed = false;
+
+  const gone = mls.memberLeaves(state).filter((l) => !live.has(l.deviceId));
+  if (gone.length) {
+    const step = await mls.removeMembers(state, gone.map((l) => l.leafIndex));
+    const remaining = mls.memberLeaves(step.state).map((l) => l.deviceId);
+    if ((await postCommit(channelId, epoch, step, remaining, [])) === 'conflict') return false;
+    await setGroup(channelId, step.state, epoch + 1);
+    state = step.state;
+    epoch += 1;
+    changed = true;
+  }
+
+  const inGroup = new Set(mls.memberLeaves(state).map((l) => l.deviceId));
+  const wanted = new Set([...live].filter((id) => !inGroup.has(id) && id !== me.deviceId));
+  if (wanted.size === 0) return changed;
+  const added = await claimFor(members, wanted);
+  if (added.length === 0) return changed;
+  const step = await mls.addMembers(state, added.map((a) => a.kp));
+  const after = [...inGroup, ...added.map((a) => a.deviceId)];
+  if ((await postCommit(channelId, epoch, step, after, added.map((a) => a.deviceId))) === 'conflict') return changed;
+  await setGroup(channelId, step.state, epoch + 1);
+  return true;
+}
+
+/** Claim one KeyPackage per wanted device, one request per user who has any wanted device. */
+async function claimFor(members: Member[], wanted: Set<string>): Promise<{ deviceId: string; kp: mls.KeyPackageLike }[]> {
+  const out: { deviceId: string; kp: mls.KeyPackageLike }[] = [];
+  for (const m of members) {
+    if (!m.devices.some((d) => wanted.has(d.deviceId))) continue;
+    const r = await api.get<{ keyPackages: { deviceId: string; kp: string }[] }>(`/api/users/${m.user.id}/keypackages`);
+    for (const k of r.keyPackages) if (wanted.has(k.deviceId)) out.push({ deviceId: k.deviceId, kp: mls.decodeKeyPackage(k.kp) });
+  }
+  return out;
+}
+
+async function postCommit(channelId: string, epoch: number, step: mls.GroupStep, members: string[], welcomeTo: string[]): Promise<'ok' | 'conflict'> {
+  const me = getDevice();
+  const welcome = step.welcome ? toB64(step.welcome as Uint8Array<ArrayBuffer>) : null;
+  try {
+    await api.post(`/api/groups/${channelId}/commits`, {
+      deviceId: me.deviceId,
+      epoch,
+      commit: toB64(step.commit as Uint8Array<ArrayBuffer>),
+      members,
+      welcomes: welcomeTo.map((toDeviceId) => ({ toDeviceId, welcome })),
+    });
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 409) return 'conflict';
+    throw err;
+  }
+  mls.settle(step);
+  return 'ok';
+}
+
+/** Send every history key we hold to devices that do not have them yet. Drops devices that left the server. */
+async function shareHistory(channelId: string, devices: DeviceKeys[]): Promise<boolean> {
+  const me = getDevice();
+  const live = new Set(devices.map((d) => d.deviceId));
+  const before = vault.shared[channelId] ?? [];
+  const done = before.filter((id) => live.has(id));
+  const targets = devices.filter((d) => d.deviceId !== me.deviceId && !done.includes(d.deviceId));
+  const versions = localVersions(channelId);
+  if (targets.length && versions.length) {
+    for (const version of versions) await wrapFor(channelId, version, localKey(channelId, version)!, targets);
+    vault.shared[channelId] = [...done, ...targets.map((d) => d.deviceId)];
+    return true;
+  }
+  if (done.length !== before.length) vault.shared[channelId] = done;
+  return done.length !== before.length;
 }
 
 async function wrapFor(channelId: string, version: number, key: Bytes, targets: DeviceKeys[]): Promise<void> {
@@ -186,19 +334,19 @@ export function handleEnvelope(env: KeyEnvelope): Promise<void> {
 }
 
 /**
- * Call on member.leave (after a kick). Rotates every channel of that server whose latest key we hold,
- * wrapping the new version only for the devices of members who remain. Does not depend on the caller's
- * member list being refreshed yet: the removed user's devices are filtered out here.
+ * Call on member.leave (after a kick). Runs the channel sync for the server without the removed user, so the
+ * remaining members commit the Remove. Keys the removed user already held are not erased.
  */
 export function handleMemberLeave(serverId: string, userId: string, servers: ServerBundle[]): Promise<void> {
   return serial(async () => {
     if (!device || !privates) return;
     const bundle = servers.find((b) => b.server.id === serverId);
     if (!bundle) return;
-    const remaining = bundle.members.filter((m) => m.user.id !== userId).flatMap((m) => m.devices);
+    const remaining = bundle.members.filter((m) => m.user.id !== userId);
     let changed = false;
     for (const channel of bundle.channels) {
-      changed = (await rotateIfHeld(channel.id, remaining)) || changed;
+      if (channel.kind !== 'text') continue;
+      changed = (await syncChannel(channel.id, remaining)) || changed;
     }
     if (changed) {
       await persistVault();
@@ -207,17 +355,7 @@ export function handleMemberLeave(serverId: string, userId: string, servers: Ser
   });
 }
 
-async function rotateIfHeld(channelId: string, devices: DeviceKeys[]): Promise<boolean> {
-  const status = await api.get<{ latestVersion: number }>(`/api/channels/${channelId}/key-status`);
-  if (status.latestVersion === 0 || !localKey(channelId, status.latestVersion)) return false;
-  const next = status.latestVersion + 1;
-  const fresh = generateAesKeyBytes();
-  putKey(channelId, next, fresh);
-  await publishKey(channelId, next, fresh, devices);
-  return true;
-}
-
-/** Verifies the sender against the member directory, then unwraps into the vault. Caller persists. */
+/** Verifies the sender against the member directory, then stores the history key. Caller persists. */
 async function acceptEnvelope(env: KeyEnvelope): Promise<boolean> {
   const me = getDevice();
   if (env.toDeviceId !== me.deviceId || localKey(env.channelId, env.keyVersion)) return false;
@@ -246,18 +384,13 @@ function localVersions(channelId: string): number[] {
   return Object.keys(vault.channels[channelId] ?? {}).map(Number).sort((a, b) => a - b);
 }
 
-function localLatest(channelId: string): number {
-  const versions = localVersions(channelId);
-  return versions.length ? versions[versions.length - 1] : 0;
-}
-
 function localKey(channelId: string, version: number): Bytes | null {
   const encoded = vault.channels[channelId]?.[String(version)];
   return encoded ? fromB64(encoded) : null;
 }
 
 function putKey(channelId: string, version: number, key: Bytes): void {
-  vault.channels[channelId] = { ...vault.channels[channelId], [String(version)]: toB64(key) };
+  vault.channels[channelId] = { ...vault.channels[channelId], [String(version)]: toB64(key as Uint8Array<ArrayBuffer>) };
 }
 
 function aesKeyFor(channelId: string, version: number): Promise<CryptoKey> | null {
@@ -281,11 +414,13 @@ function notify(): void {
 }
 
 export async function encryptPayload(channelId: string, authorId: string, payload: MessagePayload): Promise<{ ciphertext: string; keyVersion: number }> {
-  const keyVersion = localLatest(channelId);
-  const key = keyVersion > 0 ? aesKeyFor(channelId, keyVersion) : null;
+  const stored = vault.groups[channelId];
+  if (!stored) throw new Error('No channel key yet');
+  const keyVersion = stored.epoch + 1;
+  const key = aesKeyFor(channelId, keyVersion);
   if (!key) throw new Error('No channel key yet');
   const sealed = await aesSeal(await key, utf8(JSON.stringify(payload)), messageAad(channelId, keyVersion, authorId));
-  return { ciphertext: toB64(sealed), keyVersion };
+  return { ciphertext: toB64(sealed as Uint8Array<ArrayBuffer>), keyVersion };
 }
 
 /** null if key not available (yet) or authentication fails */
@@ -318,10 +453,20 @@ export async function decryptBlob(blob: Uint8Array, key: string, iv: string): Pr
   return aesDecryptWith(await importAesKey(fromB64(key)), fromB64(iv), new Uint8Array(blob));
 }
 
-/** 32-byte media key for LiveKit E2EE derived from the channel key; null if unavailable. */
+/**
+ * LiveKit E2EE key for a voice channel. Voice has no group of its own: it uses the MLS exporter of the first text
+ * channel of the same server, so everyone in the server's current epoch derives the same key. null if unavailable.
+ */
 export async function voiceKey(channelId: string): Promise<Uint8Array | null> {
-  const version = localLatest(channelId);
-  const raw = version > 0 ? localKey(channelId, version) : null;
-  if (!raw) return null;
-  return hkdf(raw, utf8(channelId), utf8('chatward-voice'), KEY_BYTES);
+  const textChannel = textChannelOf(channelId) ?? channelId;
+  const state = groupOf(textChannel);
+  return state ? mls.voiceKey(state) : null;
+}
+
+function textChannelOf(channelId: string): string | null {
+  for (const bundle of useSession.getState().servers) {
+    if (!bundle.channels.some((c) => c.id === channelId)) continue;
+    return bundle.channels.find((c) => c.kind === 'text')?.id ?? null;
+  }
+  return null;
 }

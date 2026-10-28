@@ -1,10 +1,11 @@
 // MLS (RFC 9420) group layer on ts-mls. Pure functions over ClientState: no storage, no network.
 // The server only relays the encoded bytes returned here (KeyPackages, Commits, Welcomes, application messages).
 import {
-  acceptAll, createApplicationMessage, createCommit, createGroup, decodeMlsMessage, defaultCapabilities,
-  defaultLifetime, emptyPskIndex, encodeMlsMessage, generateKeyPackage, getCiphersuiteFromName, getCiphersuiteImpl,
-  joinGroup, mlsExporter, processMessage, zeroOutUint8Array, type CiphersuiteImpl, type ClientState, type Credential,
-  type KeyPackage, type PrivateKeyPackage, type Proposal,
+  acceptAll, createApplicationMessage, createCommit, createGroup, decodeGroupState, decodeMlsMessage, defaultAuthenticationService,
+  defaultCapabilities, defaultKeyPackageEqualityConfig, defaultKeyRetentionConfig, defaultLifetime, defaultLifetimeConfig,
+  defaultPaddingConfig, emptyPskIndex, encodeGroupState, encodeMlsMessage, generateKeyPackage, getCiphersuiteFromName,
+  getCiphersuiteImpl, joinGroup, mlsExporter, processMessage, zeroOutUint8Array, type CiphersuiteImpl, type ClientConfig,
+  type ClientState, type Credential, type KeyPackage, type PrivateKeyPackage, type Proposal,
 } from 'ts-mls';
 import { fromB64, toB64, utf8 } from './primitives';
 
@@ -149,4 +150,59 @@ export function memberLeaves(state: ClientState): { leafIndex: number; deviceId:
     out.push({ leafIndex: nodeIndex / 2, deviceId: new TextDecoder().decode(node.leaf.credential.identity) });
   });
   return out;
+}
+
+/** Per-epoch AES-256 key for message content and history. Each epoch derives a new one, so a removed member never gets the next. */
+export async function historyKey(state: ClientState): Promise<Uint8Array<ArrayBuffer>> {
+  return mlsExporter(state.keySchedule.exporterSecret, 'chatward-history', utf8(''), 32, await cipherSuite()) as Promise<Uint8Array<ArrayBuffer>>;
+}
+
+const clientConfig: ClientConfig = {
+  keyRetentionConfig: defaultKeyRetentionConfig,
+  lifetimeConfig: defaultLifetimeConfig,
+  keyPackageEqualityConfig: defaultKeyPackageEqualityConfig,
+  paddingConfig: defaultPaddingConfig,
+  authService: defaultAuthenticationService,
+};
+
+/** Serialized group state for the local vault. Holds the epoch secrets, so it is stored only via secureStore. */
+export function encodeGroup(state: ClientState): Bytes {
+  return encodeGroupState(state) as Bytes;
+}
+
+export type KeyPackageLike = KeyPackage;
+
+export function decodeGroup(bytes: Bytes): ClientState {
+  const [group] = decodeGroupState(bytes, 0)!;
+  return { ...group, clientConfig };
+}
+
+/** A KeyPackage we uploaded, with the private parts needed to join from a Welcome that names it. */
+export interface StoredKeyPackage {
+  kp: string;
+  init: string;
+  hpke: string;
+  sig: string;
+  lastResort: boolean;
+}
+
+export function storeKeyPackage(keys: MemberKeys, kp: string, lastResort: boolean): StoredKeyPackage {
+  return {
+    kp,
+    init: toB64(keys.privatePackage.initPrivateKey as Uint8Array<ArrayBuffer>),
+    hpke: toB64(keys.privatePackage.hpkePrivateKey as Uint8Array<ArrayBuffer>),
+    sig: toB64(keys.privatePackage.signaturePrivateKey as Uint8Array<ArrayBuffer>),
+    lastResort,
+  };
+}
+
+export function restoreKeyPackage(stored: StoredKeyPackage): MemberKeys {
+  return {
+    publicPackage: decodeKeyPackage(stored.kp),
+    privatePackage: {
+      initPrivateKey: fromB64(stored.init),
+      hpkePrivateKey: fromB64(stored.hpke),
+      signaturePrivateKey: fromB64(stored.sig),
+    },
+  };
 }
