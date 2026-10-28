@@ -151,7 +151,7 @@ async function ensureKeyPool(): Promise<boolean> {
 }
 
 async function newKeyPackage(lastResort: boolean) {
-  const keys = await mls.newMemberKeys(getDevice().deviceId);
+  const keys = await mls.newMemberKeys({ deviceId: getDevice().deviceId, signPrivate: privates!.sign });
   return { kp: await mls.encodeKeyPackage(keys), keys, lastResort };
 }
 
@@ -161,7 +161,7 @@ function groupOf(channelId: string): ClientState | null {
   if (cached) return cached;
   const stored = vault.groups[channelId];
   if (!stored) return null;
-  const state = mls.decodeGroup(fromB64(stored.state));
+  const state = mls.decodeGroup(fromB64(stored.state), deviceDirectory());
   groupStates.set(channelId, state);
   return state;
 }
@@ -193,7 +193,7 @@ async function ensureGroup(channelId: string, members: Member[]): Promise<boolea
 async function joinFromPool(welcome: string): Promise<ClientState | null> {
   for (const [kp, entry] of Object.entries(vault.pool)) {
     try {
-      const state = await mls.joinFromWelcome(fromB64(welcome), mls.restoreKeyPackage(entry));
+      const state = await mls.joinFromWelcome(fromB64(welcome), mls.restoreKeyPackage(entry), deviceDirectory());
       if (!entry.lastResort) delete vault.pool[kp];
       return state;
     } catch {
@@ -205,7 +205,9 @@ async function joinFromPool(welcome: string): Promise<ClientState | null> {
 
 async function createGroup(channelId: string, members: Member[]): Promise<boolean> {
   const me = getDevice();
-  const solo = await mls.createMlsGroup(channelId, await mls.newMemberKeys(me.deviceId));
+  const solo = await mls.createMlsGroup(
+    channelId, await mls.newMemberKeys({ deviceId: me.deviceId, signPrivate: privates!.sign }), deviceDirectory(),
+  );
   const added = await claimFor(members, new Set(members.flatMap((m) => m.devices).map((d) => d.deviceId).filter((id) => id !== me.deviceId)));
   const step = added.length ? await mls.addMembers(solo, added.map((a) => a.kp)) : await mls.selfUpdate(solo);
   // Publishing the commit is what makes this the group. A 409 means another device created it first; we join by Welcome.
@@ -381,6 +383,11 @@ function knownDevices(): Map<string, DeviceKeys> {
     for (const member of bundle.members) for (const d of member.devices) map.set(d.deviceId, d);
   }
   return map;
+}
+
+/** MLS credentials are accepted only if they name a device from this list and are signed by that device's key. */
+function deviceDirectory(): mls.DeviceDirectory {
+  return (deviceId) => knownDevices().get(deviceId)?.signPublic;
 }
 
 function localVersions(channelId: string): number[] {

@@ -29,15 +29,23 @@ interface Dev {
 
 interface DeviceKeys { deviceId: string; ecdhPublic: string; signPublic: string }
 
+/** Each device's ECDSA signing private key, which signs its MLS credentials. */
+const signPrivates = new Map<string, CryptoKey>();
+/** Stands in for the server's device list that clients check MLS credentials against. */
+const registeredSignKeys = new Map<string, string>();
+const devices: mls.DeviceDirectory = (deviceId) => registeredSignKeys.get(deviceId);
+
 async function makeDeviceKeys(): Promise<DeviceKeys> {
   const ecdh = await generateEcdh();
   const sign = await generateSigning();
-  return {
-    deviceId: crypto.randomUUID(),
-    ecdhPublic: toB64(await exportRawPublic(ecdh.publicKey)),
-    signPublic: toB64(await exportRawPublic(sign.publicKey)),
-  };
+  const deviceId = crypto.randomUUID();
+  const signPublic = toB64(await exportRawPublic(sign.publicKey));
+  signPrivates.set(deviceId, sign.privateKey);
+  registeredSignKeys.set(deviceId, signPublic);
+  return { deviceId, ecdhPublic: toB64(await exportRawPublic(ecdh.publicKey)), signPublic };
 }
+
+const newKeys = (deviceId: string) => mls.newMemberKeys({ deviceId, signPrivate: signPrivates.get(deviceId)! });
 
 /** The text channel under test, set once the server exists. */
 let CHANNEL = '';
@@ -78,7 +86,7 @@ async function uploadPool(dev: Dev, singleUse: number) {
   const items: { kp: string; lastResort?: boolean }[] = [];
   const made: [string, mls.MemberKeys][] = [];
   for (let i = 0; i <= singleUse; i++) {
-    const keys = await mls.newMemberKeys(dev.id);
+    const keys = await newKeys(dev.id);
     const kp = await mls.encodeKeyPackage(keys);
     items.push({ kp, lastResort: i === singleUse });
     made.push([kp, keys]);
@@ -116,7 +124,7 @@ async function joinFromServer(dev: Dev) {
   const welcome = unb64(mine[mine.length - 1].welcome);
   for (const keys of dev.pool.values()) {
     try {
-      dev.state.set(CHANNEL, await mls.joinFromWelcome(welcome, keys));
+      dev.state.set(CHANNEL, await mls.joinFromWelcome(welcome, keys, devices));
       return;
     } catch { /* not the KeyPackage this Welcome was made for */ }
   }
@@ -166,7 +174,7 @@ async function main() {
     log('registered alice (owner), bob and carol through invites; uploaded KeyPackage pools');
 
     // 1. First group creation, then add bob.
-    alice.state.set(CHANNEL, await mls.createMlsGroup(CHANNEL, await mls.newMemberKeys(alice.id)));
+    alice.state.set(CHANNEL, await mls.createMlsGroup(CHANNEL, await newKeys(alice.id), devices));
     const [bobKp] = (await claim(alice, bob.user)).filter((k) => k.deviceId === bob.id);
     const add1 = await mls.addMembers(alice.state.get(CHANNEL)!, [bobKp.kp]);
     const r1 = await postCommit(alice, 0, add1, [alice.id, bob.id], [bob.id]);
