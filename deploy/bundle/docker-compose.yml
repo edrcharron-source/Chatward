@@ -1,0 +1,22 @@
+services:
+  livekit:
+    image: livekit/livekit-server:latest
+    command: --config /etc/livekit.yaml --node-ip 127.0.0.1
+    volumes: ["./livekit.yaml:/etc/livekit.yaml:ro"]
+    ports: ["7880:7880", "7881:7881", "50000-50100:50000-50100/udp"]
+    restart: unless-stopped
+  server:
+    build: { context: ., dockerfile: Dockerfile }
+    env_file: [.env]
+    environment:
+      PORT: 3000
+      DATA_DIR: /data
+      UPLOADS_DIR: /data/uploads
+      LIVEKIT_URL: ws://localhost:7880
+      LIVEKIT_API_KEY: devkey
+      LIVEKIT_API_SECRET: secret
+    volumes: ["chatward-data:/data"]
+    ports: ["3000:3000"]
+    restart: unless-stopped
+volumes:
+  chatward-data:

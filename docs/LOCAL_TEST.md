@@ -1,45 +1,31 @@
-# Test Chatward on one Windows PC
+# Try Chatward on your Windows PC
 
-You need: [Node.js 22 LTS](https://nodejs.org), [Git](https://git-scm.com), and [Docker Desktop](https://www.docker.com/products/docker-desktop) (only for voice/video, which needs the LiveKit server).
+You only need **Docker Desktop**. No Git, no Node, no coding tools.
 
-## 1. Get the code and install
-```powershell
-git clone https://github.com/edrcharron-source/Chatward.git
-cd Chatward
-npm install
-npm run build -w @chatward/shared
-```
+## One-time setup
+1. Install [Docker Desktop](https://www.docker.com/products/docker-desktop) and open it. Wait until it says it's running.
+2. Go to the [Releases page](https://github.com/edrcharron-source/Chatward/releases) and download two files from the newest release:
+   - `Chatward-Setup.exe` (the app)
+   - `chatward-server.zip` (the server)
+3. Unzip `chatward-server.zip` anywhere (for example your Desktop), open the `chatward-server` folder, and double-click **`start-server.bat`**. The first run takes a few minutes while it sets itself up. When it says the server is running, you can close that window.
+4. Run `Chatward-Setup.exe`. Windows may warn "unknown publisher" because the app isn't code-signed yet: click **More info → Run anyway**.
 
-## 2. Start the voice server (LiveKit)
-```powershell
-docker compose -f deploy/docker-compose.yml up -d livekit
-```
-Text chat works without it; voice, camera and screen share need it.
+## Using it
+- Open Chatward. The server address is already `http://localhost:3000`.
+- Click **Register**. The first account needs no invite. Create a server, then make an invite code from the server menu.
+- Voice, screen share and the soundboard work from the voice channel. Use headphones to avoid echo.
 
-## 3. Start the Chatward server
-```powershell
-npm run dev:server
-```
-It listens on http://localhost:3000 and keeps its data in `./data` (database, uploads, avatars).
-Optional GIFs: get a Klipy API key and run `$env:KLIPY_API_KEY="your-key"` before this command. Without a key the GIF picker says GIFs are not configured.
+## Testing with a second "person" on the same PC
+Run the app a second time with its own profile: press Win+R and paste
+`"%LOCALAPPDATA%\Programs\Chatward\Chatward.exe" --user-data-dir=%TEMP%\chatward2`
+then register with the invite code. (If it can't find the file, right-click the Chatward shortcut → Properties and copy its path.)
 
-## 4. Start the app
-```powershell
-npm run dev:client
-```
-A Chatward window opens. Server URL stays `http://localhost:3000`.
+## GIFs (optional)
+Get a free API key from klipy.com, copy `.env.example` to `.env` in the server folder, paste the key after `KLIPY_API_KEY=`, and run `start-server.bat` again.
 
-## 5. Try it with two "people"
-1. In window 1: **Register** (the first account needs no invite), create a server, open Server menu → create an invite code.
-2. Open a second instance with its own profile: in another terminal run
-   `npx electron packages/client --user-data-dir=%TEMP%\chatward-second` (after `npm run build -w @chatward/client`), or use the installed app: `Chatward.exe --user-data-dir=C:\cw2`.
-3. In window 2: Register with the invite code. Both windows can now chat, join the voice channel, share screens, use the soundboard and start a watch party.
-4. Use headphones, otherwise the two windows will echo each other through the same speakers.
+## Stopping / resetting
+- `stop-server.bat` stops the server; your chats are kept.
+- To wipe everything: in Docker Desktop, delete the `chatward-server` containers and volume.
 
-## Windows installer (.exe)
-GitHub → Actions → "Build Windows app" → Run workflow. When it finishes, download the `chatward-windows` artifact. It contains an installer and a portable `.exe`. Windows SmartScreen will warn about an unknown publisher (the build is unsigned): More info → Run anyway.
-
-## Known gaps in this test build
-- Not yet exercised on a real Windows machine with a real LiveKit server (camera, screen share, system audio, soundboard-into-call are untested).
-- Text/voice encryption is the v1 protocol; the MLS upgrade is in progress.
-- Docker image for the server (`deploy/Dockerfile.server`) is untested; use step 3 for now.
+## Known gaps
+This is an early build: voice, camera, screen share and the soundboard in a call have not been tested on a real PC yet, so tell us what breaks. The encryption is being upgraded to MLS.
