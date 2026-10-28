@@ -5,6 +5,7 @@ import type { Ctx, AuthedRequest } from '../ctx.js';
 // In-memory voice occupancy. Lost on restart, which is fine: clients rejoin.
 const occupants = new Map<string, Set<string>>(); // channelId -> userIds
 const voiceChannelOf = new Map<string, string>(); // userId -> channelId (a user is in at most one VC)
+const voiceDeviceOf = new Map<string, string>(); // userId -> the device that holds the voice slot
 const selfState = new Map<string, { muted: boolean; deafened: boolean }>(); // userId -> self mute/deafen, reported by the client
 
 // Only needed to join. An active call keeps its LiveKit session, so a short TTL does not cut calls off.
@@ -55,6 +56,17 @@ export function kickFromCall(ctx: Ctx, serverId: string, userId: string): void {
   }
 }
 
+/**
+ * For a removed device: if that device holds the call, ends the call for the account. Every device of an account shares
+ * one LiveKit identity, so the session cannot be ended per device. A call on another device is left alone.
+ */
+export function endCallOnDevice(ctx: Ctx, userId: string, deviceId: string): void {
+  if (voiceDeviceOf.get(userId) !== deviceId) return;
+  const channelId = voiceChannelOf.get(userId);
+  leaveVoice(ctx, userId);
+  if (channelId) removeFromRoom(ctx, channelId, userId);
+}
+
 /** Drops the user from the channel's voice slot and from the LiveKit room, so they stop hearing the call now. */
 function kickFromChannelCall(ctx: Ctx, channelId: string, userId: string): void {
   leaveChannel(ctx, channelId, userId);
@@ -68,9 +80,10 @@ function removeFromRoom(ctx: Ctx, channelId: string, userId: string): void {
 }
 
 /** Puts the user in the channel's voice slot, leaving any other voice channel they hold. */
-function occupy(ctx: Ctx, channelId: string, userId: string): void {
+function occupy(ctx: Ctx, channelId: string, userId: string, deviceId: string | undefined): void {
   const previous = voiceChannelOf.get(userId);
   if (previous && previous !== channelId) leaveChannel(ctx, previous, userId);
+  if (deviceId) voiceDeviceOf.set(userId, deviceId);
 
   let set = occupants.get(channelId);
   if (!set) occupants.set(channelId, (set = new Set()));
@@ -81,9 +94,12 @@ function occupy(ctx: Ctx, channelId: string, userId: string): void {
   }
 }
 
-/** Empties a voice channel, e.g. when the channel is deleted. */
+/** Empties a voice channel, e.g. when the channel is deleted. Ends the LiveKit sessions too, so media stops now. */
 export function clearVoiceChannel(ctx: Ctx, channelId: string): void {
-  for (const userId of [...(occupants.get(channelId) ?? [])]) leaveChannel(ctx, channelId, userId);
+  for (const userId of [...(occupants.get(channelId) ?? [])]) {
+    leaveChannel(ctx, channelId, userId);
+    removeFromRoom(ctx, channelId, userId);
+  }
 }
 
 function leaveChannel(ctx: Ctx, channelId: string, userId: string): boolean {
@@ -92,6 +108,7 @@ function leaveChannel(ctx: Ctx, channelId: string, userId: string): boolean {
   set.delete(userId);
   if (set.size === 0) occupants.delete(channelId);
   voiceChannelOf.delete(userId);
+  voiceDeviceOf.delete(userId);
   selfState.delete(userId);
   broadcastState(ctx, channelId);
   return true;
@@ -142,7 +159,7 @@ export function register(app: Express, ctx: Ctx): void {
       removeFromRoom(ctx, previous, userId);
       ctx.sendToUser(userId, { t: 'voice.moved', channelId: previous });
     }
-    occupy(ctx, channelId, userId);
+    occupy(ctx, channelId, userId, (req as AuthedRequest).deviceId);
 
     const at = new AccessToken(ctx.config.livekit.apiKey, ctx.config.livekit.apiSecret, {
       identity: userId,
@@ -165,7 +182,7 @@ export function register(app: Express, ctx: Ctx): void {
     if (!channel) { res.status(404).json({ error: 'channel not found' }); return; }
     if (channel.kind !== 'voice') { res.status(400).json({ error: 'not a voice channel' }); return; }
 
-    occupy(ctx, channelId, userId);
+    occupy(ctx, channelId, userId, (req as AuthedRequest).deviceId);
     res.json({ ok: true });
   });
 
