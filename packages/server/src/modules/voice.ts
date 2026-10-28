@@ -259,13 +259,15 @@ export function register(app: Express, ctx: Ctx): void {
     if (channel.kind !== 'voice') { res.status(400).json({ error: 'not a voice channel' }); return; }
     if (actorRole === 'member') { res.status(403).json({ error: 'admins only' }); return; }
     if (targetId === actorId) { res.status(400).json({ error: 'use Leave voice to leave yourself' }); return; }
-    if (!occupants.get(channelId)?.has(targetId)) { res.status(404).json({ error: 'they are not in this call' }); return; }
     // Same rule as removing a member from the server: admins cannot touch the owner or other admins.
     const targetRole = ctx.roleIn(channel.serverId, targetId);
+    if (!targetRole) { res.status(404).json({ error: 'they are not in this server' }); return; }
     if (targetRole === 'owner' || (targetRole === 'admin' && actorRole !== 'owner')) {
       res.status(403).json({ error: 'you cannot kick this member' });
       return;
     }
+    // Always ends the LiveKit session, even when the voice slot is already gone (a dropped socket or a restart) and
+    // media still flows. LiveKit ignores a removal for someone who is not in the room.
     kickFromChannelCall(ctx, channelId, targetId);
     // Tells the kicked user's open sockets why their call ended. Joining again is still allowed.
     ctx.sendToUser(targetId, { t: 'voice.kicked', channelId });
