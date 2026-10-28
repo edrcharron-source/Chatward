@@ -172,6 +172,14 @@ function Shell() {
               .catch((e) => console.error(e));
             break;
           }
+          case 'voice.moved': {
+            // the account joined a call on another device; if this device is still in that call, hang up quietly
+            if (useVoice.getState().channelId !== f.channelId) break;
+            void useVoice.getState().leave()
+              .then(() => useVoice.setState({ notice: 'This account joined the call from another device' }))
+              .catch((e) => console.error(e));
+            break;
+          }
           case 'member.leave': {
             if (f.userId === st.user?.id) {
               // we left (or were kicked), so end any call we had in this server
