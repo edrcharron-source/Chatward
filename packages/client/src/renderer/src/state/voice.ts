@@ -3,7 +3,7 @@ import { create } from 'zustand';
 import { ExternalE2EEKeyProvider, Room, RoomEvent, Track, type Participant } from 'livekit-client';
 import { DEFAULT_VOICE_BITRATE_KBPS, VOICE_BITRATES_KBPS, type Channel } from '@chatward/shared';
 import { api, postOnUnload } from '../api/http';
-import { voiceKey } from '../crypto';
+import { onEpochChange, voiceKey } from '../crypto';
 import { startCamera, stopCamera, startScreen, stopScreen, switchCamera } from '../components/voice/media';
 import { attachRemote, closeAudio, detachRemote, micLevel, openMic, setDeafened, setTransmitting, setVoiceNotifier, startPlayback } from './voiceAudio';
 import { onBeforeSignOut, useSession } from './session';
@@ -101,18 +101,30 @@ let activeKeyId = '';
 const keyBuffer = (key: Uint8Array): ArrayBuffer => key.buffer.slice(key.byteOffset, key.byteOffset + key.byteLength) as ArrayBuffer;
 const keyId = (key: Uint8Array): string => Array.from(key, (b) => b.toString(16).padStart(2, '0')).join('');
 
+// Rekeys run one at a time. Each reads the current key when its turn comes, so an older slow setKey cannot land last.
+let rekeyQueue: Promise<void> = Promise.resolve();
+
 /**
- * Call after a group changes (a member removed, or another device's Commit applied). The MLS epoch moves on, which
- * changes the call key, so the people still in the call switch to it. A removed member cannot derive the new key.
+ * Switch the call to the current channel key if it has changed. The MLS epoch moves on with every Commit, which changes
+ * the call key, so the people still in the call switch to it. A removed member cannot derive the new key.
  */
-export async function rekeyActiveCall(): Promise<void> {
+export function rekeyActiveCall(): Promise<void> {
+  const run = rekeyQueue.then(applyCallKey);
+  rekeyQueue = run.catch(() => {});
+  return run;
+}
+
+async function applyCallKey(): Promise<void> {
   const { channelId, status } = useVoice.getState();
   if (!activeKeyProvider || !channelId || status !== 'connected') return;
   const key = await voiceKey(channelId);
   if (!key || keyId(key) === activeKeyId) return;
-  activeKeyId = keyId(key);
   await activeKeyProvider.setKey(keyBuffer(key));
+  activeKeyId = keyId(key);
 }
+
+// Every epoch move rekeys a live call, whichever path moved it (our Commit, another device's, a Welcome, a catch-up).
+onEpochChange(() => void rekeyActiveCall().catch((e) => console.warn('rekey after epoch change failed', e)));
 
 // Bumps on every join and leave. A join still connecting when this has moved on is stale and tears down what it built.
 let joinAttempt = 0;
@@ -219,6 +231,8 @@ export const useVoice = create<VoiceState>((set, get) => {
     const { room, channelId } = get();
     if (!channelId) return;
     set({ room: null, channelId: null, serverId: null, status: 'idle', error: null, cameraOn: false, screenOn: false, theaterKey: null, speaking: [], notice: null });
+    activeKeyProvider = null;
+    activeKeyId = '';
     endMeter();
     closeAudio();
     demoVoice.leave(); // no-op outside a demo call
