@@ -4,7 +4,7 @@
 # Installs a new server bundle in place. Unzip the new chatward-server.zip over this folder first.
 # Your .env, updates/ (desktop installers) and backups/ are kept. Usage: ./update-server.sh
 #
-# 1. Stops the server and backs up the data volume (database, avatars, uploads) to backups/.
+# 1. Stops the server and backs up the data volume (database, avatars, uploads) to backups/. Only the newest 3 backups are kept.
 # 2. Refreshes the LiveKit image and rebuilds the server image from the new files.
 # 3. Waits for the server to answer. If it does not, the rollback steps are printed.
 set -euo pipefail
@@ -26,6 +26,20 @@ mkdir -p backups updates
 
 trap 'echo "Update failed. The server is stopped; start the previous one with: docker compose start server" >&2' ERR
 
+# Backup names carry a UTC timestamp, so sorting by name sorts by age. Keep the newest $KEEP_BACKUPS.
+KEEP_BACKUPS=3
+prune_backups() {
+  local files=() count i
+  shopt -s nullglob
+  files=(backups/chatward-data-*.tar.gz)
+  shopt -u nullglob
+  count=${#files[@]}
+  for ((i = 0; i < count - KEEP_BACKUPS; i++)); do
+    echo "==> Removing old backup ${files[$i]}"
+    rm -f -- "${files[$i]}"
+  done
+}
+
 echo "==> Installing Chatward server $VERSION"
 docker compose stop server
 
@@ -33,6 +47,7 @@ VOLUME=$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/data"}}{{.Na
 echo "==> Backing up volume $VOLUME to backups/chatward-data-$STAMP.tar.gz"
 docker run --rm -v "$VOLUME":/data:ro -v "$PWD/backups":/backup alpine \
   tar czf "/backup/chatward-data-$STAMP.tar.gz" -C /data .
+prune_backups
 
 echo "==> Refreshing LiveKit and rebuilding the server image"
 docker compose pull livekit
