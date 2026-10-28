@@ -19,6 +19,12 @@ Voice, video and screen share use LiveKit, which signs every call with a key pai
 
   Keep `.env` private. Changing the keys restarts LiveKit, so a call in progress drops and must be rejoined.
 
+## Server setup: setup code for the first account
+The first account on a new server becomes its owner, so the server asks for a setup code before it makes that account. Anyone who reaches a fresh server first would otherwise take it. Later accounts still need an invite code.
+- **Windows test server:** `start-server.bat` fills `SETUP_CODE` in `.env` on first run and prints the code. Copy it into the Register screen's **Setup code** box.
+- **Linux server (Lightsail):** either set `SETUP_CODE` in `deploy/.env` yourself (`openssl rand -hex 12` makes a good one), or leave it blank. If blank, the server makes a code on first start and prints it in its log: run `docker compose -f deploy/docker-compose.yml logs server` and look for `First account setup code`. The code is removed from the server once the first account exists.
+- Register the first account before you send anyone the server address. Changing `SETUP_CODE` later does not affect accounts that already exist.
+
 ## One-time setup (GitHub repo secrets)
 Settings → Secrets and variables → Actions:
 - `UPDATE_SSH_HOST`: the server's address, e.g. the Lightsail static IP.

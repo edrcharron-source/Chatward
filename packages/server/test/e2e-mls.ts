@@ -11,6 +11,7 @@ import { exportRawPublic, generateEcdh, generateSigning, toB64 } from '../../cli
 const PORT = 3999;
 const BASE = `http://127.0.0.1:${PORT}`;
 const PASSWORD = 'correct-horse-1';
+const SETUP_CODE = 'e2e-setup-code';
 const serverDir = path.resolve(import.meta.dirname, '..');
 // Under out/ (gitignored) so a failed run leaves nothing to commit.
 const dataDir = path.join(serverDir, 'out', `e2e-data-${Date.now()}`);
@@ -70,7 +71,7 @@ const unb64 = (s: string) => new Uint8Array(Buffer.from(s, 'base64'));
 async function startServer(): Promise<ChildProcess> {
   const child = spawn('node', ['dist/index.js'], {
     cwd: serverDir,
-    env: { ...process.env, DATA_DIR: dataDir, PORT: String(PORT), HOST: '127.0.0.1' },
+    env: { ...process.env, DATA_DIR: dataDir, PORT: String(PORT), HOST: '127.0.0.1', SETUP_CODE },
     stdio: 'inherit',
   });
   for (let i = 0; i < 100; i++) {
@@ -147,10 +148,18 @@ async function main() {
   const server = await startServer();
   let failed = false;
   try {
-    // Accounts go through the real API. The first user needs no invite and owns the server.
+    // Accounts go through the real API. The first user needs the setup code (no invite) and owns the server.
     const aliceKeys = await makeDeviceKeys();
-    const reg = (await api(null, 'POST', '/api/auth/register', {
+    const noCode = await api(null, 'POST', '/api/auth/register', {
       username: 'alice', displayName: 'Alice', password: PASSWORD, device: aliceKeys,
+    });
+    assert.equal(noCode.status, 403, 'first account is refused without a setup code');
+    const wrongCode = await api(null, 'POST', '/api/auth/register', {
+      username: 'alice', displayName: 'Alice', password: PASSWORD, device: aliceKeys, setupCode: 'wrong-code',
+    });
+    assert.equal(wrongCode.status, 403, 'first account is refused with a wrong setup code');
+    const reg = (await api(null, 'POST', '/api/auth/register', {
+      username: 'alice', displayName: 'Alice', password: PASSWORD, device: aliceKeys, setupCode: SETUP_CODE,
     })).json;
     const alice = await newDev('alice', { id: reg.user.id, token: reg.token }, aliceKeys);
     const srv = (await api(alice.token, 'POST', '/api/servers', { name: 'S' })).json;
