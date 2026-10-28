@@ -1,4 +1,5 @@
 import { useEffect, useRef, type ReactElement } from 'react';
+import 'emoji-picker-element'; // registers the <emoji-picker> custom element; without it the panel renders empty
 import { usePopover } from './Popover';
 
 type EmojiPickerElement = HTMLElement & { dataSource: string };
