@@ -9,6 +9,7 @@ jobs:
         with: { node-version: 22, cache: npm }
       - run: npm ci
       - run: npm run typecheck
+      - run: npm run test:update-signature -w @chatward/client
   e2e:
     runs-on: ubuntu-latest
     steps:

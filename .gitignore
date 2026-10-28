@@ -5,3 +5,6 @@ data
 .env
 *.log
 release
+
+# Signing keys for desktop updates. Never commit these.
+update-keys

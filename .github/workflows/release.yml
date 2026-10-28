@@ -46,16 +46,24 @@ jobs:
     needs: [windows-app, server-bundle]
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with: { path: dist }
+      - name: Sign the installer
+        env: { UPDATE_SIGNING_KEY: '${{ secrets.UPDATE_SIGNING_KEY }}' }
+        run: |
+          # Required: every desktop app refuses an installer without a valid signature. Set up the key first (docs/UPDATES.md).
+          if [ -z "$UPDATE_SIGNING_KEY" ]; then echo "UPDATE_SIGNING_KEY is not set; not publishing an unsigned installer."; exit 1; fi
+          node scripts/update-signing.mjs sign dist/win/Chatward-Setup.exe
       - name: Create release
         env: { GH_TOKEN: '${{ github.token }}' }
         run: |
           cd dist
           cp win/Chatward-Setup.exe Chatward-Setup.exe
+          cp win/Chatward-Setup.exe.sig Chatward-Setup.exe.sig
           gh release create "${{ inputs.tag }}" --repo "${{ github.repository }}" \
             --title "Chatward ${{ inputs.tag }}" --notes "Test build. Download Chatward-Setup.exe and install it. To try the app with no server, click Try demo on the login screen. chatward-server.zip is only needed for a real server (needs Docker Desktop)." \
-            Chatward-Setup.exe server/chatward-server.zip
+            Chatward-Setup.exe Chatward-Setup.exe.sig server/chatward-server.zip
       - name: Publish update feed to the server
         env:
           SSH_HOST: ${{ secrets.UPDATE_SSH_HOST }}
@@ -69,6 +77,6 @@ jobs:
           ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts
           target="$SSH_USER@$SSH_HOST:$DEPLOY_DIR/updates/"
           ssh -i ~/.ssh/deploy_key "$SSH_USER@$SSH_HOST" "mkdir -p '$DEPLOY_DIR/updates'"
-          # Installer and blockmap first, latest.yml last, so clients never see a version whose file is missing.
-          scp -i ~/.ssh/deploy_key dist/win/Chatward-Setup.exe dist/win/*.blockmap "$target"
+          # Installer, its signature and blockmap first, latest.yml last, so clients never see a version whose file is missing.
+          scp -i ~/.ssh/deploy_key dist/win/Chatward-Setup.exe dist/win/Chatward-Setup.exe.sig dist/win/*.blockmap "$target"
           scp -i ~/.ssh/deploy_key dist/win/latest.yml "$target"
