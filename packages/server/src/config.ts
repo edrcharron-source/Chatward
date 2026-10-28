@@ -21,6 +21,12 @@ export const config = {
   dataDir,
   dbPath: path.join(dataDir, 'chatward.db'),
   uploadsDir: path.resolve(process.env.UPLOADS_DIR ?? path.join(dataDir, 'uploads')),
+  /** Desktop installer, latest.yml and blockmap, served at /updates for the client auto-updater. */
+  updatesDir: path.resolve(process.env.UPDATES_DIR ?? path.join(dataDir, 'updates')),
+  /** Set by the update script from the installed release tag. */
+  serverVersion: process.env.CHATWARD_VERSION ?? '0.0.0-dev',
+  /** Clients older than this are blocked until they update. */
+  minClientVersion: process.env.MIN_CLIENT_VERSION ?? '0.0.0',
   jwtSecret: jwtSecret(),
   klipyApiKey: process.env.KLIPY_API_KEY ?? '',
   livekit: {
@@ -30,3 +36,4 @@ export const config = {
   },
 };
 fs.mkdirSync(config.uploadsDir, { recursive: true });
+fs.mkdirSync(config.updatesDir, { recursive: true });

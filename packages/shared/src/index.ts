@@ -161,3 +161,33 @@ export type ServerFrame =
   | { t: 'group.welcome'; channelId: string; epoch: number }
   | { t: 'keypackages.low'; deviceId: string; remaining: number }
   | { t: 'pong' };
+
+// ---------- Auto-update ----------
+/** GET /api/version (public, no auth). Clients compare their own version against these. */
+export interface VersionInfo {
+  serverVersion: string;
+  /** Clients older than this must update before they can connect. */
+  minClientVersion: string;
+  /** Version of the newest desktop build uploaded to this server, or null if none yet. */
+  latestClientVersion: string | null;
+}
+
+/** Desktop updater state, pushed from the Electron main process to the renderer. */
+export type UpdateStatus =
+  | { state: 'idle' }
+  | { state: 'checking' }
+  | { state: 'downloading'; version: string; percent: number }
+  | { state: 'ready'; version: string }
+  | { state: 'none' }
+  | { state: 'error'; message: string };
+
+/** Compares dotted numeric versions: negative if a < b, 0 if equal, positive if a > b. */
+export function compareVersions(a: string, b: string): number {
+  const pa = a.split('.').map((n) => parseInt(n, 10) || 0);
+  const pb = b.split('.').map((n) => parseInt(n, 10) || 0);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const d = (pa[i] ?? 0) - (pb[i] ?? 0);
+    if (d !== 0) return d < 0 ? -1 : 1;
+  }
+  return 0;
+}

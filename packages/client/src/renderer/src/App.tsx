@@ -16,10 +16,16 @@ import VoiceChannelView from './components/voice/VoiceChannelView';
 import { WatchPartyPanel } from './components/watchparty';
 import SettingsModal from './components/settings/SettingsModal';
 import DemoBanner from './demo/DemoBanner';
+import UpdateBanner from './components/updates/UpdateBanner';
+import UpdateRequired from './components/updates/UpdateRequired';
+import { checkServerVersion, useUpdates } from './state/updates';
 
 export function App() {
   const token = useSession((s) => s.token);
+  const serverUrl = useSession((s) => s.serverUrl);
+  const server = useUpdates((s) => s.server);
   const theme = useSettings((s) => s.theme);
+  useEffect(() => { void checkServerVersion(serverUrl); }, [serverUrl]);
   useEffect(() => {
     applyTheme(theme);
     if (theme !== 'system') return;
@@ -30,8 +36,13 @@ export function App() {
   }, [theme]);
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <UpdateBanner />
       <DemoBanner />
-      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>{token ? <Shell /> : <AuthScreen />}</div>
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+        {server.kind === 'update-required'
+          ? <UpdateRequired serverUrl={serverUrl} minClientVersion={server.minClientVersion} />
+          : token ? <Shell /> : <AuthScreen />}
+      </div>
     </div>
   );
 }

@@ -13,10 +13,18 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: npm }
       - run: npm ci
+      - name: Set app version from the release tag
+        env: { TAG: '${{ inputs.tag }}' }
+        run: npm version "${TAG#v}" --no-git-tag-version -w @chatward/client
       - run: npm run build -w @chatward/shared
       - run: npm run dist:win
       - uses: actions/upload-artifact@v4
-        with: { name: win, path: packages/client/release/*.exe }
+        with:
+          name: win
+          path: |
+            packages/client/release/*.exe
+            packages/client/release/latest.yml
+            packages/client/release/*.blockmap
   server-bundle:
     runs-on: ubuntu-latest
     steps:
@@ -25,6 +33,7 @@ jobs:
         run: |
           d=chatward-server; mkdir -p $d/packages/client
           cp -r deploy/bundle/. $d/
+          echo "${{ inputs.tag }}" | sed 's/^v//' > $d/VERSION
           cp package.json package-lock.json tsconfig.base.json $d/
           cp -r packages/shared packages/server $d/packages/
           cp packages/client/package.json $d/packages/client/
@@ -46,3 +55,19 @@ jobs:
           gh release create "${{ inputs.tag }}" --repo "${{ github.repository }}" \
             --title "Chatward ${{ inputs.tag }}" --notes "Test build. Download Chatward-Setup.exe and install it. To try the app with no server, click Try demo on the login screen. chatward-server.zip is only needed for a real server (needs Docker Desktop)." \
             Chatward-Setup.exe server/chatward-server.zip
+      - name: Publish update feed to the server
+        env:
+          SSH_HOST: ${{ secrets.UPDATE_SSH_HOST }}
+          SSH_USER: ${{ secrets.UPDATE_SSH_USER }}
+          SSH_KEY: ${{ secrets.UPDATE_SSH_KEY }}
+          DEPLOY_DIR: ${{ secrets.UPDATE_DEPLOY_DIR }}
+        run: |
+          # Optional: skipped until the UPDATE_* secrets are set (see docs/UPDATES.md).
+          if [ -z "$SSH_HOST" ]; then echo "UPDATE_SSH_HOST is not set; skipping the update feed upload."; exit 0; fi
+          mkdir -p ~/.ssh && printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key && chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts
+          target="$SSH_USER@$SSH_HOST:$DEPLOY_DIR/updates/"
+          ssh -i ~/.ssh/deploy_key "$SSH_USER@$SSH_HOST" "mkdir -p '$DEPLOY_DIR/updates'"
+          # Installer and blockmap first, latest.yml last, so clients never see a version whose file is missing.
+          scp -i ~/.ssh/deploy_key dist/win/Chatward-Setup.exe dist/win/*.blockmap "$target"
+          scp -i ~/.ssh/deploy_key dist/win/latest.yml "$target"

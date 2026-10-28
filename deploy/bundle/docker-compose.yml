@@ -12,10 +12,13 @@ services:
       PORT: 3000
       DATA_DIR: /data
       UPLOADS_DIR: /data/uploads
+      UPDATES_DIR: /updates
+      CHATWARD_VERSION: ${CHATWARD_VERSION:-dev}
+      MIN_CLIENT_VERSION: ${MIN_CLIENT_VERSION:-0.0.0}
       LIVEKIT_URL: ws://localhost:7880
       LIVEKIT_API_KEY: devkey
       LIVEKIT_API_SECRET: secret
-    volumes: ["chatward-data:/data"]
+    volumes: ["chatward-data:/data", "./updates:/updates:ro"]
     ports: ["3000:3000"]
     restart: unless-stopped
 volumes:

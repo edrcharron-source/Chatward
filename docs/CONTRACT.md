@@ -50,6 +50,10 @@ Link previews (module `linkpreview`) — SSRF-safe fetch proxy used by the SENDE
 - GET /api/linkpreview?url= -> {url,title?,description?,image?(data URL, <=300KB),siteName?}
   Must: allow http/https only, resolve DNS and block private/loopback/link-local ranges, 5s timeout, 1MB body cap, no cookies, max 3 redirects (re-validated each hop).
 
+Desktop updates (module `updates`), public, no auth
+- GET /api/version -> {serverVersion, minClientVersion, latestClientVersion}  (`MIN_CLIENT_VERSION`, `CHATWARD_VERSION`; latest from `latest.yml` in `UPDATES_DIR`)
+- GET /updates/* -> static release files (latest.yml, Chatward-Setup.exe, blockmap) from `UPDATES_DIR`. See docs/UPDATES.md.
+
 Voice (module `voice`)
 - POST /api/voice/token {channelId} -> {url, token}   LiveKit JWT (room = channelId, identity = userId). Env LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET (defaults devkey/secret/ws://localhost:7880).
 - POST /api/voice/leave {channelId} -> {ok}

@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { fetchLinkPreview } from './linkPreview';
 import { searchGifs } from './klipy';
+import { setupUpdater } from './updater';
 
 const KLIPY_KEY_STORE = 'klipyApiKey';
 
@@ -66,6 +67,7 @@ app.whenReady().then(() => {
   });
 
   sendReferrerForYouTube();
+  setupUpdater();
 
   ipcMain.handle('secure:get', (_e, key: string) => readSecret(key));
   // Demo-only internet access. Both run here so the renderer's CSP and CORS never apply.
