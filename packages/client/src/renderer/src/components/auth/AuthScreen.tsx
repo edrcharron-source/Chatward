@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { LIMITS, type User } from '@chatward/shared';
 import { api, ApiError } from '../../api/http';
-import { getDevice, initDevice } from '../../crypto';
+import { accountKey, getDevice, initDevice, renewDevice } from '../../crypto';
 import { enterDemo } from '../../demo';
 import { useSession } from '../../state/session';
 import './auth.css';
@@ -40,17 +40,28 @@ export default function AuthScreen() {
     setError(null);
     try {
       useSession.getState().setServerUrl(url);
-      await initDevice();
-      const device = getDevice();
-      const res = mode === 'login'
-        ? await api.post<{ token: string; user: User }>('/api/auth/login', { username: name, password, device })
-        : await api.post<{ token: string; user: User }>('/api/auth/register', {
-            username: name,
-            displayName: displayName.trim(),
-            password,
-            device,
-            inviteCode: inviteCode.trim() || undefined,
-          });
+      await initDevice(accountKey(url, name));
+      const send = () => {
+        const device = getDevice();
+        return mode === 'login'
+          ? api.post<{ token: string; user: User }>('/api/auth/login', { username: name, password, device })
+          : api.post<{ token: string; user: User }>('/api/auth/register', {
+              username: name,
+              displayName: displayName.trim(),
+              password,
+              device,
+              inviteCode: inviteCode.trim() || undefined,
+            });
+      };
+      let res: { token: string; user: User };
+      try {
+        res = await send();
+      } catch (err) {
+        // This PC's device for the account belongs to another account here. Give this account its own device and retry once.
+        if (!(err instanceof ApiError && err.message === 'device id is already registered')) throw err;
+        await renewDevice();
+        res = await send();
+      }
       useSession.getState().setAuth(res.token, res.user);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not reach the server.');
