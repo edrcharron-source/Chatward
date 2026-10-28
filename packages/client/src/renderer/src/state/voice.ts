@@ -6,7 +6,7 @@ import { api } from '../api/http';
 import { voiceKey } from '../crypto';
 import { startCamera, stopCamera, startScreen, stopScreen } from '../components/voice/media';
 import { attachRemote, closeAudio, detachRemote, micLevel, openMic, setDeafened, setTransmitting, startPlayback } from './voiceAudio';
-import { useSession } from './session';
+import { onBeforeSignOut, useSession } from './session';
 import { useSettings } from './settings';
 import { demoVoice } from '../demo/voice';
 import { isDemo } from '../demo';
@@ -346,10 +346,8 @@ export const useVoice = create<VoiceState>((set, get) => {
   };
 });
 
-// Leave the call when the user logs out (or is signed out by a 401).
-useSession.subscribe((s, prev) => {
-  if (prev.token && !s.token) void useVoice.getState().leave();
-});
+// Leave the call on logout (or a 401 sign-out) while the token is still set, so the server accepts the leave.
+onBeforeSignOut(() => useVoice.getState().leave());
 
 // An admin changed this channel's bitrate: apply it to the live call.
 useSession.subscribe((s, prev) => {

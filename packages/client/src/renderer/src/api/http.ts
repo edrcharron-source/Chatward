@@ -1,4 +1,4 @@
-import { useSession } from '../state/session';
+import { signOut, useSession } from '../state/session';
 
 export class ApiError extends Error {
   constructor(public status: number, message: string) { super(message); }
@@ -15,7 +15,7 @@ async function req<T>(method: string, path: string, body?: unknown, opts: { raw?
   if (!res.ok) {
     let msg = res.statusText;
     try { msg = (await res.json()).error ?? msg; } catch { /* ignore */ }
-    if (res.status === 401 && token) useSession.getState().logout();
+    if (res.status === 401 && token) void signOut();
     throw new ApiError(res.status, msg);
   }
   if (res.status === 204) return undefined as T;
