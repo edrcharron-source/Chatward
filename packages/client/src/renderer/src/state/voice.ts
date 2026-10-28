@@ -99,21 +99,19 @@ let activeKeyProvider: IndexedKeyProvider | null = null;
 let activeKeyId = '';
 
 // LiveKit keeps one key per index. ExternalE2EEKeyProvider.setKey always writes index 0 and overwrites it, so a call that
-// switched keys dropped every frame still encrypted with the old one. Each new key goes to the next index instead, and the
-// previous key stays in its slot until the ring wraps, so frames already in flight still decrypt.
+// switched keys dropped every frame still encrypted with the old one. Each key goes to the slot of its MLS epoch, so the
+// slot is the same on every device. A per-device counter would differ for anyone who joined after an epoch change. The
+// previous epoch's key stays in its own slot until the ring wraps, so frames already in flight still decrypt.
 const KEY_RING_SIZE = 16;
 
 class IndexedKeyProvider extends ExternalE2EEKeyProvider {
-  private nextIndex = 0;
-
   constructor() {
     super({ keyringSize: KEY_RING_SIZE });
   }
 
-  async setIndexedKey(key: ArrayBuffer): Promise<void> {
+  async setIndexedKey(key: ArrayBuffer, epoch: bigint): Promise<void> {
     const material = await crypto.subtle.importKey('raw', key, 'HKDF', false, ['deriveBits', 'deriveKey']);
-    this.nextIndex = (this.nextIndex + 1) % KEY_RING_SIZE;
-    this.onSetEncryptionKey(material, undefined, this.nextIndex);
+    this.onSetEncryptionKey(material, undefined, Number(epoch % BigInt(KEY_RING_SIZE)));
   }
 }
 
@@ -136,10 +134,10 @@ export function rekeyActiveCall(): Promise<void> {
 async function applyCallKey(): Promise<void> {
   const { channelId, status } = useVoice.getState();
   if (!activeKeyProvider || !channelId || status !== 'connected') return;
-  const key = await voiceKey(channelId);
-  if (!key || keyId(key) === activeKeyId) return;
-  await activeKeyProvider.setIndexedKey(keyBuffer(key));
-  activeKeyId = keyId(key);
+  const voice = await voiceKey(channelId);
+  if (!voice || keyId(voice.key) === activeKeyId) return;
+  await activeKeyProvider.setIndexedKey(keyBuffer(voice.key), voice.epoch);
+  activeKeyId = keyId(voice.key);
 }
 
 // Every epoch move rekeys a live call, whichever path moved it (our Commit, another device's, a Welcome, a catch-up).
@@ -303,17 +301,17 @@ export const useVoice = create<VoiceState>((set, get) => {
       let mic: MediaStreamTrack | null = null;
       try {
         // Fail closed: never join a call without the channel key.
-        const key = await voiceKey(channelId);
+        const voice = await voiceKey(channelId);
         if (stale()) { abandon(channelId, room, mic); return; }
-        if (!key) throw new Error('Channel encryption key is not available yet');
+        if (!voice) throw new Error('Channel encryption key is not available yet');
         const { url, token } = await api.post<{ url: string; token: string }>('/api/voice/token', { channelId });
         if (stale()) { abandon(channelId, room, mic); return; }
 
         const keyProvider = new IndexedKeyProvider();
-        await keyProvider.setIndexedKey(keyBuffer(key));
+        await keyProvider.setIndexedKey(keyBuffer(voice.key), voice.epoch);
         if (stale()) { abandon(channelId, room, mic); return; }
         activeKeyProvider = keyProvider;
-        activeKeyId = keyId(key);
+        activeKeyId = keyId(voice.key);
         const worker = new Worker(new URL('livekit-client/e2ee-worker', import.meta.url), { type: 'module' });
         room = new Room({ adaptiveStream: true, dynacast: true, e2ee: { keyProvider, worker } });
         wire(room);

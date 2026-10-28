@@ -793,9 +793,10 @@ export async function decryptBlob(blob: Uint8Array, key: string, iv: string): Pr
 
 /**
  * LiveKit E2EE key for a voice channel. Voice has no group of its own: it uses the MLS exporter of the first text
- * channel of the same server, so everyone in the server's current epoch derives the same key. null if unavailable.
+ * channel of the same server, so everyone in the server's current epoch derives the same key. Returns the epoch too, which
+ * picks the LiveKit key slot. null if unavailable.
  */
-export function voiceKey(channelId: string): Promise<Uint8Array | null> {
+export function voiceKey(channelId: string): Promise<{ key: Uint8Array; epoch: bigint } | null> {
   return serial(async () => {
     const textChannel = textChannelOf(channelId) ?? channelId;
     // Catch up first. A device that is behind the server's epoch derives a different voice key from everyone else.
@@ -811,7 +812,7 @@ export function voiceKey(channelId: string): Promise<Uint8Array | null> {
       }
     }
     const state = groupOf(textChannel);
-    return state ? mls.voiceKey(state) : null;
+    return state ? { key: await mls.voiceKey(state), epoch: state.groupContext.epoch } : null;
   });
 }
 
