@@ -2,7 +2,7 @@
 import { create } from 'zustand';
 import { ExternalE2EEKeyProvider, Room, RoomEvent, Track, type Participant } from 'livekit-client';
 import { DEFAULT_VOICE_BITRATE_KBPS, VOICE_BITRATES_KBPS, type Channel } from '@chatward/shared';
-import { api, postOnUnload } from '../api/http';
+import { api, ApiError, postOnUnload } from '../api/http';
 import { onEpochChange, voiceKey } from '../crypto';
 import { startCamera, stopCamera, startScreen, stopScreen, switchCamera } from '../components/voice/media';
 import { attachRemote, closeAudio, detachRemote, micLevel, openMic, setDeafened, setTransmitting, setVoiceNotifier, startPlayback } from './voiceAudio';
@@ -345,8 +345,8 @@ export const useVoice = create<VoiceState>((set, get) => {
         closeAudio();
         void room?.disconnect();
         set({ room: null, status: 'error', error: e instanceof Error ? e.message : String(e), speaking: [] });
-        // the server may already count us in this channel
-        void api.post('/api/voice/leave', { channelId }).catch(() => {});
+        // the server may already count us in this channel. A 409 means another device holds the slot, so leave it alone.
+        if (!(e instanceof ApiError && e.status === 409)) void api.post('/api/voice/leave', { channelId }).catch(() => {});
       }
     },
 

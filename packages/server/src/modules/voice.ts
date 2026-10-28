@@ -201,10 +201,14 @@ export function register(app: Express, ctx: Ctx): void {
     res.json({ ok: true });
   });
 
+  // Only the device that holds the slot may end it. A second device whose join was refused must not clear the first
+  // device's slot while that device is still in the call.
   app.post('/api/voice/leave', ctx.requireAuth, (req, res) => {
-    const userId = (req as AuthedRequest).userId;
+    const { userId, deviceId } = req as AuthedRequest;
     const channelId = (req.body as { channelId?: unknown } | undefined)?.channelId;
     if (typeof channelId !== 'string') { res.status(400).json({ error: 'channelId required' }); return; }
+    const holder = voiceDeviceOf.get(userId);
+    if (holder && holder !== deviceId) { res.status(409).json({ error: 'The call is held by another device.' }); return; }
     leaveChannel(ctx, channelId, userId);
     res.json({ ok: true });
   });

@@ -465,6 +465,16 @@ async function main() {
     assert.equal((await api(alice.token, 'POST', '/api/voice/leave', { channelId: voiceChan })).status, 200);
     log('a leftover voice slot is cleared on startup, so the account is not locked out');
 
+    // A second device refused with 409 must not end the call its first device is still in.
+    const chanInvite = (await api(alice.token, 'POST', `/api/servers/${chanServer.server.id as string}/invites`, { maxUses: 1 })).json.code as string;
+    assert.equal((await api(bob.token, 'POST', `/api/invites/${chanInvite}/join`, {})).status, 200, 'bob joins the chan server');
+    assert.equal((await api(bob.token, 'POST', '/api/voice/token', { channelId: voiceChan })).status, 200, 'bob joins on his first device');
+    assert.equal((await api(bob2.token, 'POST', '/api/voice/token', { channelId: voiceChan })).status, 409, 'bob second device is refused');
+    assert.equal((await api(bob2.token, 'POST', '/api/voice/leave', { channelId: voiceChan })).status, 409, 'the refused device cannot leave the call');
+    assert.equal((await api(bob.token, 'POST', '/api/voice/rejoin', { channelId: voiceChan })).status, 200, 'the first device still holds its slot');
+    assert.equal((await api(bob.token, 'POST', '/api/voice/leave', { channelId: voiceChan })).status, 200, 'the first device leaves its own call');
+    log('a refused second device cannot end the first device call');
+
     // Bob can list and remove his own devices. Another user's device is not his to remove.
     const bobDevices = await api(bob.token, 'GET', '/api/me/devices');
     assert.ok(bobDevices.json.devices.some((d: { deviceId: string }) => d.deviceId === bob2.id), 'bob lists his second device');
