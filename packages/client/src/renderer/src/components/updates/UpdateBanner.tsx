@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useUpdates } from '../../state/updates';
+import { installUpdate, useUpdates } from '../../state/updates';
 import './updates.css';
 
 /** Thin strip at the top of the window: update progress, "restart to update", and an older-server warning. */
@@ -15,7 +15,7 @@ export default function UpdateBanner() {
     return (
       <div className="cw-update-bar" role="status">
         <span>Chatward {status.version} is ready.</span>
-        <button className="primary" onClick={() => void window.chatward.updates.install()}>Restart to update</button>
+        <button className="primary" onClick={() => void installUpdate()}>Restart to update</button>
         <button onClick={() => setDismissed(status.version)}>Later</button>
       </div>
     );

@@ -396,6 +396,15 @@ async function main() {
     assert.equal((await api(alice.token, 'DELETE', `${chanBase}/${extraText}`)).status, 409, 'the new last text channel is kept');
     log('deleting the last text channel is refused');
 
+    // A voice slot left by a previous app run must not lock the account out. The startup clear frees it.
+    const voiceChan = chanServer.channels.find((c: { kind: string }) => c.kind === 'voice').id as string;
+    assert.equal((await api(alice.token, 'POST', '/api/voice/token', { channelId: voiceChan })).status, 200, 'first join gets a token');
+    assert.equal((await api(alice.token, 'POST', '/api/voice/token', { channelId: voiceChan })).status, 409, 'a second device is refused while the slot is held');
+    assert.equal((await api(alice.token, 'POST', '/api/voice/clear', {})).status, 200, 'startup clear succeeds');
+    assert.equal((await api(alice.token, 'POST', '/api/voice/token', { channelId: voiceChan })).status, 200, 'join works again after the clear');
+    assert.equal((await api(alice.token, 'POST', '/api/voice/leave', { channelId: voiceChan })).status, 200);
+    log('a leftover voice slot is cleared on startup, so the account is not locked out');
+
     console.log('\nE2E MLS: all checks passed');
   } catch (err) {
     failed = true;
