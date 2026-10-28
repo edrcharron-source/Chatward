@@ -117,7 +117,12 @@ export async function refreshUnread() {
   const st = useSession.getState();
   st.setUnread(unread);
   // The channel on screen is being read, so it stays clear even if the server counted a message that just arrived.
-  if (st.activeChannelId && !document.hidden) st.clearUnread(st.activeChannelId);
+  // Theater mode shows a voice channel's chat beside the video, so that chat counts as on screen too.
+  if (!document.hidden) {
+    for (const ch of new Set([st.activeChannelId, st.theaterChatId])) {
+      if (ch) st.clearUnread(ch);
+    }
+  }
 }
 
 /** Loads the login token from secureStore. Call once before the app renders, since requests read the token synchronously. Moves a token left in localStorage by an older build into secureStore. */
