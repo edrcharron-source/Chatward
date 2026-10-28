@@ -91,10 +91,13 @@ function seedMessages(world: World) {
       channel: 'demo-ch-memes', author: 'demo-blake', ago: 80 * 60_000,
       payload: { text: 'when the build finally passes', gif: { url: gifDataUrl('SHIPPED', 120), previewUrl: gifDataUrl('SHIPPED', 120), title: 'celebration', provider: 'klipy' } },
     },
-    { channel: 'demo-ch-memes', author: 'demo-avery', ago: 60 * 60_000, payload: { text: 'this is the one: https://www.youtube.com/watch?v=dQw4w9WgXcQ' } },
+    {
+      channel: 'demo-ch-memes', author: 'demo-avery', ago: 60 * 60_000,
+      payload: { text: 'this is the one: https://www.youtube.com/watch?v=dQw4w9WgXcQ', linkPreviews: [{ url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', title: 'Demo video', siteName: 'YouTube', embed: { kind: 'youtube', id: 'dQw4w9WgXcQ' } }] },
+    },
     {
       channel: 'demo-ch-memes', author: 'demo-dev', ago: 40 * 60_000,
-      payload: { text: 'the link preview should show above', linkPreviews: [{ url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', title: 'Demo video', siteName: 'YouTube', embed: { kind: 'youtube', id: 'dQw4w9WgXcQ' } }] },
+      payload: { text: 'the preview is under the link above' },
     },
     { channel: 'demo-ch-watch', author: 'demo-casey', ago: 30 * 60_000, payload: { text: 'start the watch party whenever. I will sync to whatever you pick.' } },
     { channel: 'demo-ch-watch', author: 'demo-avery', ago: 5 * 60_000, payload: { text: 'pasting a link here soon 👀' } },
