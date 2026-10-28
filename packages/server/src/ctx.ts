@@ -17,6 +17,8 @@ export interface Ctx {
   verifyToken: (token: string) => string | null;
   broadcastToServer: (serverId: string, frame: ServerFrame) => void;
   sendToUser: (userId: string, frame: ServerFrame) => void;
+  /** Closes every open socket of a user, so a session that was just revoked stops receiving frames. */
+  revokeSockets: (userId: string) => void;
   /** callbacks fired when a user's last socket closes (e.g. voice cleanup) */
   onDisconnect: ((userId: string) => void)[];
   /** callbacks fired when a user opens a socket, including a reconnect */
@@ -32,14 +34,18 @@ export interface Ctx {
 }
 
 export function makeAuth(db: DB) {
+  const sessionVersion = (userId: string): number | null =>
+    (db.prepare('SELECT session_version FROM users WHERE id=?').get(userId) as { session_version: number } | undefined)
+      ?.session_version ?? null;
   const signToken = (userId: string) =>
-    jwt.sign({ sub: userId }, config.jwtSecret, { expiresIn: '30d' });
+    jwt.sign({ sub: userId, v: sessionVersion(userId) ?? 0 }, config.jwtSecret, { expiresIn: '30d' });
   const verifyToken = (token: string): string | null => {
     try {
       const p = jwt.verify(token, config.jwtSecret) as jwt.JwtPayload;
       const id = typeof p.sub === 'string' ? p.sub : null;
       if (!id) return null;
-      return db.prepare('SELECT 1 FROM users WHERE id=?').get(id) ? id : null;
+      // Tokens from before session versions existed carry no `v`, and their account is still at version 0.
+      return sessionVersion(id) === (p.v ?? 0) ? id : null;
     } catch {
       return null;
     }

@@ -22,6 +22,9 @@ const USERNAME_RE = new RegExp(`^[A-Za-z0-9_.-]{${LIMITS.USERNAME_MIN},${LIMITS.
 const DEVICE_ID_RE = /^[A-Za-z0-9_-]{8,64}$/;
 const BASE64_RE = /^[A-Za-z0-9+/]+={0,2}$/;
 const PASSWORD_MAX = 1024;
+const RESET_CODE_MS = 24 * 60 * 60_000;
+// No look-alike characters (0/O, 1/I), so a code read aloud or copied by hand is unambiguous.
+const RESET_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const DISPLAY_NAME_MAX = 32;
 const EXT_BY_MIME: Record<string, string> = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' };
 const PNG_SIG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
@@ -31,6 +34,17 @@ function validPassword(v: unknown): string {
     bad(`password must be ${LIMITS.PASSWORD_MIN}-${PASSWORD_MAX} characters`);
   }
   return v;
+}
+
+/** 12 characters (60 bits) shown as XXXX-XXXX-XXXX. The 32-character alphabet divides 256 evenly, so no bias. */
+function newResetCode(): string {
+  const chars = [...crypto.randomBytes(12)].map((b) => RESET_CODE_ALPHABET[b % 32]).join('');
+  return `${chars.slice(0, 4)}-${chars.slice(4, 8)}-${chars.slice(8)}`;
+}
+
+/** Codes are compared by hash, so the database never holds a usable code. */
+function codeHash(code: string): string {
+  return crypto.createHash('sha256').update(code.toUpperCase().replace(/[^A-Z0-9]/g, '')).digest('hex');
 }
 
 /** Uncompressed P-256 point (65 bytes, leading 0x04), base64. */
@@ -173,6 +187,73 @@ export function register(app: Express, ctx: Ctx): void {
     if (!row || !ok) throw new ApiError(401, 'invalid username or password');
     if (ctx.db.transaction(() => upsertDevice(ctx, row.id, device))()) broadcastDevices(ctx, row.id);
     res.json({ token: ctx.signToken(row.id), user: mustUser(ctx, row.id) });
+  }));
+
+  // Signed-in password change. Needs the current password, and signs out every other session.
+  // A wrong current password gets 403, not 401: the client treats 401 as "logged out".
+  app.post('/api/me/password', ctx.requireAuth, route(async (req, res) => {
+    const uid = userIdOf(req);
+    const body = bodyOf(req);
+    const row = ctx.db.prepare('SELECT password_hash FROM users WHERE id=?').get(uid) as { password_hash: string } | undefined;
+    if (!row) throw new ApiError(401, 'unauthorized');
+    const current = typeof body.currentPassword === 'string' && body.currentPassword.length <= PASSWORD_MAX ? body.currentPassword : '';
+    if (current === '' || !(await verify(row.password_hash, current))) throw new ApiError(403, 'current password is wrong');
+    const newPassword = validPassword(body.newPassword);
+    if (newPassword === current) bad('the new password must be different from the current one');
+    const passwordHash = await hash(newPassword);
+    ctx.db
+      .prepare('UPDATE users SET password_hash=?, session_version=session_version+1 WHERE id=?')
+      .run(passwordHash, uid);
+    res.json({ token: ctx.signToken(uid), user: mustUser(ctx, uid) });
+    ctx.revokeSockets(uid);
+  }));
+
+  // Owner only: issue a one-time reset code for a member of one of the owner's servers.
+  // The owner gives the code to the member out of band; it is shown once and expires after 24 hours.
+  app.post('/api/servers/:id/members/:userId/reset-code', ctx.requireAuth, route((req, res) => {
+    const serverId = String(req.params.id);
+    const targetId = String(req.params.userId);
+    const uid = userIdOf(req);
+    const actorRole = ctx.roleIn(serverId, uid);
+    if (!actorRole) throw new ApiError(404, 'server not found');
+    if (actorRole !== 'owner') throw new ApiError(403, 'only the owner can issue reset codes');
+    if (targetId === uid) bad('use Change password to change your own password');
+    if (!ctx.roleIn(serverId, targetId)) throw new ApiError(404, 'member not found');
+    const code = newResetCode();
+    const expiresAt = Date.now() + RESET_CODE_MS;
+    ctx.db
+      .prepare(`INSERT INTO password_resets (user_id, issued_by, code_hash, expires_at) VALUES (?, ?, ?, ?)
+        ON CONFLICT(user_id) DO UPDATE SET issued_by = excluded.issued_by, code_hash = excluded.code_hash, expires_at = excluded.expires_at`)
+      .run(targetId, uid, codeHash(code), expiresAt);
+    res.json({ code, expiresAt });
+  }));
+
+  // Redeems an owner-issued code and sets a new password. The code is single-use: the DELETE below
+  // only succeeds once, and the whole change rolls back if the device cannot be registered.
+  app.post('/api/auth/reset', route(async (req, res) => {
+    const body = bodyOf(req);
+    const username = typeof body.username === 'string' ? body.username : '';
+    const code = typeof body.code === 'string' ? body.code : '';
+    const newPassword = validPassword(body.newPassword);
+    const device = parseDevice(body.device);
+    const user = username
+      ? (ctx.db.prepare('SELECT id FROM users WHERE username=?').get(username) as { id: string } | undefined)
+      : undefined;
+    const passwordHash = await hash(newPassword);
+    const devicesChanged = ctx.db.transaction(() => {
+      const used = user
+        ? ctx.db.prepare('DELETE FROM password_resets WHERE user_id=? AND code_hash=? AND expires_at>?')
+          .run(user.id, codeHash(code), Date.now())
+        : { changes: 0 };
+      if (!user || used.changes !== 1) throw new ApiError(403, 'reset code is invalid or expired');
+      ctx.db
+        .prepare('UPDATE users SET password_hash=?, session_version=session_version+1 WHERE id=?')
+        .run(passwordHash, user.id);
+      return upsertDevice(ctx, user.id, device);
+    })();
+    if (devicesChanged) broadcastDevices(ctx, user!.id);
+    res.json({ token: ctx.signToken(user!.id), user: mustUser(ctx, user!.id) });
+    ctx.revokeSockets(user!.id);
   }));
 
   app.get('/api/me', ctx.requireAuth, route((req, res) => {

@@ -7,6 +7,7 @@ import { useSession } from '../../state/session';
 import { cropToAvatar } from './avatar';
 import { Section, errorText } from './controls';
 import ProfileEditor from '../profile/ProfileEditor';
+import PasswordSection from './PasswordSection';
 
 interface Status { ok: boolean; text: string }
 
@@ -153,6 +154,8 @@ export default function AccountTab() {
       </Section>
 
       <ProfileEditor user={user} />
+
+      <PasswordSection />
 
       {status && <p className={status.ok ? 'ok-text' : 'error-text'} role="status">{status.text}</p>}
     </>
