@@ -14,18 +14,21 @@ export default function InvitesDialog({ serverId, onClose }: { serverId: string;
   const [invite, setInvite] = useState<{ code: string; expiresAt: number | string } | null>(null);
   const [invites, setInvites] = useState<Invite[]>([]);
   const [bans, setBans] = useState<Ban[]>([]);
+  const [formerMembers, setFormerMembers] = useState<User[]>([]);
   const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function load() {
     try {
-      const [inv, ban] = await Promise.all([
+      const [inv, ban, former] = await Promise.all([
         api.get<{ invites: Invite[] }>(`/api/servers/${serverId}/invites`),
         api.get<{ bans: Ban[] }>(`/api/servers/${serverId}/bans`),
+        api.get<{ users: User[] }>(`/api/servers/${serverId}/former-members`),
       ]);
       setInvites(inv.invites);
       setBans(ban.bans);
+      setFormerMembers(former.users);
     } catch (err) {
       setError(errorText(err));
     }
@@ -72,6 +75,17 @@ export default function InvitesDialog({ serverId, onClose }: { serverId: string;
     setError(null);
     try {
       await api.del(`/api/servers/${serverId}/bans/${encodeURIComponent(userId)}`);
+      await load();
+    } catch (err) {
+      setError(errorText(err));
+    }
+  }
+
+  async function banFormerMember(user: User) {
+    if (!window.confirm(`Ban ${user.displayName}? They have left the server, and they cannot rejoin with any invite until unbanned.`)) return;
+    setError(null);
+    try {
+      await api.post(`/api/servers/${serverId}/bans`, { userId: user.id });
       await load();
     } catch (err) {
       setError(errorText(err));
@@ -129,6 +143,23 @@ export default function InvitesDialog({ serverId, onClose }: { serverId: string;
                 {b.user.displayName}
               </span>
               <button type="button" onClick={() => void unban(b.user.id)}>Unban</button>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      <section className="cw-dialog-section">
+        <h3>Ban someone who left</h3>
+        <p className="cw-hint">People who have posted here but are no longer in the server.</p>
+        {formerMembers.length === 0 && <p className="cw-hint">No former members to show.</p>}
+        <ul className="cw-invite-list">
+          {formerMembers.map((u) => (
+            <li key={u.id}>
+              <span className="cw-ban-user">
+                <Avatar user={u} size={24} />
+                {u.displayName}
+              </span>
+              <button type="button" className="danger" onClick={() => void banFormerMember(u)}>Ban</button>
             </li>
           ))}
         </ul>

@@ -388,7 +388,7 @@ export function register(app: Express, ctx: Ctx): void {
     const actorId = userIdOf(req);
     const targetId = bodyOf(req).userId;
     if (typeof targetId !== 'string') bad('userId is required');
-    assertCanModerate(ctx, serverId, actorId, targetId);
+    assertCanBan(ctx, serverId, actorId, targetId);
     ctx.db.transaction(() => {
       ctx.db
         .prepare('INSERT OR IGNORE INTO bans (server_id, user_id, banned_by, created_at) VALUES (?, ?, ?, ?)')
@@ -411,6 +411,28 @@ export function register(app: Express, ctx: Ctx): void {
     res.json({ bans });
   }));
 
+  // People who have posted here but are no longer members, so admins can ban them from the UI.
+  app.get('/api/servers/:id/former-members', ctx.requireAuth, route((req, res) => {
+    const serverId = String(req.params.id);
+    requireAdmin(ctx, serverId, userIdOf(req));
+    const rows = ctx.db
+      .prepare(`
+        SELECT m.author_id AS user_id FROM messages m
+        JOIN channels c ON c.id = m.channel_id
+        WHERE c.server_id = ?
+          AND m.author_id NOT IN (SELECT user_id FROM members WHERE server_id = ?)
+          AND m.author_id NOT IN (SELECT user_id FROM bans WHERE server_id = ?)
+        GROUP BY m.author_id
+        ORDER BY MAX(m.id) DESC
+        LIMIT 100`)
+      .all(serverId, serverId, serverId) as { user_id: string }[];
+    const users = rows.flatMap((r) => {
+      const user = ctx.getUser(r.user_id);
+      return user ? [user] : [];
+    });
+    res.json({ users });
+  }));
+
   app.delete('/api/servers/:id/bans/:userId', ctx.requireAuth, route((req, res) => {
     const serverId = String(req.params.id);
     requireAdmin(ctx, serverId, userIdOf(req));
@@ -431,6 +453,20 @@ function assertCanModerate(ctx: Ctx, serverId: string, actorId: string, targetId
   if (targetRole === 'owner' || (targetRole === 'admin' && actorRole !== 'owner')) {
     throw new ApiError(403, 'you cannot remove this member');
   }
+}
+
+/**
+ * Bans can target current members (same rules as kicks) or anyone who has left. Past members
+ * are not in the member list, so any admin may ban them by user id, but never themselves.
+ */
+function assertCanBan(ctx: Ctx, serverId: string, actorId: string, targetId: string): void {
+  if (ctx.roleIn(serverId, targetId)) {
+    assertCanModerate(ctx, serverId, actorId, targetId);
+    return;
+  }
+  requireAdmin(ctx, serverId, actorId);
+  if (targetId === actorId) bad('you cannot ban yourself');
+  if (!ctx.getUser(targetId)) throw new ApiError(404, 'user not found');
 }
 
 /** Takes a user out of the server: membership, their live socket, and any voice call they are in. */
