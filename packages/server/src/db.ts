@@ -85,6 +85,13 @@ export function openDb(): DB {
     signature TEXT NOT NULL,
     PRIMARY KEY (channel_id, key_version, to_device_id)
   );
+  -- One outstanding owner-issued reset code per account. Only its hash is stored; a used or expired code is deleted.
+  CREATE TABLE IF NOT EXISTS password_resets (
+    user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    issued_by TEXT NOT NULL REFERENCES users(id),
+    code_hash TEXT NOT NULL,
+    expires_at INTEGER NOT NULL
+  );
   CREATE TABLE IF NOT EXISTS uploads (
     id TEXT PRIMARY KEY,
     owner_id TEXT NOT NULL REFERENCES users(id),
@@ -188,6 +195,8 @@ export function openDb(): DB {
   }
   // Deleted accounts keep their row so old messages still point at a user. This marks them as gone.
   if (!userCols.has('deleted_at')) db.exec('ALTER TABLE users ADD COLUMN deleted_at INTEGER');
+  // Bumped on every password change or reset. Tokens carry the version they were issued at, so older ones stop working.
+  if (!userCols.has('session_version')) db.exec('ALTER TABLE users ADD COLUMN session_version INTEGER NOT NULL DEFAULT 0');
   // Upload cleanup: `tracked` marks uploads from clients that report which message they were attached to.
   // Older uploads stay tracked=0 and are never swept, since the server cannot see inside message ciphertext.
   const uploadCols = new Set((db.pragma('table_info(uploads)') as { name: string }[]).map((c) => c.name));

@@ -7,6 +7,7 @@ import { useSession } from '../../state/session';
 import { cropToAvatar } from './avatar';
 import { Section, errorText } from './controls';
 import ProfileEditor from '../profile/ProfileEditor';
+import PasswordSection from './PasswordSection';
 
 interface Status { ok: boolean; text: string }
 
@@ -168,6 +169,8 @@ export default function AccountTab() {
       </Section>
 
       <ProfileEditor user={user} />
+
+      <PasswordSection />
 
       <Section title="Delete account">
         <form className="setting-row" onSubmit={deleteAccount}>
