@@ -1,6 +1,5 @@
 import type { Express } from 'express';
 import type { Ctx } from '../ctx.js';
-import { perMember } from '../userLimit.js';
 
 const KLIPY_BASE = 'https://api.klipy.com/api/v1';
 const PER_PAGE = 24;
@@ -78,7 +77,7 @@ export function register(app: Express, ctx: Ctx): void {
     res.json(body.data?.has_next === true ? { results, next: String(page + 1) } : { results });
   }
 
-  app.get('/api/gifs/search', ctx.requireAuth, perMember(60_000, 60), (req, res) => {
+  app.get('/api/gifs/search', ctx.requireAuth, (req, res) => {
     const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
     if (q.length > QUERY_MAX) { res.status(400).json({ error: `q must be at most ${QUERY_MAX} characters` }); return; }
     if (!key) { res.json({ results: [], disabled: true }); return; }
@@ -86,7 +85,7 @@ export function register(app: Express, ctx: Ctx): void {
     void proxy('search', q, req.query.pos, res);
   });
 
-  app.get('/api/gifs/trending', ctx.requireAuth, perMember(60_000, 60), (req, res) => {
+  app.get('/api/gifs/trending', ctx.requireAuth, (req, res) => {
     void proxy('trending', null, req.query.pos, res);
   });
 }
