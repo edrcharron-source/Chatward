@@ -2,7 +2,7 @@
 import { create } from 'zustand';
 import { ExternalE2EEKeyProvider, Room, RoomEvent, Track, type Participant } from 'livekit-client';
 import { DEFAULT_VOICE_BITRATE_KBPS, VOICE_BITRATES_KBPS, type Channel } from '@chatward/shared';
-import { api } from '../api/http';
+import { api, postOnUnload } from '../api/http';
 import { voiceKey } from '../crypto';
 import { startCamera, stopCamera, startScreen, stopScreen } from '../components/voice/media';
 import { attachRemote, closeAudio, detachRemote, micLevel, openMic, setDeafened, setTransmitting, startPlayback } from './voiceAudio';
@@ -50,6 +50,26 @@ export function resumeVoiceSlot(): void {
   const { channelId, room } = useVoice.getState();
   if (!channelId || !room || isDemo()) return;
   void api.post('/api/voice/rejoin', { channelId }).catch((e) => console.warn('could not restore voice slot', e));
+}
+
+/**
+ * First connection after the app starts. Nothing is in a call yet, so any slot the server still holds for this account
+ * is left over from a restart or crash. Clear it, or the "already in this call on another device" check locks us out.
+ */
+export function clearLeftoverVoiceSlot(): void {
+  if (useVoice.getState().channelId || isDemo()) return;
+  void api.post('/api/voice/clear').catch((e) => console.warn('could not clear leftover voice slot', e));
+}
+
+/**
+ * The window is closing, or the app is about to restart to update: end the call now so the server does not keep the slot.
+ * Best effort. If the page unloads first, the server's grace timer and the startup clear still cover it.
+ */
+export function leaveCallOnExit(): void {
+  const { channelId } = useVoice.getState();
+  if (!channelId || isDemo()) return;
+  postOnUnload('/api/voice/leave', { channelId });
+  void useVoice.getState().leave();
 }
 
 /** The channel's bitrate, or the default when unset or not one of the allowed values. */

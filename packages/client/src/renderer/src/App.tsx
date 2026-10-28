@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
 import type { Channel, Member } from '@chatward/shared';
-import { api } from './api/http';
+import { api, ApiError } from './api/http';
 import { connectWs, disconnectWs, onFrame, sendFrame } from './api/ws';
-import { useSession, type ServerBundle } from './state/session';
+import { refreshUnread, signOut, useSession, type ServerBundle } from './state/session';
 import { useSettings, applyTheme } from './state/settings';
-import { useVoice, rekeyActiveCall, resumeVoiceSlot } from './state/voice';
+import { useVoice, rekeyActiveCall, resumeVoiceSlot, clearLeftoverVoiceSlot, leaveCallOnExit } from './state/voice';
 import { accountKey, adoptLegacyIfOwned, initDevice, syncChannelKeys, handleEnvelope, handleMemberLeave } from './crypto';
 import { installNotifications } from './notify/notify';
 import AuthScreen from './components/auth/AuthScreen';
@@ -51,6 +51,7 @@ export function App() {
 function Shell() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [ready, setReady] = useState(false);
+  const [unreachable, setUnreachable] = useState(false);
   const [watchOpen, setWatchOpen] = useState(false);
   const { servers, activeServerId, activeChannelId } = useSession();
   const bundle = servers.find((s) => s.server.id === activeServerId);
@@ -90,11 +91,13 @@ function Shell() {
     let off: (() => void) | undefined;
     let stopNotify: (() => void) | undefined;
     let seenReady = false;
+    let active = true;
     (async () => {
       const { serverUrl, user } = useSession.getState();
       await initDevice(accountKey(serverUrl, user?.username ?? ''));
       await adoptLegacyIfOwned();
-      await loadServers();
+      await loadServersUntilReachable(() => active);
+      if (!active) return;
       connectWs();
       stopNotify = installNotifications();
       off = onFrame((f) => {
@@ -110,6 +113,8 @@ function Shell() {
             if (seenReady) {
               loadServers().catch((e) => console.error('Could not refresh after reconnect', e));
               resumeVoiceSlot();
+            } else {
+              clearLeftoverVoiceSlot();
             }
             seenReady = true;
             break;
@@ -170,6 +175,14 @@ function Shell() {
               .catch((e) => console.error(e));
             break;
           }
+          case 'voice.moved': {
+            // the account joined a call on another device; if this device is still in that call, hang up quietly
+            if (useVoice.getState().channelId !== f.channelId) break;
+            void useVoice.getState().leave()
+              .then(() => useVoice.setState({ notice: 'This account joined the call from another device' }))
+              .catch((e) => console.error(e));
+            break;
+          }
           case 'member.leave': {
             if (f.userId === st.user?.id) {
               // we left (or were kicked), so end any call we had in this server
@@ -200,12 +213,14 @@ function Shell() {
       });
       setReady(true);
     })().catch((e) => console.error(e));
-    return () => { off?.(); stopNotify?.(); disconnectWs(); };
+    window.addEventListener('pagehide', leaveCallOnExit);
+    return () => { active = false; off?.(); stopNotify?.(); disconnectWs(); window.removeEventListener('pagehide', leaveCallOnExit); };
   }, []);
 
   async function loadServers() {
     const { servers } = await api.get<{ servers: ServerBundle[] }>('/api/servers');
     useSession.getState().setServers(servers);
+    void refreshUnread().catch(() => {});
     for (const b of servers) {
       const { channels } = await api.get<{ channels: Record<string, string[]> }>(`/api/servers/${b.server.id}/voice-state`);
       for (const [cid, ids] of Object.entries(channels)) useSession.getState().setVoiceOccupants(cid, ids);
@@ -213,7 +228,35 @@ function Shell() {
     await syncChannelKeys(servers);
   }
 
-  if (!ready) return <div style={{ display: 'grid', placeItems: 'center', height: '100%' }} className="muted">Loading…</div>;
+  /** Retries the startup load with growing waits until the server answers. A 401 means the session is gone, so it is rethrown and signs out. */
+  async function loadServersUntilReachable(stillActive: () => boolean) {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        await loadServers();
+        setUnreachable(false);
+        return;
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 401) throw e;
+        console.error('Could not load servers, retrying', e);
+        setUnreachable(true);
+        await new Promise((resolve) => setTimeout(resolve, Math.min(15000, 1000 * 2 ** attempt)));
+        if (!stillActive()) return;
+      }
+    }
+  }
+
+  if (!ready) {
+    return (
+      <div style={{ display: 'grid', placeItems: 'center', alignContent: 'center', gap: 12, height: '100%' }}>
+        {unreachable ? (
+          <>
+            <div className="muted">Can't reach server, retrying…</div>
+            <button type="button" className="danger" onClick={() => void signOut()}>Log out</button>
+          </>
+        ) : <div className="muted">Loading…</div>}
+      </div>
+    );
+  }
   return (
     <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
       <ServerSidebar onReload={loadServers} />

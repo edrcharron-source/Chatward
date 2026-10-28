@@ -14,6 +14,7 @@ export function openDb(): DB {
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
   const seenDevicesExisted = db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='mls_group_seen_devices'").get() !== undefined;
+  const readsExisted = db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='channel_reads'").get() !== undefined;
   db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
@@ -84,6 +85,13 @@ export function openDb(): DB {
     signature TEXT NOT NULL,
     PRIMARY KEY (channel_id, key_version, to_device_id)
   );
+  -- One outstanding owner-issued reset code per account. Only its hash is stored; a used or expired code is deleted.
+  CREATE TABLE IF NOT EXISTS password_resets (
+    user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    issued_by TEXT NOT NULL REFERENCES users(id),
+    code_hash TEXT NOT NULL,
+    expires_at INTEGER NOT NULL
+  );
   CREATE TABLE IF NOT EXISTS uploads (
     id TEXT PRIMARY KEY,
     owner_id TEXT NOT NULL REFERENCES users(id),
@@ -145,7 +153,25 @@ export function openDb(): DB {
     epoch INTEGER NOT NULL,
     PRIMARY KEY (group_id, device_id)
   );
+  -- Where each member has read up to in a text channel. Unread counts are computed from it, so messages sent while away still count.
+  CREATE TABLE IF NOT EXISTS channel_reads (
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    channel_id TEXT NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+    last_read_id TEXT NOT NULL,
+    PRIMARY KEY (user_id, channel_id)
+  );
   `);
+  // Read positions start with the release that added channel_reads. Everything already in a channel counts as read,
+  // so upgrading does not flag all old history as unread.
+  if (!readsExisted) {
+    db.exec(`
+    INSERT OR IGNORE INTO channel_reads (user_id, channel_id, last_read_id)
+      SELECT mb.user_id, c.id, MAX(m.id) FROM members mb
+      JOIN channels c ON c.server_id=mb.server_id AND c.kind='text'
+      JOIN messages m ON m.channel_id=c.id
+      GROUP BY mb.user_id, c.id;
+    `);
+  }
   // Groups created before mls_group_seen_devices existed: seed it from the devices the server already recorded.
   if (!seenDevicesExisted) {
     db.exec(`
@@ -167,6 +193,10 @@ export function openDb(): DB {
   for (const [col, def] of Object.entries(profileCols)) {
     if (!userCols.has(col)) db.exec(`ALTER TABLE users ADD COLUMN ${col} ${def}`);
   }
+  // Deleted accounts keep their row so old messages still point at a user. This marks them as gone.
+  if (!userCols.has('deleted_at')) db.exec('ALTER TABLE users ADD COLUMN deleted_at INTEGER');
+  // Bumped on every password change or reset. Tokens carry the version they were issued at, so older ones stop working.
+  if (!userCols.has('session_version')) db.exec('ALTER TABLE users ADD COLUMN session_version INTEGER NOT NULL DEFAULT 0');
   // Upload cleanup: `tracked` marks uploads from clients that report which message they were attached to.
   // Older uploads stay tracked=0 and are never swept, since the server cannot see inside message ciphertext.
   const uploadCols = new Set((db.pragma('table_info(uploads)') as { name: string }[]).map((c) => c.name));

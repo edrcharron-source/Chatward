@@ -58,8 +58,12 @@ export function kickFromCall(ctx: Ctx, serverId: string, userId: string): void {
 /** Drops the user from the channel's voice slot and from the LiveKit room, so they stop hearing the call now. */
 function kickFromChannelCall(ctx: Ctx, channelId: string, userId: string): void {
   leaveChannel(ctx, channelId, userId);
+  removeFromRoom(ctx, channelId, userId);
+}
+
+/** Ends the user's LiveKit session in a room. Fails if LiveKit no longer has them (already left or still connecting). */
+function removeFromRoom(ctx: Ctx, channelId: string, userId: string): void {
   const rooms = new RoomServiceClient(ctx.config.livekit.apiUrl, ctx.config.livekit.apiKey, ctx.config.livekit.apiSecret);
-  // Fails if LiveKit no longer has the participant (already left or still connecting). Either way they are out.
   rooms.removeParticipant(channelId, userId).catch((err: unknown) => console.warn('livekit removeParticipant failed', err));
 }
 
@@ -130,7 +134,14 @@ export function register(app: Express, ctx: Ctx): void {
       return;
     }
 
-    // Joining a channel implicitly leaves any other voice channel.
+    // Joining a channel implicitly leaves any other voice channel. The account may still hold that channel on another
+    // device. LiveKit keeps that device's session in the old room, so end it there and tell the account's sockets, so
+    // the other device hangs up instead of staying silently in the call.
+    const previous = voiceChannelOf.get(userId);
+    if (previous && previous !== channelId) {
+      removeFromRoom(ctx, previous, userId);
+      ctx.sendToUser(userId, { t: 'voice.moved', channelId: previous });
+    }
     occupy(ctx, channelId, userId);
 
     const at = new AccessToken(ctx.config.livekit.apiKey, ctx.config.livekit.apiSecret, {
@@ -163,6 +174,13 @@ export function register(app: Express, ctx: Ctx): void {
     const channelId = (req.body as { channelId?: unknown } | undefined)?.channelId;
     if (typeof channelId !== 'string') { res.status(400).json({ error: 'channelId required' }); return; }
     leaveChannel(ctx, channelId, userId);
+    res.json({ ok: true });
+  });
+
+  // A client that starts up with no call of its own calls this. After a restart or crash the old slot has no client left
+  // to end it, and the 409 above would lock the user out. Clears whichever voice channel the account holds.
+  app.post('/api/voice/clear', ctx.requireAuth, (req, res) => {
+    leaveVoice(ctx, (req as AuthedRequest).userId);
     res.json({ ok: true });
   });
 

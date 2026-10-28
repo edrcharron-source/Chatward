@@ -82,4 +82,8 @@ export function attachWs(http: HttpServer, ctx: Ctx) {
     const ids = ctx.db.prepare('SELECT user_id FROM members WHERE server_id=?').all(serverId) as { user_id: string }[];
     for (const { user_id } of ids) ctx.sendToUser(user_id, frame);
   };
+  ctx.revokeSockets = (userId) => {
+    // 4401: the client reconnects with its current token, which is the new one if this session made the change.
+    for (const ws of socketsByUser.get(userId) ?? []) ws.close(4401, 'session revoked');
+  };
 }

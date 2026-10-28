@@ -479,7 +479,7 @@ function assertCanBan(ctx: Ctx, serverId: string, actorId: string, targetId: str
 }
 
 /** Takes a user out of the server: membership, their live socket, and any voice call they are in. */
-function removeMember(ctx: Ctx, serverId: string, targetId: string): void {
+export function removeMember(ctx: Ctx, serverId: string, targetId: string): void {
   ctx.db.prepare('DELETE FROM members WHERE server_id=? AND user_id=?').run(serverId, targetId);
   // Sent after the delete, so the kicked user needs an explicit send.
   const leave: ServerFrame = { t: 'member.leave', serverId, userId: targetId };

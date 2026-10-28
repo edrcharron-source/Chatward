@@ -17,6 +17,7 @@ export default function ServerSettingsDialog({ serverId, onClose, onReload }: { 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [transferTo, setTransferTo] = useState('');
+  const [issued, setIssued] = useState<{ name: string; code: string; expiresAt: number } | null>(null);
 
   if (!bundle) return null;
   const serverName = bundle.server.name;
@@ -90,6 +91,21 @@ export default function ServerSettingsDialog({ serverId, onClose, onReload }: { 
 
   const others = bundle.members.filter((m) => m.role !== 'owner');
 
+  /** Issues a one-time reset code for a member. The code is shown once, here, for the owner to pass on. */
+  async function issueResetCode(member: Member) {
+    setBusy(true);
+    setError(null);
+    setIssued(null);
+    try {
+      const res = await api.post<{ code: string; expiresAt: number }>(`/api/servers/${serverId}/members/${member.user.id}/reset-code`);
+      setIssued({ name: member.user.displayName, code: res.code, expiresAt: res.expiresAt });
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <Dialog title={`${serverName} settings`} onClose={onClose}>
       {isAdmin && (
@@ -119,6 +135,29 @@ export default function ServerSettingsDialog({ serverId, onClose, onReload }: { 
               </li>
             ))}
           </ul>
+        </section>
+      )}
+
+      {isOwner && (
+        <section aria-label="Password reset">
+          <h3>Password reset</h3>
+          <p className="cw-hint">
+            If a member forgets their password, issue a one-time code and pass it on in person or in a private message.
+            It works once and expires after 24 hours. You can sign in as that member with it, so only do this for someone you trust.
+          </p>
+          <ul className="cw-role-list">
+            {others.map((m) => (
+              <li key={m.user.id}>
+                <span>{m.user.displayName} <span className="muted">@{m.user.username}</span></span>
+                <button type="button" disabled={busy} onClick={() => void issueResetCode(m)} aria-label={`Issue reset code for ${m.user.displayName}`}>Reset code</button>
+              </li>
+            ))}
+          </ul>
+          {issued && (
+            <p className="cw-hint" role="status">
+              Reset code for {issued.name}: <strong>{issued.code}</strong>. Expires {new Date(issued.expiresAt).toLocaleString()}.
+            </p>
+          )}
         </section>
       )}
 

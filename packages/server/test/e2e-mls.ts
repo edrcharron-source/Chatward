@@ -340,8 +340,11 @@ async function main() {
     const ahead = await api(alice.token, 'POST', `/api/groups/${CHANNEL}/reset`, { deviceId: alice.id, epoch: 9 });
     assert.equal(ahead.status, 409, 'cannot reset past the current epoch');
     assert.equal(ahead.json.currentEpoch, 5);
+    // Bob sent the junk Commit, so his ack of epoch 5 is his own and must not block the reset.
+    const selfAck = await api(bob.token, 'POST', `/api/groups/${CHANNEL}/epoch`, { deviceId: bob.id, epoch: 5 });
+    assert.equal(selfAck.status, 200, 'bob acks the epoch his own junk Commit made');
     const reset = await api(alice.token, 'POST', `/api/groups/${CHANNEL}/reset`, { deviceId: alice.id, epoch: 4 });
-    assert.equal(reset.status, 200, 'alice drops the junk Commit');
+    assert.equal(reset.status, 200, 'alice drops the junk Commit despite the author\'s own ack');
     assert.equal(reset.json.epoch, 4);
     const afterReset = await api(alice.token, 'GET', `/api/groups/${CHANNEL}/commits?from=4`);
     assert.equal(afterReset.json.epoch, 4);
@@ -395,6 +398,28 @@ async function main() {
     assert.equal((await api(alice.token, 'DELETE', `${chanBase}/${onlyText}`)).status, 200, 'a text channel can go while another remains');
     assert.equal((await api(alice.token, 'DELETE', `${chanBase}/${extraText}`)).status, 409, 'the new last text channel is kept');
     log('deleting the last text channel is refused');
+
+    // A voice slot left by a previous app run must not lock the account out. The startup clear frees it.
+    const voiceChan = chanServer.channels.find((c: { kind: string }) => c.kind === 'voice').id as string;
+    assert.equal((await api(alice.token, 'POST', '/api/voice/token', { channelId: voiceChan })).status, 200, 'first join gets a token');
+    assert.equal((await api(alice.token, 'POST', '/api/voice/token', { channelId: voiceChan })).status, 409, 'a second device is refused while the slot is held');
+    assert.equal((await api(alice.token, 'POST', '/api/voice/clear', {})).status, 200, 'startup clear succeeds');
+    assert.equal((await api(alice.token, 'POST', '/api/voice/token', { channelId: voiceChan })).status, 200, 'join works again after the clear');
+    assert.equal((await api(alice.token, 'POST', '/api/voice/leave', { channelId: voiceChan })).status, 200);
+    log('a leftover voice slot is cleared on startup, so the account is not locked out');
+
+    // Bob can list and remove his own devices. Another user's device is not his to remove.
+    const bobDevices = await api(bob.token, 'GET', '/api/me/devices');
+    assert.ok(bobDevices.json.devices.some((d: { deviceId: string }) => d.deviceId === bob2.id), 'bob lists his second device');
+    assert.equal((await api(alice.token, 'DELETE', `/api/me/devices/${bob2.id}`)).status, 404, 'alice cannot remove bob\'s device');
+    assert.equal((await api(bob.token, 'DELETE', `/api/me/devices/${bob2.id}`)).status, 204, 'bob removes his second device');
+    const afterRemove = await api(bob.token, 'GET', '/api/me/devices');
+    assert.ok(!afterRemove.json.devices.some((d: { deviceId: string }) => d.deviceId === bob2.id), 'removed device is no longer listed');
+    const removedCount = await api(bob2.token, 'GET', `/api/devices/${bob2.id}/keypackages/count`);
+    assert.equal(removedCount.status, 403, 'removed device can no longer use its account keys');
+    const claimAfter = await claim(alice, bob.user);
+    assert.ok(!claimAfter.some((k) => k.deviceId === bob2.id), 'removed device is no longer offered for new groups');
+    log('a device can be listed and removed, and is then cut off from new keys');
 
     console.log('\nE2E MLS: all checks passed');
   } catch (err) {

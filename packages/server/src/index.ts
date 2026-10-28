@@ -44,6 +44,7 @@ const ctx: Ctx = {
   db, config, requireAuth, signToken, verifyToken,
   broadcastToServer: () => {},
   sendToUser: () => {},
+  revokeSockets: () => {},
   onDisconnect: [],
   onConnect: [],
   getUser: (id) => {

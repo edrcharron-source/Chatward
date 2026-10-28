@@ -4,7 +4,7 @@ import { api } from '../api/http';
 import { onFrame, sendFrame } from '../api/ws';
 import { buildLinkPreviews, extractUrls, uploadAttachment } from '../components/media';
 import { decryptMessage, encryptPayload, onKeysChanged } from '../crypto';
-import { onBeforeSignOut, useSession } from './session';
+import { onBeforeSignOut, refreshUnread, useSession } from './session';
 
 export type Gif = NonNullable<MessagePayload['gif']>;
 
@@ -249,6 +249,7 @@ onFrame((f) => {
       for (const [id, c] of Object.entries(useChat.getState().channels)) {
         if (c.loaded) void catchUp(id).catch(() => {});
       }
+      void refreshUnread().catch(() => {});
       return;
   }
 });

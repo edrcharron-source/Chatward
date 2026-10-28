@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { Channel, Member, Server, User } from '@chatward/shared';
+import { api } from '../api/http';
 
 export interface ServerBundle { server: Server; channels: Channel[]; members: Member[] }
 
@@ -33,6 +34,8 @@ interface SessionState {
   setMyStatus: (status: SessionState['myStatus']) => void;
   setVoiceOccupants: (channelId: string, userIds: string[]) => void;
   bumpUnread: (channelId: string) => void;
+  /** Replaces the unread counts with the server's. */
+  setUnread: (unread: Record<string, number>) => void;
   clearUnread: (channelId: string) => void;
 }
 
@@ -87,8 +90,22 @@ export const useSession = create<SessionState>((set, get) => ({
   setMyStatus: (myStatus) => set((s) => ({ myStatus, presence: s.user ? { ...s.presence, [s.user.id]: myStatus } : s.presence })),
   setVoiceOccupants: (ch, ids) => set((s) => ({ voiceOccupants: { ...s.voiceOccupants, [ch]: ids } })),
   bumpUnread: (ch) => set((s) => ({ unread: { ...s.unread, [ch]: (s.unread[ch] ?? 0) + 1 } })),
-  clearUnread: (ch) => set((s) => { const u = { ...s.unread }; delete u[ch]; return { unread: u }; }),
+  setUnread: (unread) => set({ unread }),
+  clearUnread: (ch) => {
+    set((s) => { const u = { ...s.unread }; delete u[ch]; return { unread: u }; });
+    // Saved on the server too, so the channel stays read after a restart or on another launch.
+    api.post(`/api/channels/${ch}/read`).catch(() => { /* offline: the next read saves it */ });
+  },
 }));
+
+/** Pulls unread counts from the server. Covers messages that arrived while the app was closed or disconnected. */
+export async function refreshUnread() {
+  const { unread } = await api.get<{ unread: Record<string, number> }>('/api/unread');
+  const st = useSession.getState();
+  st.setUnread(unread);
+  // The channel on screen is being read, so it stays clear even if the server counted a message that just arrived.
+  if (st.activeChannelId && !document.hidden) st.clearUnread(st.activeChannelId);
+}
 
 function persist() {
   const { serverUrl, token, user } = useSession.getState();

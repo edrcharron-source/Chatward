@@ -181,22 +181,60 @@ export function getDevice(): DeviceKeys {
   return device;
 }
 
+const SYNC_RETRY_MAX_MS = 60_000;
+let lastServers: ServerBundle[] = [];
+let retryTimer: ReturnType<typeof setTimeout> | null = null;
+let retryAttempts = 0;
+
 /** Bring every text channel of every server up to date: join or create its group, follow Commits, reconcile members, share history. Idempotent. */
 export function syncChannelKeys(servers: ServerBundle[]): Promise<void> {
   return serial(async () => {
     if (isDemo() || !device || !privates) return;
-    let changed = await ensureKeyPool();
+    lastServers = servers;
+    let changed = false;
+    let failed = false;
+    try {
+      changed = await ensureKeyPool();
+    } catch (err) {
+      failed = true;
+      console.error('Could not top up KeyPackages; will retry', err);
+    }
+    // One channel failing must not stop the others. Its partial progress is still saved below.
     for (const bundle of servers) {
       for (const channel of bundle.channels) {
         if (channel.kind !== 'text') continue;
-        changed = (await syncChannel(channel.id, bundle.members)) || changed;
+        try {
+          changed = (await syncChannel(channel.id, bundle.members)) || changed;
+        } catch (err) {
+          failed = true;
+          changed = true;
+          console.error(`Could not sync keys for channel ${channel.id}; will retry`, err);
+        }
       }
     }
     if (changed) {
       await persistVault();
       notify();
     }
+    scheduleSyncRetry(failed);
   });
+}
+
+/** After a failed sync, run the whole sync again later with growing delays. A clean sync stops the retries. */
+function scheduleSyncRetry(failed: boolean): void {
+  if (!failed) {
+    retryAttempts = 0;
+    if (retryTimer) clearTimeout(retryTimer);
+    retryTimer = null;
+    return;
+  }
+  if (retryTimer) return;
+  const delay = Math.min(SYNC_RETRY_MAX_MS, 2_000 * 2 ** retryAttempts);
+  retryAttempts++;
+  retryTimer = setTimeout(() => {
+    retryTimer = null;
+    void syncChannelKeys(lastServers).catch((err) => console.error('Key sync retry failed', err));
+  }, delay);
 }
 
 async function syncChannel(channelId: string, members: Member[]): Promise<boolean> {
@@ -266,11 +304,16 @@ function groupOf(channelId: string): ClientState | null {
   return state;
 }
 
-/** Save a new group state and derive the history key for its epoch. */
+/**
+ * Save a new group state and derive the history key for its epoch. The vault is written here, not at the end of sync:
+ * the server has already accepted the Commit that produced this state, and if the app closes before a later write we
+ * would come back one epoch behind and could never apply our own Commit again.
+ */
 async function setGroup(channelId: string, state: ClientState, epoch: number): Promise<void> {
   groupStates.set(channelId, state);
   vault.groups[channelId] = { epoch, state: toB64(mls.encodeGroup(state) as Bytes as Uint8Array<ArrayBuffer>) };
   putKey(channelId, epoch + 1, await mls.historyKey(state));
+  await persistVault();
 }
 
 async function ensureGroup(channelId: string, members: Member[]): Promise<boolean> {
