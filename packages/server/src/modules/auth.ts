@@ -257,7 +257,8 @@ export function register(app: Express, ctx: Ctx): void {
 
     let firstAccount = false;
     const joinedServerId = ctx.db.transaction((): string | null => {
-      const { n } = ctx.db.prepare('SELECT COUNT(*) AS n FROM users').get() as { n: number };
+      // Deleted accounts stay as tombstones, so only live accounts count. Otherwise deleting the last one locks registration.
+      const { n } = ctx.db.prepare('SELECT COUNT(*) AS n FROM users WHERE deleted_at IS NULL').get() as { n: number };
       const first = n === 0;
       firstAccount = first;
       // The first account owns the server, so anyone who reaches a fresh server first would take it. The setup code stops that.
@@ -470,7 +471,10 @@ export function register(app: Express, ctx: Ctx): void {
       { avatar_path: string | null; banner_path: string | null };
 
     ctx.db.transaction(() => {
+      // The same per-device cleanup as removing one device, for every device of the account.
       ctx.db.prepare('DELETE FROM mls_keypackages WHERE device_id IN (SELECT device_id FROM devices WHERE user_id=?)').run(uid);
+      ctx.db.prepare('DELETE FROM mls_welcomes WHERE to_device_id IN (SELECT device_id FROM devices WHERE user_id=?)').run(uid);
+      ctx.db.prepare('DELETE FROM mls_group_acks WHERE device_id IN (SELECT device_id FROM devices WHERE user_id=?)').run(uid);
       ctx.db.prepare('DELETE FROM devices WHERE user_id=?').run(uid);
       ctx.db.prepare('DELETE FROM password_resets WHERE user_id=?').run(uid);
       ctx.db.prepare(`UPDATE users SET username=?, display_name='Deleted user', password_hash='', avatar_path=NULL,
