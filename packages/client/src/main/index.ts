@@ -106,8 +106,10 @@ app.whenReady().then(() => {
   ipcMain.handle('demo:gifs', (_e, kind: 'search' | 'trending', q: string, pos?: string) =>
     searchGifs(readSecret(KLIPY_KEY_STORE)?.trim() || null, kind === 'search' ? 'search' : 'trending', String(q ?? ''), pos));
   ipcMain.handle('secure:set', (_e, key: string, value: string) => {
+    // Never fall back to plain text: keys and history secrets would sit readable on disk.
+    if (!safeStorage.isEncryptionAvailable()) throw new Error('Secure storage is unavailable on this computer, so Chatward will not save keys unprotected.');
     const s = readStore();
-    s[key] = (safeStorage.isEncryptionAvailable() ? safeStorage.encryptString(value) : Buffer.from(value, 'utf8')).toString('base64');
+    s[key] = safeStorage.encryptString(value).toString('base64');
     writeStore(s);
   });
   ipcMain.handle('screen:sources', async () => {
