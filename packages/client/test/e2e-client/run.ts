@@ -63,6 +63,7 @@ async function main() {
   const alice = new Device('alice');
   const bob = new Device('bob');
   let failed = false;
+  const crowd: Device[] = [];
   try {
     await alice.call('init', { serverUrl: BASE, username: 'alice' });
     await bob.call('init', { serverUrl: BASE, username: 'bob' });
@@ -185,6 +186,30 @@ async function main() {
     assert.ok(aliceSeesDave.includes('dave is here'), `alice reads dave: ${JSON.stringify(aliceSeesDave)}`);
     log('dave\'s KeyPackage upload loses its reply; he still joins from the Welcome and both sides read each other');
 
+    // Ten devices join a channel that already has a group. They are added four at a time, one Commit per batch, so no
+    // Commit grows past the server's body limit. Alice's Commits (1 -> 4) go out in three batches.
+    const big = await alice.call('createServer', { name: 'Big' });
+    await alice.call('sync');
+    // Each crowd member is its own device process, so alice keeps her session token.
+    for (let i = 0; i < 10; i++) {
+      const username = `pal${i}`;
+      const { code } = await alice.call('invite', { serverId: big.serverId });
+      const pal = new Device(username);
+      crowd.push(pal);
+      await pal.call('init', { serverUrl: BASE, username });
+      await pal.call('register', { username, inviteCode: code });
+      await pal.call('sync'); // uploads this device's KeyPackages; the group already exists, so it does not wait for a Welcome
+    }
+    await alice.call('sync');
+    assert.equal((await alice.call('status', { channelId: big.channelId })).epoch, 4, 'ten devices are added in three Commits');
+    await alice.call('send', { channelId: big.channelId, text: 'hello crowd' });
+    for (const pal of crowd) {
+      await pal.call('sync'); // joins from the Welcome
+      const seen = (await pal.call('read', { channelId: big.channelId })).texts;
+      assert.ok(seen.includes('hello crowd'), `${pal.name} reads after joining: ${JSON.stringify(seen)}`);
+    }
+    log('ten devices join one channel in batches of four and each reads the message');
+
     // A second account on the same PC gets its own device, and alice's group state is still there when she switches back.
     const epochOnPc = (await alice.call('status', { channelId })).epoch;
     await alice.call('init', { serverUrl: BASE, username: 'carol' });
@@ -202,6 +227,7 @@ async function main() {
   } finally {
     alice.stop();
     bob.stop();
+    crowd.forEach((pal) => pal.stop());
     server.kill();
     fs.rmSync(dataDir, { recursive: true, force: true });
     if (failed) process.exitCode = 1;

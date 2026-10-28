@@ -86,6 +86,8 @@ app.disable('x-powered-by');
 if (config.trustProxy) app.set('trust proxy', 1);
 app.use(helmet());
 app.use('/api/auth', rateLimit({ windowMs: 15 * 60_000, limit: 40, standardHeaders: true }));
+// A Commit lists a batch of Welcomes, so it needs more room than the default limit. Only that route gets it.
+app.post('/api/groups/:id/commits', express.json({ limit: '512kb' }));
 app.use(express.json({ limit: '64kb' }));
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
