@@ -171,7 +171,12 @@ export const useVoice = create<VoiceState>((set, get) => {
       .on(RoomEvent.TrackPublished, bump)
       .on(RoomEvent.TrackUnpublished, bump)
       .on(RoomEvent.LocalTrackPublished, bump)
-      .on(RoomEvent.LocalTrackUnpublished, bump)
+      .on(RoomEvent.LocalTrackUnpublished, (pub) => {
+        // the OS stop-sharing bar ends the track without our buttons, so clear their state here too
+        if (current() && pub.source === Track.Source.ScreenShare) set({ screenOn: false });
+        if (current() && pub.source === Track.Source.Camera) set({ cameraOn: false });
+        bump();
+      })
       .on(RoomEvent.TrackMuted, bump)
       .on(RoomEvent.TrackUnmuted, bump)
       .on(RoomEvent.TrackSubscribed, (track, pub, p) => {

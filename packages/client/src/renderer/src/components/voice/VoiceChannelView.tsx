@@ -97,6 +97,11 @@ export default function VoiceChannelView({ channel, theaterOnly = false }: { cha
   // a featured share that stopped drops out, and the view falls back to the grid
   const featured = specs.find((s) => s.key === theaterKey);
   const renderTile = (s: Spec, extra?: Partial<TileProps>) => <Tile {...s.props} theater={s.key === theaterKey} {...extra} />;
+  // a share that stops while it is featured would leave theater mode on an empty stage, so theater mode ends with it
+  // (only while this channel is the call, since another channel's view has no shares to feature)
+  useEffect(() => {
+    if (inCall && theaterKey !== null && !featured) setTheater(null);
+  }, [inCall, theaterKey, featured, setTheater]);
 
   const theaterLayout = featured && (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12, height: '100%' }}>
@@ -113,7 +118,12 @@ export default function VoiceChannelView({ channel, theaterOnly = false }: { cha
     return (
       <div style={{ height: '100%', minHeight: 0, padding: 12, boxSizing: 'border-box', display: 'flex', gap: 12 }}>
         <div style={{ flex: 1, minWidth: 0, minHeight: 0, height: '100%' }}>
-          {theaterLayout || <div className="muted" style={{ textAlign: 'center', paddingTop: 40 }}>Nobody is sharing a screen right now.</div>}
+          {theaterLayout || (
+            <div className="muted" style={{ textAlign: 'center', paddingTop: 40 }}>
+              <p>Nobody is sharing a screen right now.</p>
+              <button className="icon" onClick={() => setTheater(null)}>Exit theater</button>
+            </div>
+          )}
         </div>
         {inCall && (
           <aside style={{ flex: '0 0 260px', minHeight: 0, overflow: 'auto', borderLeft: '1px solid var(--border)' }}>
