@@ -25,13 +25,19 @@ interface Entry {
   screen?: Feed;
 }
 
+/** A muted camera keeps its last frame on the publication, so only a live, unmuted one counts as video. */
+function cameraFeed(p: Participant): Feed | undefined {
+  const pub = p.getTrackPublication(Track.Source.Camera);
+  return pub && !pub.isMuted ? pub.track : undefined;
+}
+
 function liveEntry(p: Participant, local: boolean): Entry {
   return {
     id: p.identity,
     joined: true,
     local,
     micOff: !p.isMicrophoneEnabled,
-    camera: p.getTrackPublication(Track.Source.Camera)?.track,
+    camera: cameraFeed(p),
     screen: p.getTrackPublication(Track.Source.ScreenShare)?.track,
   };
 }

@@ -177,8 +177,15 @@ export const useVoice = create<VoiceState>((set, get) => {
         if (current() && pub.source === Track.Source.Camera) set({ cameraOn: false });
         bump();
       })
-      .on(RoomEvent.TrackMuted, bump)
-      .on(RoomEvent.TrackUnmuted, bump)
+      .on(RoomEvent.TrackMuted, (pub, p) => {
+        // turning the camera off mutes its publication rather than unpublishing it, so clear our state here too
+        if (current() && p === room.localParticipant && pub.source === Track.Source.Camera) set({ cameraOn: false });
+        bump();
+      })
+      .on(RoomEvent.TrackUnmuted, (pub, p) => {
+        if (current() && p === room.localParticipant && pub.source === Track.Source.Camera) set({ cameraOn: true });
+        bump();
+      })
       .on(RoomEvent.TrackSubscribed, (track, pub, p) => {
         if (current() && track.kind === Track.Kind.Audio) attachRemote(pub.trackSid, p.identity, track.mediaStreamTrack);
         bump();
