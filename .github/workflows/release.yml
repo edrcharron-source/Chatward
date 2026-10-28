@@ -61,14 +61,18 @@ jobs:
           SSH_HOST: ${{ secrets.UPDATE_SSH_HOST }}
           SSH_USER: ${{ secrets.UPDATE_SSH_USER }}
           SSH_KEY: ${{ secrets.UPDATE_SSH_KEY }}
+          SSH_HOST_KEY: ${{ secrets.UPDATE_SSH_HOST_KEY }}
           DEPLOY_DIR: ${{ secrets.UPDATE_DEPLOY_DIR }}
         run: |
           # Optional: skipped until the UPDATE_* secrets are set (see docs/UPDATES.md).
           if [ -z "$SSH_HOST" ]; then echo "UPDATE_SSH_HOST is not set; skipping the update feed upload."; exit 0; fi
+          # The server's host key is pinned from a secret, so a changed or spoofed server is refused instead of trusted.
+          if [ -z "$SSH_HOST_KEY" ]; then echo "UPDATE_SSH_HOST_KEY is not set; refusing to upload without a pinned server key (see docs/UPDATES.md)." >&2; exit 1; fi
           mkdir -p ~/.ssh && printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key && chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts
+          printf '%s %s\n' "$SSH_HOST" "$SSH_HOST_KEY" > ~/.ssh/known_hosts
+          ssh_opts=(-i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$HOME/.ssh/known_hosts")
           target="$SSH_USER@$SSH_HOST:$DEPLOY_DIR/updates/"
-          ssh -i ~/.ssh/deploy_key "$SSH_USER@$SSH_HOST" "mkdir -p '$DEPLOY_DIR/updates'"
+          ssh "${ssh_opts[@]}" "$SSH_USER@$SSH_HOST" "mkdir -p '$DEPLOY_DIR/updates'"
           # Installer and blockmap first, latest.yml last, so clients never see a version whose file is missing.
-          scp -i ~/.ssh/deploy_key dist/win/Chatward-Setup.exe dist/win/*.blockmap "$target"
-          scp -i ~/.ssh/deploy_key dist/win/latest.yml "$target"
+          scp "${ssh_opts[@]}" dist/win/Chatward-Setup.exe dist/win/*.blockmap "$target"
+          scp "${ssh_opts[@]}" dist/win/latest.yml "$target"
