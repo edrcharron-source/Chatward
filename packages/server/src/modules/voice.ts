@@ -108,6 +108,14 @@ export function register(app: Express, ctx: Ctx): void {
     if (!channel) { res.status(404).json({ error: 'channel not found' }); return; }
     if (channel.kind !== 'voice') { res.status(400).json({ error: 'not a voice channel' }); return; }
 
+    // Every device of an account uses the same LiveKit identity, and LiveKit drops the older session when a second one
+    // joins the same room. So a second device is refused while the first is still in the call. Our own device always
+    // sends /voice/leave before joining again, so this only blocks another device.
+    if (voiceChannelOf.get(userId) === channelId) {
+      res.status(409).json({ error: 'You are already in this call on another device. Leave the call there first.' });
+      return;
+    }
+
     // Joining a channel implicitly leaves any other voice channel.
     const previous = voiceChannelOf.get(userId);
     if (previous && previous !== channelId) leaveChannel(ctx, previous, userId);
