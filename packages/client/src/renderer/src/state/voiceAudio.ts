@@ -14,6 +14,9 @@ type SinkContext = AudioContext & { setSinkId?: (sinkId: string) => Promise<void
 
 let micStream: MediaStream | null = null;
 let micSource: MediaStreamAudioSourceNode | null = null;
+/** true while we use the system default because the chosen mic is gone */
+let fellBack = false;
+let notify: (message: string) => void = () => {};
 let micGain: GainNode | null = null;
 let micGate: GainNode | null = null;
 let micMeter: AnalyserNode | null = null;
@@ -62,8 +65,14 @@ export async function openMic(): Promise<MediaStreamTrack> {
   micGate = gate;
   micMeter = meter;
   meterBuf = new Float32Array(meter.fftSize);
+  navigator.mediaDevices.addEventListener('devicechange', onDeviceChange);
   await setInputDevice(useSettings.getState().inputDeviceId);
   return dest.stream.getAudioTracks()[0];
+}
+
+/** Where the voice state module shows call notices (the dock's red line). */
+export function setVoiceNotifier(fn: (message: string) => void): void {
+  notify = fn;
 }
 
 /** RMS level (0..1) of the outgoing mic after gain and mute/deafen gating. 0 when no call is open. */
@@ -75,8 +84,13 @@ export function micLevel(): number {
   return Math.sqrt(sum / meterBuf.length);
 }
 
-/** Swaps the raw mic source feeding the graph; the published track stays the same. */
+/** Swaps the raw mic source the user picked; the published track stays the same. */
 export async function setInputDevice(deviceId: string): Promise<void> {
+  fellBack = false;
+  await swapMic(deviceId);
+}
+
+async function swapMic(deviceId: string): Promise<void> {
   const ctx = voiceAudio.ctx;
   if (!ctx || !micGain) return;
   const stream = await getMic(deviceId);
@@ -90,7 +104,42 @@ export async function setInputDevice(deviceId: string): Promise<void> {
   micStream = stream;
   micSource = ctx.createMediaStreamSource(stream);
   micSource.connect(micGain);
+  // a track only ends on its own when the device is unplugged (stop() does not fire it)
+  stream.getAudioTracks()[0]?.addEventListener('ended', () => {
+    if (stream === micStream) void onMicLost();
+  });
 }
+
+/** The mic in use went away: move to the system default and tell the user. */
+async function onMicLost(): Promise<void> {
+  const chosen = useSettings.getState().inputDeviceId;
+  try {
+    await swapMic('');
+    fellBack = !!chosen;
+    if (chosen) notify('Your microphone was unplugged, so voice switched to the system default microphone.');
+  } catch {
+    notify('Your microphone was disconnected and no other microphone is available. Reconnect it to keep talking.');
+  }
+}
+
+/** Runs on every device change: switches back when the chosen mic returns, or recovers a lost mic. */
+async function checkMics(): Promise<void> {
+  if (!voiceAudio.ctx || !micGain) return;
+  const chosen = useSettings.getState().inputDeviceId;
+  const devices = await navigator.mediaDevices.enumerateDevices();
+  const present = (id: string) => devices.some((d) => d.kind === 'audioinput' && d.deviceId === id);
+  if (fellBack && present(chosen)) {
+    fellBack = false;
+    await swapMic(chosen).catch(() => onMicLost());
+    return;
+  }
+  const trackEnded = micStream?.getAudioTracks()[0]?.readyState === 'ended';
+  if (trackEnded || (!fellBack && chosen && !present(chosen))) await onMicLost();
+}
+
+const onDeviceChange = (): void => {
+  checkMics().catch((e) => console.warn('mic check failed', e));
+};
 
 /** Opens or closes the outgoing mic path. Muting and deafening both close it. */
 export function setTransmitting(on: boolean): void {
@@ -167,6 +216,8 @@ export function closeAudio(): void {
   playCtx = null;
   master = null;
   deafened = false;
+  fellBack = false;
+  navigator.mediaDevices.removeEventListener('devicechange', onDeviceChange);
   micSource?.disconnect();
   micSource = null;
   micStream?.getTracks().forEach((t) => t.stop());
