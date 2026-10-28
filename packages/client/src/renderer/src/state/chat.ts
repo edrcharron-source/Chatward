@@ -251,21 +251,29 @@ export async function catchUp(channelId: string) {
   }
 }
 
+/** Each reconnect starts a new run per channel. An older run that is still retrying gives up once a newer one starts. */
+const catchUpRun = new Map<string, number>();
+
 /**
  * A reconnect's catch-up can fail on a slow or briefly unavailable server. It is tried again with growing waits,
- * and a channel the account no longer has is left alone.
+ * and a channel the account no longer has is left alone. A 403 or 404 will not change, so it is not retried.
  */
 async function catchUpWithRetry(channelId: string) {
+  const run = (catchUpRun.get(channelId) ?? 0) + 1;
+  catchUpRun.set(channelId, run);
+  const stillWanted = () => catchUpRun.get(channelId) === run && isLiveChannel(channelId);
   for (let attempt = 0; ; attempt++) {
     try {
       await catchUp(channelId);
       return;
     } catch (e) {
-      if (attempt >= CATCH_UP_RETRIES - 1 || !isLiveChannel(channelId)) {
+      if (e instanceof ApiError && (e.status === 403 || e.status === 404)) return;
+      if (attempt >= CATCH_UP_RETRIES - 1 || !stillWanted()) {
         console.error('Could not catch up after reconnect', e);
         return;
       }
       await new Promise((resolve) => setTimeout(resolve, 1000 * 2 ** attempt));
+      if (!stillWanted()) return;
     }
   }
 }
