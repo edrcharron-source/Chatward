@@ -145,6 +145,7 @@ export default function SecurityTab() {
         {people.map((m) => (
           <div key={m.user.id} className="setting-section">
             <strong>{m.user.displayName}</strong>
+            <small className="muted">{m.devices.length} {m.devices.length === 1 ? 'device' : 'devices'}</small>
             <div className="safety-number" aria-label={`Safety number for ${m.user.displayName}`}>
               {numbers[m.user.id] || (m.devices.length ? '…' : 'No devices registered')}
             </div>

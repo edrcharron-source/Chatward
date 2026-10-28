@@ -216,8 +216,24 @@ async function main() {
     // 3. A second device for bob joins by Welcome.
     // A second device is bound to bob's account by logging in with new device keys.
     const bob2Keys = await makeDeviceKeys();
+    // Bob's first device stays connected, so it should hear about the new device as it signs in.
+    const bobFrames: { t: string; deviceId?: string }[] = [];
+    const bobWs = new WebSocket(`ws://127.0.0.1:${PORT}/ws?token=${encodeURIComponent(bob.token)}`);
+    bobWs.onmessage = (ev) => bobFrames.push(JSON.parse(String(ev.data)));
+    await new Promise<void>((resolve, reject) => {
+      bobWs.onopen = () => resolve();
+      bobWs.onerror = () => reject(new Error('bob could not open a socket'));
+    });
     const login = await api(null, 'POST', '/api/auth/login', { username: 'bob', password: PASSWORD, device: bob2Keys });
     assert.equal(login.status, 200, 'bob logs in on a second device');
+    const alerts = () => bobFrames.filter((f) => f.t === 'device.added' && f.deviceId === bob2Keys.deviceId).length;
+    for (let i = 0; i < 30 && alerts() === 0; i++) await new Promise((r) => setTimeout(r, 100));
+    assert.equal(alerts(), 1, 'the first device is told when a new device signs in');
+    // Signing in again on the same device is not a new device, so no second alert.
+    await api(null, 'POST', '/api/auth/login', { username: 'bob', password: PASSWORD, device: bob2Keys });
+    await new Promise((r) => setTimeout(r, 300));
+    assert.equal(alerts(), 1, 'a repeat sign-in on a known device does not alert again');
+    bobWs.close();
     const bob2 = await newDev('bob2', { id: bob.user, token: login.json.token }, bob2Keys);
     await uploadPool(bob2, 4);
     const [bob2Kp] = (await claim(alice, bob.user)).filter((k) => k.deviceId === bob2.id);

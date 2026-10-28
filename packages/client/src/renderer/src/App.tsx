@@ -19,6 +19,8 @@ import { WatchPartyPanel } from './components/watchparty';
 import SettingsModal from './components/settings/SettingsModal';
 import DemoBanner from './demo/DemoBanner';
 import UpdateBanner from './components/updates/UpdateBanner';
+import DeviceAlertBanner from './components/devices/DeviceAlertBanner';
+import { showDeviceAlert } from './state/deviceAlerts';
 import UpdateRequired from './components/updates/UpdateRequired';
 import { checkServerVersion, useUpdates } from './state/updates';
 
@@ -39,6 +41,7 @@ export function App() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <UpdateBanner />
+      <DeviceAlertBanner />
       <DemoBanner />
       <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
         {server.kind === 'update-required'
@@ -224,6 +227,11 @@ function Shell() {
             void syncChannelKeys(useSession.getState().servers).then(rekeyActiveCall).catch((e) => console.error(e));
             break;
           case 'key.envelope': void handleEnvelope(f.envelope); break;
+          case 'device.added':
+            // Flash the taskbar so a background window still gets noticed.
+            if (!document.hasFocus()) window.chatward?.flashWindow();
+            showDeviceAlert({ deviceId: f.deviceId, createdAt: f.createdAt });
+            break;
         }
       });
       setReady(true);
