@@ -11,6 +11,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "dist:win": "electron-vite build && electron-builder --win nsis portable --publish never",
     "test:crypto": "esbuild src/renderer/src/crypto/crypto.test.ts src/renderer/src/crypto/mls.test.ts --bundle --platform=node --format=esm --outdir=out/test --out-extension:.js=.mjs --log-level=warning && node --test out/test/crypto.test.mjs out/test/mls.test.mjs",
+    "test:update-signature": "esbuild src/main/updateSignature.test.ts --bundle --platform=node --format=esm --outfile=out/test/updateSignature.test.mjs --log-level=warning && node --test out/test/updateSignature.test.mjs",
     "test:demo": "esbuild src/renderer/src/demo/codec.test.ts --bundle --platform=node --format=esm --outfile=out/test/codec.test.mjs --log-level=warning && node --test out/test/codec.test.mjs",
     "test:e2e-client": "npm run build -w @chatward/server && esbuild test/e2e-client/device.ts --bundle --platform=node --format=esm --outfile=out/e2e-client/device.mjs --log-level=warning && esbuild test/e2e-client/run.ts --bundle --platform=node --format=esm --outfile=out/e2e-client/run.mjs --external:ts-mls --log-level=warning && node out/e2e-client/run.mjs"
   },
