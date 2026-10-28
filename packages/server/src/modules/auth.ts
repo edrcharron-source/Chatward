@@ -186,6 +186,31 @@ export function register(app: Express, ctx: Ctx): void {
     res.json({ owned: row !== undefined && row.user_id === userIdOf(req) });
   }));
 
+  // The caller's own devices, oldest first, so Settings can list them and offer Remove.
+  app.get('/api/me/devices', ctx.requireAuth, route((req, res) => {
+    const rows = ctx.db.prepare('SELECT device_id, created_at FROM devices WHERE user_id=? ORDER BY created_at')
+      .all(userIdOf(req)) as { device_id: string; created_at: number }[];
+    res.json({ devices: rows.map((r) => ({ deviceId: r.device_id, createdAt: r.created_at })) });
+  }));
+
+  // Removes one of the caller's devices. Its pending KeyPackages, Welcomes and acks go with it, so it can no longer
+  // join groups or hold up a reset. Peers see the new device list and drop it from their groups with a Remove Commit.
+  app.delete('/api/me/devices/:deviceId', ctx.requireAuth, route((req, res) => {
+    const uid = userIdOf(req);
+    const deviceId = String(req.params.deviceId);
+    const row = ctx.db.prepare('SELECT user_id FROM devices WHERE device_id=?').get(deviceId) as
+      { user_id: string } | undefined;
+    if (!row || row.user_id !== uid) throw new ApiError(404, 'device not found');
+    ctx.db.transaction(() => {
+      ctx.db.prepare('DELETE FROM mls_keypackages WHERE device_id=?').run(deviceId);
+      ctx.db.prepare('DELETE FROM mls_welcomes WHERE to_device_id=?').run(deviceId);
+      ctx.db.prepare('DELETE FROM mls_group_acks WHERE device_id=?').run(deviceId);
+      ctx.db.prepare('DELETE FROM devices WHERE device_id=?').run(deviceId);
+    })();
+    broadcastDevices(ctx, uid);
+    res.status(204).end();
+  }));
+
   // Each field is optional; a missing field keeps its current value.
   app.patch('/api/me', ctx.requireAuth, route((req, res) => {
     const uid = userIdOf(req);

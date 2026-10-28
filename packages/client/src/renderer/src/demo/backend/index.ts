@@ -203,6 +203,8 @@ function str(v: unknown, field: string, max = 200): string {
 
 on('POST', /^\/api\/auth\/(login|register)$/, () => json({ token: DEMO_TOKEN, user: world.you }));
 on('GET', /^\/api\/me$/, () => json({ user: world.you }));
+// Demo mode has no real devices to list.
+on('GET', /^\/api\/me\/devices$/, () => json({ devices: [] }));
 on('PATCH', /^\/api\/me$/, (r) => {
   const body = (r.body ?? {}) as Record<string, unknown>;
   const name = body.displayName === undefined ? world.you.displayName : str(body.displayName, 'displayName', 48);
