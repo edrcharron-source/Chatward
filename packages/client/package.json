@@ -10,11 +10,18 @@
     "build": "electron-vite build",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "dist:win": "electron-vite build && electron-builder --win nsis portable --publish never",
-    "test:crypto": "esbuild src/renderer/src/crypto/crypto.test.ts src/renderer/src/crypto/mls.test.ts --bundle --platform=node --format=esm --outdir=out/test --out-extension:.js=.mjs --log-level=warning && node --test out/test/crypto.test.mjs out/test/mls.test.mjs"
+    "test:crypto": "esbuild src/renderer/src/crypto/crypto.test.ts src/renderer/src/crypto/mls.test.ts --bundle --platform=node --format=esm --outdir=out/test --out-extension:.js=.mjs --log-level=warning && node --test out/test/crypto.test.mjs out/test/mls.test.mjs",
+    "test:demo": "esbuild src/renderer/src/demo/codec.test.ts --bundle --platform=node --format=esm --outfile=out/test/codec.test.mjs --log-level=warning && node --test out/test/codec.test.mjs"
   },
-  "dependencies": {
+  "devDependencies": {
     "@chatward/shared": "*",
     "@noble/hashes": "2.4.0",
+    "@types/react": "^18.3.11",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.2",
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.8",
+    "electron-vite": "^2.3.0",
     "emoji-picker-element": "^1.26.0",
     "emoji-picker-element-data": "^1.6.0",
     "livekit-client": "^2.5.0",
@@ -22,17 +29,9 @@
     "react-dom": "^18.3.1",
     "react-easy-crop": "^5.0.8",
     "ts-mls": "1.6.4",
-    "zustand": "^5.0.0"
-  },
-  "devDependencies": {
-    "@types/react": "^18.3.11",
-    "@types/react-dom": "^18.3.0",
-    "@vitejs/plugin-react": "^4.3.2",
-    "electron": "^33.0.0",
-    "electron-builder": "^25.1.8",
-    "electron-vite": "^2.3.0",
     "typescript": "^5.6.0",
-    "vite": "^5.4.8"
+    "vite": "^5.4.8",
+    "zustand": "^5.0.0"
   },
   "build": {
     "appId": "app.chatward.client",
@@ -47,11 +46,15 @@
       "target": [
         "nsis",
         "portable"
-      ]
+      ],
+      "artifactName": "Chatward-Portable.${ext}"
     },
     "nsis": {
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true
-    }
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "Chatward-Setup.exe"
+    },
+    "electronVersion": "33.4.11",
+    "npmRebuild": false
   }
 }

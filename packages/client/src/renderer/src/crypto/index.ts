@@ -5,6 +5,8 @@
 import type { DeviceKeys, KeyEnvelope, Member, Message, MessagePayload } from '@chatward/shared';
 import type { ClientState } from 'ts-mls';
 import { api, ApiError } from '../api/http';
+import { isDemo } from '../demo';
+import { demoDecode, demoEncode } from '../demo/codec';
 import { useSession, type ServerBundle } from '../state/session';
 import { openEnvelope, sealEnvelope } from './envelope';
 import * as mls from './mls';
@@ -104,7 +106,7 @@ export function getDevice(): DeviceKeys {
 /** Bring every text channel of every server up to date: join or create its group, follow Commits, reconcile members, share history. Idempotent. */
 export function syncChannelKeys(servers: ServerBundle[]): Promise<void> {
   return serial(async () => {
-    if (!device || !privates) return;
+    if (isDemo() || !device || !privates) return;
     let changed = await ensureKeyPool();
     for (const bundle of servers) {
       for (const channel of bundle.channels) {
@@ -326,6 +328,7 @@ async function wrapFor(channelId: string, version: number, key: Bytes, targets: 
 /** Process an incoming key.envelope frame. */
 export function handleEnvelope(env: KeyEnvelope): Promise<void> {
   return serial(async () => {
+    if (isDemo()) return;
     if (await acceptEnvelope(env)) {
       await persistVault();
       notify();
@@ -339,7 +342,7 @@ export function handleEnvelope(env: KeyEnvelope): Promise<void> {
  */
 export function handleMemberLeave(serverId: string, userId: string, servers: ServerBundle[]): Promise<void> {
   return serial(async () => {
-    if (!device || !privates) return;
+    if (isDemo() || !device || !privates) return;
     const bundle = servers.find((b) => b.server.id === serverId);
     if (!bundle) return;
     const remaining = bundle.members.filter((m) => m.user.id !== userId);
@@ -414,6 +417,7 @@ function notify(): void {
 }
 
 export async function encryptPayload(channelId: string, authorId: string, payload: MessagePayload): Promise<{ ciphertext: string; keyVersion: number }> {
+  if (isDemo()) return { ciphertext: demoEncode(payload), keyVersion: 1 };
   const stored = vault.groups[channelId];
   if (!stored) throw new Error('No channel key yet');
   const keyVersion = stored.epoch + 1;
@@ -425,6 +429,7 @@ export async function encryptPayload(channelId: string, authorId: string, payloa
 
 /** null if key not available (yet) or authentication fails */
 export async function decryptMessage(msg: Message): Promise<MessagePayload | null> {
+  if (isDemo()) return demoDecode(msg.ciphertext);
   try {
     const key = aesKeyFor(msg.channelId, msg.keyVersion);
     if (!key) return null;
@@ -443,6 +448,7 @@ export function onKeysChanged(cb: () => void): () => void {
 }
 
 export async function encryptBlob(bytes: Uint8Array): Promise<{ blob: Uint8Array; key: string; iv: string }> {
+  if (isDemo()) return { blob: bytes, key: '', iv: '' };
   const raw = generateAesKeyBytes();
   const iv = randomBytes(IV_BYTES);
   const blob = await aesEncryptWith(await importAesKey(raw), iv, new Uint8Array(bytes));
@@ -450,6 +456,7 @@ export async function encryptBlob(bytes: Uint8Array): Promise<{ blob: Uint8Array
 }
 
 export async function decryptBlob(blob: Uint8Array, key: string, iv: string): Promise<Uint8Array> {
+  if (isDemo()) return blob;
   return aesDecryptWith(await importAesKey(fromB64(key)), fromB64(iv), new Uint8Array(blob));
 }
 

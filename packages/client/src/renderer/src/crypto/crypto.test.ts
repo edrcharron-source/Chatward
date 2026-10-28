@@ -164,3 +164,19 @@ describe('concat', () => {
     assert.deepEqual(concat(utf8('ab'), utf8('c')), utf8('abc'));
   });
 });
+
+describe('large payloads', () => {
+  const big = () => { const b = new Uint8Array(10 * 1024 * 1024); for (let i = 0; i < b.length; i += 65536) globalThis.crypto.getRandomValues(b.subarray(i, i + 65536)); return b as Bytes; };
+
+  it('base64 round-trips a 10 MB buffer without overflowing the stack', () => {
+    const data = big();
+    assert.deepEqual(fromB64(toB64(data)), data);
+  });
+
+  it('seals and opens a 10 MB attachment', async () => {
+    const data = big();
+    const key = await importAesKey(generateAesKeyBytes());
+    const sealed = await aesSeal(key, data);
+    assert.deepEqual(await aesOpen(key, sealed), data);
+  });
+});

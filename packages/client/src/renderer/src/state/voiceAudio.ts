@@ -16,6 +16,8 @@ let micStream: MediaStream | null = null;
 let micSource: MediaStreamAudioSourceNode | null = null;
 let micGain: GainNode | null = null;
 let micGate: GainNode | null = null;
+let micMeter: AnalyserNode | null = null;
+let meterBuf: Float32Array<ArrayBuffer> | null = null;
 
 let playCtx: SinkContext | null = null;
 let master: GainNode | null = null;
@@ -47,15 +49,30 @@ export async function openMic(): Promise<MediaStreamTrack> {
   const mix = ctx.createGain();
   const gate = ctx.createGain();
   const dest = ctx.createMediaStreamDestination();
+  // the meter sits after the gate, so muting and deafening read as silence
+  const meter = ctx.createAnalyser();
+  meter.fftSize = 512;
   gain.connect(mix);
   mix.connect(gate);
   gate.connect(dest);
+  gate.connect(meter);
   voiceAudio.ctx = ctx;
   voiceAudio.mixIn = mix;
   micGain = gain;
   micGate = gate;
+  micMeter = meter;
+  meterBuf = new Float32Array(meter.fftSize);
   await setInputDevice(useSettings.getState().inputDeviceId);
   return dest.stream.getAudioTracks()[0];
+}
+
+/** RMS level (0..1) of the outgoing mic after gain and mute/deafen gating. 0 when no call is open. */
+export function micLevel(): number {
+  if (!micMeter || !meterBuf) return 0;
+  micMeter.getFloatTimeDomainData(meterBuf);
+  let sum = 0;
+  for (const v of meterBuf) sum += v * v;
+  return Math.sqrt(sum / meterBuf.length);
 }
 
 /** Swaps the raw mic source feeding the graph; the published track stays the same. */
@@ -157,6 +174,8 @@ export function closeAudio(): void {
   voiceAudio.mixIn = null;
   micGain = null;
   micGate = null;
+  micMeter = null;
+  meterBuf = null;
 }
 
 // Settings changes apply live, both during a call and before one.

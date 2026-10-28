@@ -15,6 +15,7 @@ import ChatView from './components/chat/ChatView';
 import VoiceChannelView from './components/voice/VoiceChannelView';
 import { WatchPartyPanel } from './components/watchparty';
 import SettingsModal from './components/settings/SettingsModal';
+import DemoBanner from './demo/DemoBanner';
 
 export function App() {
   const token = useSession((s) => s.token);
@@ -27,7 +28,12 @@ export function App() {
     mq.addEventListener('change', h);
     return () => mq.removeEventListener('change', h);
   }, [theme]);
-  return token ? <Shell /> : <AuthScreen />;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <DemoBanner />
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>{token ? <Shell /> : <AuthScreen />}</div>
+    </div>
+  );
 }
 
 function Shell() {
@@ -38,6 +44,7 @@ function Shell() {
   const bundle = servers.find((s) => s.server.id === activeServerId);
   const channel = bundle?.channels.find((c) => c.id === activeChannelId);
   const voiceChannelId = useVoice((s) => s.channelId);
+  const watchChannelId = channel?.kind === 'voice' ? bundle?.channels.find((c) => c.kind === 'text')?.id : channel?.id;
 
   useEffect(() => {
     let off: (() => void) | undefined;
@@ -102,22 +109,23 @@ function Shell() {
 
   if (!ready) return <div style={{ display: 'grid', placeItems: 'center', height: '100%' }} className="muted">Loading…</div>;
   return (
-    <div style={{ display: 'flex', height: '100%' }}>
+    <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
       <ServerSidebar onReload={loadServers} />
       <ChannelList onOpenSettings={() => setSettingsOpen(true)} onReload={loadServers} />
       <main style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+        {channel && (
+          <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '4px 12px', background: 'var(--bg-2)' }}>
+            <button className="icon" onClick={() => setWatchOpen((o) => !o)} aria-pressed={watchOpen} title="Watch YouTube together">
+              🎬 {watchOpen ? 'Close watch party' : 'Watch together'}
+            </button>
+          </div>
+        )}
+        {/* Voice channels have no message key of their own, so their watch party rides the server's first text channel. */}
+        {watchChannelId && watchOpen && <WatchPartyPanel key={watchChannelId} channelId={watchChannelId} />}
         {channel?.kind === 'voice'
           ? <VoiceChannelView key={channel.id} channel={channel} />
           : channel
-            ? <>
-                <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '4px 12px', background: 'var(--bg-2)' }}>
-                  <button className="icon" onClick={() => setWatchOpen((o) => !o)} aria-pressed={watchOpen} title="Watch YouTube together">
-                    🎬 {watchOpen ? 'Close watch party' : 'Watch together'}
-                  </button>
-                </div>
-                {watchOpen && <WatchPartyPanel key={channel.id} channelId={channel.id} />}
-                <ChatView key={channel.id} channel={channel} />
-              </>
+            ? <ChatView key={channel.id} channel={channel} />
             : <div style={{ margin: 'auto' }} className="muted">{bundle ? 'Select a channel' : 'Create or join a server to get started'}</div>}
       </main>
       {bundle && <MemberList members={bundle.members as Member[]} />}

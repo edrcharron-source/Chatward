@@ -1,8 +1,8 @@
-.cv-root { display: flex; flex-direction: column; height: 100%; min-width: 0; background: var(--bg-2); }
+.cv-root { display: flex; flex-direction: column; height: 100%; min-width: 0; background: var(--bg-2); overflow: clip; }
 
 .cv-header {
   display: flex; align-items: center; gap: 8px; height: 48px; padding: 0 16px; flex: none;
-  border-bottom: 1px solid var(--border); box-shadow: 0 1px 0 rgba(0,0,0,.08);
+  border-bottom: 1px solid var(--border);
 }
 .cv-hash { color: var(--text-muted); font-size: 20px; line-height: 1; }
 .cv-title { color: var(--text-strong); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -16,9 +16,10 @@
 .cv-typing { min-height: 20px; padding: 0 16px; font-size: 12px; }
 
 .cv-msg {
-  position: relative; display: flex; gap: 14px; padding: 2px 16px 2px 16px; margin-top: 16px; min-width: 0;
+  position: relative; display: flex; gap: 14px; padding: 4px 12px; margin: 12px 8px 0; min-width: 0;
+  border-radius: var(--radius-sm);
 }
-.cv-msg:hover { background: rgba(0,0,0,.06); }
+.cv-msg:hover { background: var(--hover-tint); }
 .cv-msg.cv-grouped { margin-top: 0; }
 .cv-msg-main { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .cv-msg-head { display: flex; align-items: baseline; gap: 8px; }
@@ -53,7 +54,9 @@
 .cv-composer {
   flex: none; margin: 0 16px 16px; padding: 8px 10px; background: var(--bg-3); border-radius: var(--radius);
   border: 2px solid transparent; transition: border-color .12s;
+  box-shadow: 0 2px 10px rgba(0,0,0,.12);
 }
+.cv-composer:focus-within { border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
 .cv-composer.cv-dragging { border-color: var(--accent); }
 .cv-chips { display: flex; flex-wrap: wrap; gap: 6px; padding-bottom: 6px; }
 .cv-chip {

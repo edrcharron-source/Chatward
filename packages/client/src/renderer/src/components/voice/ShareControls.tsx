@@ -1,4 +1,5 @@
 import { useCallback, useState, type ReactElement } from 'react';
+import { isDemo } from '../../demo';
 import { useVoice } from '../../state/voice';
 import ScreenPicker from './ScreenPicker';
 import { setScreenShareOptions, type ScreenShareOptions } from './media';
@@ -12,7 +13,7 @@ function message(e: unknown): string {
 export default function ShareControls(): ReactElement {
   const cameraOn = useVoice((s) => s.cameraOn);
   const screenOn = useVoice((s) => s.screenOn);
-  const connected = useVoice((s) => s.status === 'connected' && s.room !== null);
+  const connected = useVoice((s) => s.status === 'connected' && (s.room !== null || isDemo()));
   const setCamera = useVoice((s) => s.setCamera);
   const setScreen = useVoice((s) => s.setScreen);
 

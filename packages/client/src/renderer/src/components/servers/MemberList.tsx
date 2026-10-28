@@ -7,7 +7,9 @@ type Presence = 'online' | 'idle' | 'dnd' | 'offline';
 
 export default function MemberList({ members }: { members: Member[] }) {
   const presence = useSession((s) => s.presence);
-  const statusOf = (m: Member): Presence => presence[m.user.id] ?? 'offline';
+  const meId = useSession((s) => s.user?.id);
+  // Our own socket can miss its own presence frame, so count yourself as online by default.
+  const statusOf = (m: Member): Presence => presence[m.user.id] ?? (m.user.id === meId ? 'online' : 'offline');
 
   const online = members.filter((m) => statusOf(m) !== 'offline');
   const offline = members.filter((m) => statusOf(m) === 'offline');

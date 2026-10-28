@@ -1,0 +1,18 @@
+.cw-demo-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 6px 12px;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-size: 13px;
+}
+.cw-demo-banner button { padding: 2px 10px; background: var(--bg-2); color: var(--text-strong); }
+.cw-demo-banner button:hover { background: var(--bg-hover); }
+
+.cw-auth-demo { margin-top: 8px; width: 100%; }
+.demo-key-hint { margin: 0 0 10px; font-size: 13px; }
+.demo-key-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.demo-key-row input { flex: 1 1 220px; min-width: 0; }
+.demo-key-error { color: var(--danger, #f23f43); font-size: 13px; }
