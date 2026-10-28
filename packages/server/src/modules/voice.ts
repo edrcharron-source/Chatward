@@ -23,6 +23,9 @@ const evictions = new Map<string, { repeat: ReturnType<typeof setInterval>; end:
 // roomId:userId -> when the user last got a token for the room. A room with any token needs the repeat, because LiveKit
 // refreshes the token while the call runs, so the reusable one can be newer than the join. Pruned when the repeat ends.
 const lastToken = new Map<string, number>();
+// roomId:userId -> removed, and the repeat has ended. The LiveKit removal may have failed for the whole window (LiveKit's
+// API down), so the user may still be in the room. A rejoin is refused until they get a fresh token for it.
+const removedFromRoom = new Set<string>();
 
 // A dropped websocket does not end a call: LiveKit keeps the media flowing. Hold the voice slot this long so a
 // quick reconnect keeps it. Kicks and explicit leaves ignore this and still act at once.
@@ -143,6 +146,23 @@ async function lookupInRoom(ctx: Ctx, channelId: string, userId: string): Promis
   }
 }
 
+// Rejoins that get no answer from LiveKit in a row. Logged once the streak is long enough, then at most once per interval,
+// so a LiveKit that is down for good shows in the server log and not only as client errors.
+const LOOKUP_FAIL_LOG_AFTER = 5;
+const LOOKUP_FAIL_LOG_EVERY_MS = 5 * 60_000;
+let lookupFailures = 0;
+let lookupFailureLoggedAt = 0;
+
+function noteLookup(ctx: Ctx, result: 'in' | 'absent' | 'unknown'): void {
+  if (result !== 'unknown') { lookupFailures = 0; return; }
+  lookupFailures += 1;
+  if (lookupFailures < LOOKUP_FAIL_LOG_AFTER) return;
+  const now = Date.now();
+  if (now - lookupFailureLoggedAt < LOOKUP_FAIL_LOG_EVERY_MS) return;
+  lookupFailureLoggedAt = now;
+  console.error(`LiveKit room lookups failed ${lookupFailures} times in a row (${ctx.config.livekit.apiUrl}). Rejoins get 503 until it answers.`);
+}
+
 /**
  * For a removal (kick, ban, leave from the server, deleted channel or device): ends the session now, then keeps ending it
  * for TOKEN_TTL_MS. The window runs from the removal, not from the join, because LiveKit's refreshed tokens can outlive
@@ -158,6 +178,7 @@ function evictFromRoom(ctx: Ctx, channelId: string, userId: string): void {
   const end = setTimeout(() => {
     stopEviction(channelId, userId);
     lastToken.delete(key);
+    removedFromRoom.add(key);
   }, TOKEN_TTL_MS);
   // Timers must not keep the process alive on shutdown.
   repeat.unref();
@@ -293,6 +314,7 @@ export function register(app: Express, ctx: Ctx): void {
       }
       // A fresh token means the user is allowed in this room again, so stop clearing it for an earlier removal.
       stopEviction(channelId, userId);
+      removedFromRoom.delete(`${channelId}:${userId}`);
       lastToken.set(`${channelId}:${userId}`, Date.now());
 
       // Joining a channel implicitly leaves any other voice channel. The account may still hold that channel on another
@@ -339,7 +361,7 @@ export function register(app: Express, ctx: Ctx): void {
     if (heldByOtherDevice(userId, deviceId)) { res.status(409).json({ error: 'The call is on another device.' }); return; }
     // Removed from this call and the removal is still being enforced. Putting the slot back would show them in the call
     // until the next sweep, so refuse. The client then hangs up. A fresh join clears the removal.
-    if (evictions.has(key)) { res.status(409).json({ error: 'You were removed from this call.' }); return; }
+    if (evictions.has(key) || removedFromRoom.has(key)) { res.status(409).json({ error: 'You were removed from this call.' }); return; }
     // Without a slot here, the user must be in the LiveKit room. A token's age does not show that: LiveKit refreshes the
     // token inside a call, so a call can outlive the join token. Only LiveKit can say whether the session is still there,
     // and a room the user never joined has no session, so any member still cannot show themselves in it. A slot that is
@@ -349,6 +371,7 @@ export function register(app: Express, ctx: Ctx): void {
       // token record the room has, and the client still holds the token from before the restart.
       lastToken.set(key, Date.now());
       const inRoom = await lookupInRoom(ctx, channelId, userId);
+      noteLookup(ctx, inRoom);
       // LiveKit could not answer, which says nothing about the call. The client retries rather than hanging up.
       if (inRoom === 'unknown') {
         res.status(503).json({ error: 'Could not reach the call server. Try again shortly.', code: 'lookup_unavailable' });
@@ -362,7 +385,7 @@ export function register(app: Express, ctx: Ctx): void {
 
     // The lookup took time. A removal, a ban or a second device may have landed meanwhile, so check again before the slot
     // goes back.
-    if (evictions.has(key)) { res.status(409).json({ error: 'You were removed from this call.' }); return; }
+    if (evictions.has(key) || removedFromRoom.has(key)) { res.status(409).json({ error: 'You were removed from this call.' }); return; }
     if (heldByOtherDevice(userId, deviceId)) { res.status(409).json({ error: 'The call is on another device.' }); return; }
     if (!ctx.serverIdForChannelMember(channelId, userId)) { res.status(404).json({ error: 'channel not found' }); return; }
 
