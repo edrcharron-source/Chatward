@@ -14,7 +14,10 @@ export interface ChannelChat {
   messages: Message[];
   loaded: boolean;
   hasMore: boolean;
+  /** A page load or catch-up is running. */
   loading: boolean;
+  /** The running load is fetching older messages, so the list shows a hint. Catch-ups do not set it. */
+  loadingOlder: boolean;
 }
 
 interface ChatState {
@@ -28,7 +31,7 @@ interface ChatState {
   setDraft: (channelId: string, text: string) => void;
 }
 
-const EMPTY: ChannelChat = { messages: [], loaded: false, hasMore: false, loading: false };
+const EMPTY: ChannelChat = { messages: [], loaded: false, hasMore: false, loading: false, loadingOlder: false };
 const TYPING_SEND_MS = 3000;
 
 export const useChat = create<ChatState>(() => ({
@@ -100,20 +103,31 @@ function retryPending() {
 
 /** Channels whose catch-up was asked for while a page load or another catch-up was running. */
 const catchUpWanted = new Set<string>();
+/** Channels whose older page was asked for while another load was running. */
+const olderWanted = new Set<string>();
 
-/** Ends a load and, if a catch-up was asked for meanwhile, runs it now. */
+/** Ends a load and runs what was asked for meanwhile: a catch-up first, then an older page. */
 function endLoad(channelId: string, patch: Partial<ChannelChat> = {}) {
-  patchChannel(channelId, { loading: false, ...patch });
-  if (catchUpWanted.delete(channelId)) void catchUp(channelId).catch(() => {});
+  patchChannel(channelId, { loading: false, loadingOlder: false, ...patch });
+  // A catch-up's own end runs the older page that was waiting behind it.
+  if (catchUpWanted.delete(channelId)) {
+    void catchUp(channelId).catch(() => {});
+  } else if (olderWanted.delete(channelId)) {
+    void loadHistory(channelId, 'older').catch(() => {});
+  }
 }
 
 export async function loadHistory(channelId: string, mode: 'initial' | 'older' = 'initial') {
   const cur = channelOf(channelId);
-  if (cur.loading) return;
   if (mode === 'initial' && cur.loaded) return;
   if (mode === 'older' && (!cur.hasMore || cur.messages.length === 0)) return;
+  if (cur.loading) {
+    // A scroll-up during a catch-up or reconnect must not be lost, so ask again once the running load ends.
+    if (mode === 'older') olderWanted.add(channelId);
+    return;
+  }
 
-  patchChannel(channelId, { loading: true });
+  patchChannel(channelId, { loading: true, loadingOlder: mode === 'older' });
   try {
     const before = mode === 'older' ? `&before=${cur.messages[0].id}` : '';
     const { messages } = await api.get<{ messages: Message[] }>(

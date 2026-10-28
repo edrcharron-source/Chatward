@@ -78,7 +78,7 @@ export default function ChatView({ channel }: { channel: Channel }) {
     const el = listRef.current;
     if (!el) return;
     stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_PX;
-    if (el.scrollTop < NEAR_TOP_PX && chat?.hasMore && !chat.loading) {
+    if (el.scrollTop < NEAR_TOP_PX && chat?.hasMore) {
       loadHistory(channel.id, 'older').catch((e: unknown) => setError(e instanceof Error ? e.message : 'Could not load older messages'));
     }
   };
@@ -98,7 +98,7 @@ export default function ChatView({ channel }: { channel: Channel }) {
         {chat?.hasMore === false && chat.loaded && (
           <div className="cv-start">This is the start of #{channel.name}</div>
         )}
-        {chat?.loading && messages.length > 0 && <div className="cv-hint muted">Loading older messages…</div>}
+        {chat?.loadingOlder && <div className="cv-hint muted">Loading older messages…</div>}
         {error && <div className="cv-error">{error}</div>}
         {chat?.loaded && messages.length === 0 && <div className="cv-empty muted">No messages yet. Say hi 👋</div>}
         {messages.map((m, i) => {
