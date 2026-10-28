@@ -8,31 +8,42 @@ const PAGE_MAX = 10_000;
 const TIMEOUT_MS = 5000;
 
 type GifResult = { id: string; url: string; previewUrl: string; title: string; width: number; height: number };
-type Variant = { url?: unknown; width?: unknown; height?: unknown };
-type KlipyItem = { slug?: unknown; id?: unknown; title?: unknown; width?: unknown; height?: unknown; files?: Record<string, Record<string, Variant | undefined> | undefined> };
+type KlipyItem = Record<string, unknown>;
+type FileSet = Record<string, Record<string, unknown> | undefined>;
 type KlipyResponse = { result?: unknown; data?: { data?: unknown; has_next?: unknown } };
 
 const str = (v: unknown): string | null => (typeof v === 'string' && v ? v : null);
 const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
 
+/** A file entry is either a direct URL string or an object carrying one. */
+const fileUrl = (v: unknown): string | null => str(v) ?? str((v as { url?: unknown } | undefined)?.url);
+const fileDim = (v: unknown, key: 'width' | 'height'): number => num((v as Record<string, unknown> | undefined)?.[key]);
+
 /** Maps a KLIPY item to our shape. Field names follow KLIPY's documented `files.{hd,md,sm}.{gif,webp,mp4}` layout. */
 function toResult(item: KlipyItem): GifResult | null {
-  const files = item.files ?? {};
+  const files = (item.files ?? item.file ?? {}) as FileSet;
   const full = files.hd ?? files.md ?? files.sm;
   const small = files.sm ?? files.xs ?? full;
-  const url = str(full?.gif?.url) ?? str(full?.webp?.url);
+  const url = fileUrl(full?.gif) ?? fileUrl(full?.webp);
   if (!url) return null;
-  const previewUrl = str(small?.webp?.url) ?? str(small?.gif?.url) ?? url;
-  const id = str(item.slug) ?? str(item.id);
+  const previewUrl = fileUrl(small?.webp) ?? fileUrl(small?.gif) ?? url;
+  const id = str(item.slug) ?? str(item.id) ?? (typeof item.id === 'number' ? String(item.id) : null);
   if (!id) return null;
   return {
     id,
     url,
     previewUrl,
     title: str(item.title) ?? '',
-    width: num(full?.gif?.width) || num(item.width),
-    height: num(full?.gif?.height) || num(item.height),
+    width: fileDim(full?.gif, 'width') || num(item.width),
+    height: fileDim(full?.gif, 'height') || num(item.height),
   };
+}
+
+/** Names the first item's fields in the error, so a mismatch is visible in the GIF tab. */
+function shapeOf(item: KlipyItem): string {
+  const files = item.files ?? item.file;
+  const fileKeys = files && typeof files === 'object' ? Object.keys(files).join(',') : 'none';
+  return `item keys: ${Object.keys(item).join(',')}; file keys: ${fileKeys}`;
 }
 
 export function register(app: Express, ctx: Ctx): void {
@@ -59,8 +70,10 @@ export function register(app: Express, ctx: Ctx): void {
     }
     if (body.result === false) { res.status(502).json({ error: 'gif provider unavailable' }); return; }
 
-    const items = Array.isArray(body.data?.data) ? (body.data!.data as KlipyItem[]) : [];
+    if (!Array.isArray(body.data?.data)) { res.status(502).json({ error: 'unexpected KLIPY response' }); return; }
+    const items = body.data.data as KlipyItem[];
     const results = items.map(toResult).filter((r): r is GifResult => r !== null);
+    if (items.length > 0 && results.length === 0) { res.status(502).json({ error: `unexpected KLIPY response (${shapeOf(items[0])})` }); return; }
     res.json(body.data?.has_next === true ? { results, next: String(page + 1) } : { results });
   }
 
