@@ -21,16 +21,18 @@ export function leaveVoice(ctx: Ctx, userId: string): void {
 }
 
 /**
- * For a server kick: drops the user from voice, then removes them from the LiveKit room so they stop receiving
- * media now. Not used on a dropped socket, where a reconnect should keep the call.
+ * For a server kick: drops the user from voice, then removes them from every voice room on the server, so they stop
+ * receiving media now. Not used on a dropped socket, where a reconnect should keep the call. Checks every room
+ * rather than the in-memory occupancy, which a dropped socket may have cleared.
  */
-export function kickFromCall(ctx: Ctx, userId: string): void {
-  const channelId = voiceChannelOf.get(userId);
+export function kickFromCall(ctx: Ctx, serverId: string, userId: string): void {
   leaveVoice(ctx, userId);
-  if (!channelId) return;
   const rooms = new RoomServiceClient(ctx.config.livekit.apiUrl, ctx.config.livekit.apiKey, ctx.config.livekit.apiSecret);
-  // Fails if LiveKit no longer has the participant (already left or still connecting). Either way they are out.
-  rooms.removeParticipant(channelId, userId).catch((err: unknown) => console.warn('livekit removeParticipant failed', err));
+  const channels = ctx.db.prepare("SELECT id FROM channels WHERE server_id=? AND kind='voice'").all(serverId) as { id: string }[];
+  for (const { id } of channels) {
+    // Fails for rooms the user is not in, which is expected. A real failure is logged.
+    rooms.removeParticipant(id, userId).catch((err: unknown) => console.warn('livekit removeParticipant failed', id, err));
+  }
 }
 
 function leaveChannel(ctx: Ctx, channelId: string, userId: string): boolean {

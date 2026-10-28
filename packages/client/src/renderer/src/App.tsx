@@ -136,6 +136,11 @@ function Shell() {
             void syncChannelKeys(useSession.getState().servers);
             break;
           }
+          // Another device moved a group on, so catch up now. Then the call key follows the new epoch.
+          case 'group.commit':
+          case 'group.welcome':
+            void syncChannelKeys(useSession.getState().servers).then(rekeyActiveCall).catch((e) => console.error(e));
+            break;
           case 'key.envelope': void handleEnvelope(f.envelope); break;
         }
       });

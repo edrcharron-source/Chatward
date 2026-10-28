@@ -257,7 +257,7 @@ export function register(app: Express, ctx: Ctx): void {
     const leave: ServerFrame = { t: 'member.leave', serverId, userId: targetId };
     ctx.broadcastToServer(serverId, leave);
     ctx.sendToUser(targetId, leave);
-    kickFromCall(ctx, targetId);
+    kickFromCall(ctx, serverId, targetId);
     res.json({ ok: true });
   }));
 }

@@ -61,20 +61,24 @@ async function applyBitrate(room: Room, kbps: number): Promise<void> {
 
 const bump = () => useVoice.setState((s) => ({ version: s.version + 1 }));
 
-// Key provider of the call in progress, so a membership change can set a fresh key on it.
+// Key provider of the call in progress, and the key it currently holds, so a group change can set a new key only when it differs.
 let activeKeyProvider: ExternalE2EEKeyProvider | null = null;
+let activeKeyId = '';
 
 const keyBuffer = (key: Uint8Array): ArrayBuffer => key.buffer.slice(key.byteOffset, key.byteOffset + key.byteLength) as ArrayBuffer;
+const keyId = (key: Uint8Array): string => Array.from(key, (b) => b.toString(16).padStart(2, '0')).join('');
 
 /**
- * Call after a member is removed from the server. The removal moves the channel's MLS epoch on, which changes the
- * call key, so the people still in the call switch to it. The removed member cannot derive the new key.
+ * Call after a group changes (a member removed, or another device's Commit applied). The MLS epoch moves on, which
+ * changes the call key, so the people still in the call switch to it. A removed member cannot derive the new key.
  */
 export async function rekeyActiveCall(): Promise<void> {
   const { channelId, status } = useVoice.getState();
   if (!activeKeyProvider || !channelId || status !== 'connected') return;
   const key = await voiceKey(channelId);
-  if (key) await activeKeyProvider.setKey(keyBuffer(key));
+  if (!key || keyId(key) === activeKeyId) return;
+  activeKeyId = keyId(key);
+  await activeKeyProvider.setKey(keyBuffer(key));
 }
 
 // Your own speaking state comes from your mic level, so it works without LiveKit's active-speaker data.
@@ -191,6 +195,7 @@ export const useVoice = create<VoiceState>((set, get) => {
         const keyProvider = new ExternalE2EEKeyProvider();
         await keyProvider.setKey(keyBuffer(key));
         activeKeyProvider = keyProvider;
+        activeKeyId = keyId(key);
         const worker = new Worker(new URL('livekit-client/e2ee-worker', import.meta.url), { type: 'module' });
         room = new Room({ adaptiveStream: true, dynacast: true, e2ee: { keyProvider, worker } });
         wire(room);
