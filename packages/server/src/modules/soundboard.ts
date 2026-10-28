@@ -35,8 +35,10 @@ function sniffAudio(b: Buffer): string | null {
   return null;
 }
 
+export const soundsDirOf = (dataDir: string) => path.join(dataDir, 'sounds');
+
 export function register(app: Express, ctx: Ctx): void {
-  const soundsDir = path.join(ctx.config.dataDir, 'sounds');
+  const soundsDir = soundsDirOf(ctx.config.dataDir);
   fs.mkdirSync(soundsDir, { recursive: true });
   const filePath = (id: string) => path.join(soundsDir, id);
   const { db } = ctx;
