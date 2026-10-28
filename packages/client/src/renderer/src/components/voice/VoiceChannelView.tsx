@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type RefObject } from 'react';
 import { Track, type Participant } from 'livekit-client';
 import type { Channel, User } from '@chatward/shared';
 import { fetchObjectUrl } from '../../api/http';
@@ -118,20 +118,38 @@ function Tile({ user, joined, local, micOff, speaking, screen, video, volume = 1
 }) {
   const name = user?.displayName ?? user?.username ?? 'Unknown';
   const pct = Math.round(volume * 100);
+  const frame = useRef<HTMLDivElement>(null);
+  const full = useFullscreen(frame);
 
   return (
     <div className="card" data-speaking={speaking || undefined} style={{ padding: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
-      <div style={{
-        position: 'relative', aspectRatio: '16 / 9', borderRadius: 8, overflow: 'hidden',
-        background: 'var(--bg-0)', display: 'grid', placeItems: 'center',
-        boxShadow: speaking ? '0 0 0 2px var(--ok)' : 'none', transition: 'box-shadow .12s',
-      }}>
+      <div
+        ref={frame}
+        onDoubleClick={screen ? () => void toggleFullscreen(frame.current) : undefined}
+        style={{
+          position: 'relative', aspectRatio: full ? undefined : '16 / 9', borderRadius: full ? 0 : 8, overflow: 'hidden',
+          background: 'var(--bg-0)', display: 'grid', placeItems: 'center',
+          boxShadow: speaking && !full ? '0 0 0 2px var(--ok)' : 'none', transition: 'box-shadow .12s',
+          ...(full ? { width: '100%', height: '100%' } : {}),
+        }}
+      >
         {video
           ? <VideoView feed={video} mirror={local && !screen} />
           : <Avatar user={user} size={64} />}
         <div style={{ position: 'absolute', left: 8, bottom: 6, fontSize: 12, color: '#fff', textShadow: '0 1px 2px #000' }}>
           {name}{local ? ' (you)' : ''}{screen ? ' · screen' : ''}{micOff && !screen ? ' · muted' : ''}
         </div>
+        {screen && (
+          <button
+            className="icon"
+            aria-label={full ? 'Exit fullscreen' : 'Fullscreen'}
+            title={full ? 'Exit fullscreen (Esc)' : 'Fullscreen'}
+            onClick={() => void toggleFullscreen(frame.current)}
+            style={{ position: 'absolute', top: 6, right: 6, background: 'rgba(0,0,0,.55)', color: '#fff' }}
+          >
+            {full ? '⤡' : '⤢'}
+          </button>
+        )}
       </div>
       {!screen && !local && joined && onVolume && (
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
@@ -148,6 +166,31 @@ function Tile({ user, joined, local, micOff, speaking, screen, video, volume = 1
       {!joined && <span className="muted" style={{ fontSize: 12 }}>Join to hear {name}</span>}
     </div>
   );
+}
+
+/** True while `ref`'s element is the one shown fullscreen. Esc leaves it too, even where the browser does not. */
+function useFullscreen(ref: RefObject<HTMLElement | null>): boolean {
+  const [full, setFull] = useState(false);
+  useEffect(() => {
+    const onChange = () => setFull(document.fullscreenElement !== null && document.fullscreenElement === ref.current);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && document.fullscreenElement === ref.current) void document.exitFullscreen().catch(() => {});
+    };
+    document.addEventListener('fullscreenchange', onChange);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('fullscreenchange', onChange);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [ref]);
+  return full;
+}
+
+async function toggleFullscreen(el: HTMLElement | null): Promise<void> {
+  if (!el) return;
+  // a refused request (no user gesture, unsupported) just leaves the tile as it is
+  if (document.fullscreenElement === el) await document.exitFullscreen().catch(() => {});
+  else await el.requestFullscreen().catch(() => {});
 }
 
 function VideoView({ feed, mirror }: { feed: Feed; mirror: boolean }) {

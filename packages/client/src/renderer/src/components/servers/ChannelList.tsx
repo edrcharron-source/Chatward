@@ -19,6 +19,7 @@ export default function ChannelList({ onOpenSettings, onReload }: { onOpenSettin
   const voiceOccupants = useSession((s) => s.voiceOccupants);
   const unread = useSession((s) => s.unread);
   const joinedVoiceId = useVoice((s) => s.channelId);
+  const speaking = useVoice((s) => s.speaking);
   const [dialog, setDialog] = useState<DialogKind>(null);
   const [voiceError, setVoiceError] = useState<string | null>(null);
 
@@ -45,7 +46,9 @@ export default function ChannelList({ onOpenSettings, onReload }: { onOpenSettin
 
   function occupantsOf(channelId: string): User[] {
     const ids = voiceOccupants[channelId] ?? [];
-    return ids.flatMap((id) => {
+    // the server may not list us yet (and demo calls never do), so add the local user while connected
+    const listed = channelId === joinedVoiceId && user && !ids.includes(user.id) ? [user.id, ...ids] : ids;
+    return listed.flatMap((id) => {
       const m = bundle?.members.find((x) => x.user.id === id);
       return m ? [m.user] : [];
     });
@@ -110,7 +113,7 @@ export default function ChannelList({ onOpenSettings, onReload }: { onOpenSettin
                     {occupants.length > 0 && (
                       <ul className="cw-occupants" aria-label={`In ${c.name}`}>
                         {occupants.map((u) => (
-                          <li key={u.id}>
+                          <li key={u.id} data-speaking={speaking.includes(u.id) || undefined}>
                             <Avatar user={u} size={18} />
                             <span>{u.displayName}</span>
                           </li>
