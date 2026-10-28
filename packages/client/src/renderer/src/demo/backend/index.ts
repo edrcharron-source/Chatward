@@ -1,5 +1,5 @@
 // Offline stand-in for the server. Implements docs/CONTRACT.md REST routes and the WS frame stream in memory.
-import type { Channel, Message, ServerFrame, SoundboardSound, User } from '@chatward/shared';
+import { DEFAULT_VOICE_BITRATE_KBPS, VOICE_BITRATES_KBPS, type Channel, type Message, type ServerFrame, type SoundboardSound, type User } from '@chatward/shared';
 import { avatarPng } from './assets';
 import { createWorld, makeMessage, newId, SERVER_ID, YOU_ID } from './world';
 
@@ -167,11 +167,28 @@ on('POST', /^\/api\/servers\/([^/]+)\/channels$/, (r) => {
   serverGuard(r.match[1]);
   const body = (r.body ?? {}) as { name?: unknown; kind?: unknown };
   const kind = body.kind === 'voice' ? 'voice' : 'text';
-  const channel: Channel = { id: newId(world, 'ch'), serverId: SERVER_ID, name: str(body.name, 'name', 48), kind };
+  const channel: Channel = {
+    id: newId(world, 'ch'), serverId: SERVER_ID, name: str(body.name, 'name', 48), kind,
+    ...(kind === 'voice' ? { bitrateKbps: DEFAULT_VOICE_BITRATE_KBPS } : {}),
+  };
   world.channels.push(channel);
   world.voice[channel.id] ??= [];
   emit({ t: 'channel.new', channel });
   return json({ channel }, 201);
+});
+// Demo-only: the real server has no channel PATCH route yet.
+on('PATCH', /^\/api\/servers\/([^/]+)\/channels\/([^/]+)$/, (r) => {
+  serverGuard(r.match[1]);
+  const channel = requireChannel(r.match[2]);
+  const { bitrateKbps } = (r.body ?? {}) as { bitrateKbps?: unknown };
+  if (channel.kind !== 'voice') throw new HttpError(400, 'bitrateKbps applies to voice channels only');
+  if (!(VOICE_BITRATES_KBPS as readonly unknown[]).includes(bitrateKbps)) {
+    throw new HttpError(400, `bitrateKbps must be one of ${VOICE_BITRATES_KBPS.join(', ')}`);
+  }
+  const updated: Channel = { ...channel, bitrateKbps: bitrateKbps as number };
+  world.channels = world.channels.map((c) => (c.id === channel.id ? updated : c));
+  emit({ t: 'channel.update', channel: updated });
+  return json({ channel: updated });
 });
 on('POST', /^\/api\/servers\/([^/]+)\/invites$/, (r) => {
   serverGuard(r.match[1]);
