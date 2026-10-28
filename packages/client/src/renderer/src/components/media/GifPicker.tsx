@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type ReactElement } from 'rea
 import type { MessagePayload } from '@chatward/shared';
 import { api } from '../../api/http';
 import { usePopover } from './Popover';
+import { isSafeGifUrl } from './safeUrls';
 
 type Gif = NonNullable<MessagePayload['gif']>;
 
@@ -76,7 +77,7 @@ function GifPanel({ onPick }: { onPick: (gif: Gif) => void }) {
       {disabled && <p className="muted media-note">{hint ?? "GIF search isn't set up on this server yet."}</p>}
       {error && <p className="media-error">{error}</p>}
       <div className="media-gif-grid">
-        {results.map((g) => (
+        {results.filter((g) => isSafeGifUrl(g.url) && isSafeGifUrl(g.previewUrl)).map((g) => (
           <button
             key={g.id}
             type="button"
@@ -127,5 +128,6 @@ export function GifPickerButton({ onPick }: { onPick: (gif: Gif) => void }): Rea
 }
 
 export function GifView({ gif }: { gif: Gif }): ReactElement | null {
+  if (!isSafeGifUrl(gif.url)) return null;
   return <img className="media-gif" src={gif.url} alt={gif.title || 'GIF'} loading="lazy" referrerPolicy="no-referrer" />;
 }

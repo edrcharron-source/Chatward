@@ -46,6 +46,8 @@ export interface VoiceState {
 /**
  * Called when the websocket reconnects. If we are still in a call, the server may have lost our voice slot (it is
  * in memory, so a restart clears it). Put the slot back so others see us and kicks reach us. The media is untouched.
+ * If the server refuses (we were removed, lost access, or the call moved to another device), hang up: the call is no
+ * longer ours on the server.
  */
 export function resumeVoiceSlot(): void {
   const { channelId, room } = useVoice.getState();
@@ -57,7 +59,17 @@ export function resumeVoiceSlot(): void {
       const { muted, deafened } = useVoice.getState();
       return api.post('/api/voice/state', { channelId, muted, deafened });
     })
-    .catch((e) => console.warn('could not restore voice slot', e));
+    .catch((e) => {
+      console.warn('could not restore voice slot', e);
+      if (!(e instanceof ApiError) || ![403, 404, 409].includes(e.status)) return;
+      // Skip the leave call: the server has already refused this slot, so it would be refused again.
+      const notice = e.status === 409 && e.message.includes('another device')
+        ? 'The call moved to another device'
+        : 'You are no longer in this call';
+      void useVoice.getState().leave(false)
+        .then(() => useVoice.setState({ notice }))
+        .catch((err) => console.error(err));
+    });
 }
 
 /**
@@ -66,7 +78,7 @@ export function resumeVoiceSlot(): void {
  */
 export function clearLeftoverVoiceSlot(): void {
   if (useVoice.getState().channelId || isDemo()) return;
-  void api.post('/api/voice/clear').catch((e) => console.warn('could not clear leftover voice slot', e));
+  leftoverClear = api.post('/api/voice/clear').then(() => {}, (e) => console.warn('could not clear leftover voice slot', e));
 }
 
 /**
@@ -152,6 +164,8 @@ onEpochChange(() => void rekeyActiveCall().catch((e) => console.warn('rekey afte
 
 // Bumps on every join and leave. A join still connecting when this has moved on is stale and tears down what it built.
 let joinAttempt = 0;
+// The startup clear must land before a join takes a slot, or the clear could drop the slot the join just took.
+let leftoverClear: Promise<void> = Promise.resolve();
 
 // Your own speaking state comes from your mic level, so it works without LiveKit's active-speaker data.
 const METER_MS = 100;
@@ -311,7 +325,11 @@ export const useVoice = create<VoiceState>((set, get) => {
         const voice = await voiceKey(channelId);
         if (stale()) { abandon(channelId, room, mic); return; }
         if (!voice) throw new Error('Channel encryption key is not available yet');
-        const { url, token } = await api.post<{ url: string; token: string }>('/api/voice/token', { channelId });
+        await leftoverClear;
+        if (stale()) { abandon(channelId, room, mic); return; }
+        // The server needs the mute state now, so a muted person is silenced for soundboard from the first moment.
+        const { muted, deafened } = get();
+        const { url, token } = await api.post<{ url: string; token: string }>('/api/voice/token', { channelId, muted, deafened });
         if (stale()) { abandon(channelId, room, mic); return; }
 
         const keyProvider = new IndexedKeyProvider();
@@ -333,7 +351,7 @@ export const useVoice = create<VoiceState>((set, get) => {
         await room.setE2EEEnabled(true);
         if (stale()) { abandon(channelId, room, mic); return; }
 
-        mic = await openMic();
+        mic = await openMic(!muted && !deafened);
         if (stale()) { abandon(channelId, room, mic); return; }
         const bitrate = channelBitrate(useSession.getState().servers.flatMap((b) => b.channels).find((c) => c.id === channelId));
         await room.localParticipant.publishTrack(mic, { source: Track.Source.Microphone, ...micPublish(bitrate) });

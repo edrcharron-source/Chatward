@@ -14,6 +14,7 @@ import {
 import type { AuthedRequest, Ctx } from '../ctx.js';
 import { newId } from '../db.js';
 import { soundsDirOf } from './soundboard.js';
+import { forgetWatchParty } from './watchparty.js';
 import { clearVoiceChannel, kickFromCall } from './voice.js';
 
 const { SERVER_NAME_MAX, CHANNEL_NAME_MAX } = LIMITS;
@@ -253,6 +254,7 @@ export function register(app: Express, ctx: Ctx): void {
     // Everyone in the voice channel is dropped first. Messages, keys and MLS state cascade with the row.
     clearVoiceChannel(ctx, channelId);
     ctx.db.prepare('DELETE FROM channels WHERE id=?').run(channelId);
+    forgetWatchParty(channelId);
     ctx.broadcastToServer(serverId, { t: 'channel.delete', serverId, channelId });
     res.json({ ok: true });
   }));
@@ -278,6 +280,8 @@ export function register(app: Express, ctx: Ctx): void {
     const gone: ServerFrame = { t: 'server.delete', serverId };
     ctx.broadcastToServer(serverId, gone);
     for (const { user_id } of members) kickFromCall(ctx, serverId, user_id);
+    const channelIds = ctx.db.prepare('SELECT id FROM channels WHERE server_id=?').all(serverId) as { id: string }[];
+    for (const { id } of channelIds) forgetWatchParty(id);
     ctx.db.prepare('DELETE FROM servers WHERE id=?').run(serverId);
     pruneResetCodes(ctx);
     // Sound rows cascade with the server, but their audio files live on disk and would be left behind.

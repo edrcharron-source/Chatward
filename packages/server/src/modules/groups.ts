@@ -1,4 +1,4 @@
-// MLS delivery: KeyPackage pool, epoch-ordered Commits, per-device Welcomes, pending removals.
+// MLS delivery: KeyPackage pool, epoch-ordered Commits, per-device Welcomes.
 // The group id is the text channel id. The server stores and orders opaque MLS bytes; it never decrypts them.
 import crypto from 'node:crypto';
 import type { Express, Request, Response } from 'express';
@@ -313,18 +313,4 @@ export function register(app: Express, ctx: Ctx): void {
     res.json({ welcomes: rows.map((r) => ({ epoch: r.epoch, toDeviceId: r.to_device_id, welcome: r.welcome })) });
   });
 
-  // Groups whose last Commit still lists devices that are no longer in the server. An admin or any remaining
-  // device commits a Remove for them, so a kick still completes if the admin was offline.
-  app.get('/api/servers/:id/pending-removals', ctx.requireAuth, (req, res) => {
-    const userId = (req as AuthedRequest).userId;
-    if (!ctx.roleIn(req.params.id, userId)) return void res.status(404).json({ error: 'server not found' });
-    const live = new Set((serverDeviceIds.all(req.params.id) as { id: string }[]).map((d) => d.id));
-    const channels = db.prepare("SELECT id FROM channels WHERE server_id=? AND kind='text'").all(req.params.id) as { id: string }[];
-    const pending = channels.flatMap(({ id }) => {
-      const epoch = (groupEpoch.get(id) as { epoch: number } | undefined)?.epoch ?? 0;
-      const removed = (groupDevices.all(id) as { device_id: string }[]).map((r) => r.device_id).filter((d) => !live.has(d));
-      return removed.length > 0 ? [{ channelId: id, epoch, removedDeviceIds: removed }] : [];
-    });
-    res.json({ pending });
-  });
 }

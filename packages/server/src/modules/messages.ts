@@ -4,6 +4,7 @@ import type { Express, Response } from 'express';
 import { LIMITS, type Channel, type KeyEnvelope, type Message } from '@chatward/shared';
 import type { AuthedRequest, Ctx } from '../ctx.js';
 import { newId } from '../db.js';
+import { perMember } from '../userLimit.js';
 
 interface MessageRow {
   id: string;
@@ -196,7 +197,7 @@ export function register(app: Express, ctx: Ctx): void {
     res.json({ messages: rows.reverse().map(toMessage) });
   });
 
-  app.post('/api/channels/:id/messages', ctx.requireAuth, (req, res) => {
+  app.post('/api/channels/:id/messages', ctx.requireAuth, perMember(60_000, 60), (req, res) => {
     const userId = (req as AuthedRequest).userId;
     const ch = textChannelFor(userId, req.params.id, res);
     if (!ch) return;
@@ -246,22 +247,26 @@ export function register(app: Express, ctx: Ctx): void {
     res.json({ message });
   });
 
-  app.delete('/api/messages/:id', ctx.requireAuth, async (req, res) => {
-    const userId = (req as AuthedRequest).userId;
-    const row = messageFor(userId, req.params.id, res);
-    if (!row) return;
-    const role = ctx.roleIn(row.server_id, userId);
-    if (row.author_id !== userId && role === 'member') {
-      res.status(403).json({ error: 'only the author or an admin can delete' });
-      return;
+  app.delete('/api/messages/:id', ctx.requireAuth, async (req, res, next) => {
+    try {
+      const userId = (req as AuthedRequest).userId;
+      const row = messageFor(userId, req.params.id, res);
+      if (!row) return;
+      const role = ctx.roleIn(row.server_id, userId);
+      if (row.author_id !== userId && role === 'member') {
+        res.status(403).json({ error: 'only the author or an admin can delete' });
+        return;
+      }
+      const uploadIds = deleteMessageAndUploads(row.id);
+      ctx.broadcastToServer(row.server_id, { t: 'message.delete', channelId: row.channel_id, messageId: row.id });
+      // Free the disk space too. A failed removal is logged; the upload rows are already gone, so nothing points at the file.
+      await Promise.all(uploadIds.map((id) =>
+        fs.rm(path.join(ctx.config.uploadsDir, id), { force: true })
+          .catch((err) => console.error(`upload ${id} cleanup failed`, err))));
+      res.json({ ok: true });
+    } catch (err) {
+      next(err);
     }
-    const uploadIds = deleteMessageAndUploads(row.id);
-    ctx.broadcastToServer(row.server_id, { t: 'message.delete', channelId: row.channel_id, messageId: row.id });
-    // Free the disk space too. A failed removal is logged; the upload rows are already gone, so nothing points at the file.
-    await Promise.all(uploadIds.map((id) =>
-      fs.rm(path.join(ctx.config.uploadsDir, id), { force: true })
-        .catch((err) => console.error(`upload ${id} cleanup failed`, err))));
-    res.json({ ok: true });
   });
 
   // ---------- channel keys ----------

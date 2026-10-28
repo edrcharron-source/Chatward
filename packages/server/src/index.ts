@@ -21,6 +21,10 @@ import { register as groups } from './modules/groups.js';
 import { register as watchparty } from './modules/watchparty.js';
 import { register as updates } from './modules/updates.js';
 
+// Log instead of exiting, so one bad request or a failed async task cannot take down every voice call and open socket.
+process.on('uncaughtException', (err) => { console.error('Uncaught exception:', err); });
+process.on('unhandledRejection', (reason) => { console.error('Unhandled rejection:', reason); });
+
 const db = openDb();
 const { signToken, verifySession, requireAuth } = makeAuth(db);
 
@@ -104,7 +108,7 @@ app.use((err: Error & { type?: string }, _req: express.Request, res: express.Res
 const server = http.createServer(app);
 attachWs(server, ctx);
 // A fresh server needs its setup code before the first account, so make it (and print it) at startup.
-const { n: accountCount } = db.prepare('SELECT COUNT(*) AS n FROM users').get() as { n: number };
+const { n: accountCount } = db.prepare('SELECT COUNT(*) AS n FROM users WHERE deleted_at IS NULL').get() as { n: number };
 if (accountCount === 0) setupCode();
 server.listen(config.port, config.host, () =>
   console.log(`Chatward server listening on http://${config.host}:${config.port}`));

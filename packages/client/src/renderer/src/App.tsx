@@ -222,8 +222,10 @@ function Shell() {
             break;
           }
           // Another device moved a group on, so catch up now. A call follows the new epoch as the sync applies it.
+          // A low key-package pool is topped up the same way, rather than waiting for the next full sync.
           case 'group.commit':
           case 'group.welcome':
+          case 'keypackages.low':
             void syncChannelKeys(useSession.getState().servers).catch((e) => console.error(e));
             break;
           case 'key.envelope': void handleEnvelope(f.envelope); break;

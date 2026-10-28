@@ -288,8 +288,6 @@ async function main() {
     // 5. Kick carol: the server removes her membership, then a remaining device commits the Remove.
     const kick = await api(alice.token, 'DELETE', `/api/servers/${serverId}/members/${carol.user}`);
     assert.equal(kick.status, 200, 'owner kicks carol');
-    const pending = await api(alice.token, 'GET', `/api/servers/${serverId}/pending-removals`);
-    assert.deepEqual(pending.json.pending, [{ channelId: CHANNEL, epoch: 3, removedDeviceIds: [carol.id] }]);
     const carolLeaf = mls.memberLeaves(alice.state.get(CHANNEL)!).find((m) => m.deviceId === carol.id)!.leafIndex;
     const remove = await mls.removeMembers(alice.state.get(CHANNEL)!, [carolLeaf]);
     const r5 = await postCommit(alice, 3, remove, [alice.id, bob.id, bob2.id], []);
@@ -297,8 +295,7 @@ async function main() {
     alice.state.set(CHANNEL, remove.state);
     bob.state.set(CHANNEL, (await mls.receive(bob.state.get(CHANNEL)!, remove.commit!)).state);
     bob2.state.set(CHANNEL, (await mls.receive(bob2.state.get(CHANNEL)!, remove.commit!)).state);
-    assert.equal((await api(alice.token, 'GET', `/api/servers/${serverId}/pending-removals`)).json.pending.length, 0);
-    log('kick: pending removal listed for carol, Remove committed, pending list now empty');
+    log('kick: Remove committed for carol');
 
     // 6. Carol is out: a fresh message is unreadable to her, and her commits are refused.
     const after = await mls.encryptMessage(alice.state.get(CHANNEL)!, new TextEncoder().encode('secret after kick'));
@@ -480,6 +477,16 @@ async function main() {
     assert.equal((await api(bob.token, 'POST', '/api/voice/rejoin', { channelId: voiceChan })).status, 200, 'the first device still holds its slot');
     assert.equal((await api(bob.token, 'POST', '/api/voice/leave', { channelId: voiceChan })).status, 200, 'the first device leaves its own call');
     log('a refused second device cannot end the first device call');
+
+    // A socket that dropped while bob was removed from the call must not put his slot back on reconnect. The rejoin is
+    // refused until he joins again, which clears the removal.
+    assert.equal((await api(bob.token, 'POST', '/api/voice/token', { channelId: voiceChan })).status, 200, 'bob joins the call');
+    assert.equal((await api(alice.token, 'POST', '/api/voice/kick', { channelId: voiceChan, userId: bob.user })).status, 200, 'alice removes bob from the call');
+    assert.equal((await api(bob.token, 'POST', '/api/voice/rejoin', { channelId: voiceChan })).status, 409, 'a rejoin after a removal is refused');
+    assert.equal((await api(bob.token, 'POST', '/api/voice/token', { channelId: voiceChan })).status, 200, 'bob can join again');
+    assert.equal((await api(bob.token, 'POST', '/api/voice/rejoin', { channelId: voiceChan })).status, 200, 'rejoin works after a fresh join');
+    assert.equal((await api(bob.token, 'POST', '/api/voice/leave', { channelId: voiceChan })).status, 200);
+    log('a rejoin after being removed from the call is refused until the user joins again');
 
     // Bob can list and remove his own devices. Another user's device is not his to remove.
     const bobDevices = await api(bob.token, 'GET', '/api/me/devices');

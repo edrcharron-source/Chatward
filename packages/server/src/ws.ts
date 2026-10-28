@@ -20,7 +20,9 @@ export function attachWs(http: HttpServer, ctx: Ctx) {
   const deviceBySocket = new WeakMap<WebSocket, string | null>();
 
   http.on('upgrade', (req, socket, head) => {
-    const url = new URL(req.url ?? '', 'http://x');
+    // A malformed request target (for example "GET //") makes URL throw; that must not reach the process.
+    let url: URL;
+    try { url = new URL(req.url ?? '', 'http://x'); } catch { socket.destroy(); return; }
     if (url.pathname !== '/ws') { socket.destroy(); return; }
     const session = ctx.verifySession(url.searchParams.get('token') ?? '');
     if (!session) { socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n'); socket.destroy(); return; }
@@ -34,21 +36,30 @@ export function attachWs(http: HttpServer, ctx: Ctx) {
       if (!set) socketsByUser.set(userId, (set = new Set()));
       set.add(ws);
       deviceBySocket.set(ws, deviceId);
-      statusByUser.set(userId, 'online');
+      // Keep the status the user last chose while any device is connected, so a reconnect does not flash Online.
+      const status = statusByUser.get(userId) ?? 'online';
+      statusByUser.set(userId, status);
       for (const cb of ctx.onConnect) cb(userId, deviceId);
       send(ws, { t: 'ready', user: ctx.getUser(userId)!, presence: presenceFor(userId) });
       sendPresenceSnapshot(ws, userId);
       replayNewDeviceAlerts(ws, userId, deviceId);
-      announce(userId, 'online');
+      announce(userId, status);
       ws.on('message', (raw) => {
-        let f: ClientFrame;
-        try { f = JSON.parse(raw.toString()); } catch { return; }
-        if (!f || typeof f !== 'object') return;
-        if (f.t === 'ping') send(ws, { t: 'pong' });
-        else if (f.t === 'typing') {
-          const sid = ctx.serverIdForChannelMember(f.channelId, userId);
-          if (sid) ctx.broadcastToServer(sid, { t: 'typing', channelId: f.channelId, userId });
-        } else if (f.t === 'presence' && CLIENT_STATUSES.includes(f.status)) announce(userId, f.status);
+        // A malformed frame must never throw out of this listener: it would crash the whole server.
+        try {
+          let f: ClientFrame;
+          try { f = JSON.parse(raw.toString()); } catch { return; }
+          if (!f || typeof f !== 'object') return;
+          if (f.t === 'ping') send(ws, { t: 'pong' });
+          else if (f.t === 'typing') {
+            // The type says string, but a client can send anything; SQLite would throw on a non-string id.
+            if (typeof f.channelId !== 'string') return;
+            const sid = ctx.serverIdForChannelMember(f.channelId, userId);
+            if (sid) ctx.broadcastToServer(sid, { t: 'typing', channelId: f.channelId, userId });
+          } else if (f.t === 'presence' && typeof f.status === 'string' && CLIENT_STATUSES.includes(f.status)) announce(userId, f.status);
+        } catch (err) {
+          console.error('Dropped a bad websocket frame:', err);
+        }
       });
       ws.on('close', () => {
         markDeviceSeen(deviceId);

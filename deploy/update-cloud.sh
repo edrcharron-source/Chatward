@@ -5,7 +5,7 @@
 # deploy/.env, deploy/updates/ (desktop installers from the release workflow) and deploy/backups/ are kept.
 #
 # 1. Checks deploy/.env (DOMAIN and the LiveKit keys).
-# 2. Stops the server and backs up the data volume (database, avatars, uploads) to backups/.
+# 2. Stops the server and backs up the data volume (database, avatars, uploads) to backups/. Only the newest 3 backups are kept.
 # 3. Refreshes the LiveKit and Caddy images, rebuilds the server image and starts everything.
 # 4. Waits for the server to answer inside Docker. If it does not, the rollback steps are printed.
 set -euo pipefail
@@ -30,6 +30,20 @@ mkdir -p backups updates
 
 trap 'echo "Update failed. The server is stopped; start the previous one with: docker compose start server" >&2' ERR
 
+# Backup names carry a UTC timestamp, so sorting by name sorts by age. Keep the newest $KEEP_BACKUPS.
+KEEP_BACKUPS=3
+prune_backups() {
+  local files=() count i
+  shopt -s nullglob
+  files=(backups/chatward-data-*.tar.gz)
+  shopt -u nullglob
+  count=${#files[@]}
+  for ((i = 0; i < count - KEEP_BACKUPS; i++)); do
+    echo "==> Removing old backup ${files[$i]}"
+    rm -f -- "${files[$i]}"
+  done
+}
+
 echo "==> Installing Chatward server $VERSION"
 SERVER_ID=$(docker compose ps -a -q server)
 if [ -n "$SERVER_ID" ]; then
@@ -39,6 +53,7 @@ if [ -n "$SERVER_ID" ]; then
   echo "==> Backing up volume $VOLUME to backups/chatward-data-$STAMP.tar.gz"
   docker run --rm -v "$VOLUME":/data:ro -v "$PWD/backups":/backup alpine \
     tar czf "/backup/chatward-data-$STAMP.tar.gz" -C /data .
+  prune_backups
 else
   echo "==> No server container yet (first install), so there is nothing to back up."
 fi
