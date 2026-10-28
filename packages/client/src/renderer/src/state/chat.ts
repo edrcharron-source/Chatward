@@ -37,6 +37,8 @@ interface ChatState {
 
 const EMPTY: ChannelChat = { messages: [], loaded: false, hasMore: false, loading: false, error: null, olderError: null, loadingOlder: false };
 const TYPING_SEND_MS = 3000;
+// Tries for a catch-up after a reconnect: waits of 1, 2, 4 and 8 seconds between them.
+const CATCH_UP_RETRIES = 5;
 
 export const useChat = create<ChatState>(() => ({
   channels: {},
@@ -249,6 +251,25 @@ export async function catchUp(channelId: string) {
   }
 }
 
+/**
+ * A reconnect's catch-up can fail on a slow or briefly unavailable server. It is tried again with growing waits,
+ * and a channel the account no longer has is left alone.
+ */
+async function catchUpWithRetry(channelId: string) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await catchUp(channelId);
+      return;
+    } catch (e) {
+      if (attempt >= CATCH_UP_RETRIES - 1 || !isLiveChannel(channelId)) {
+        console.error('Could not catch up after reconnect', e);
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1000 * 2 ** attempt));
+    }
+  }
+}
+
 function requireMe(): string {
   const me = useSession.getState().user;
   if (!me) throw new Error('Not signed in');
@@ -376,7 +397,7 @@ onFrame((f) => {
       for (const [id, c] of Object.entries(useChat.getState().channels)) {
         if (!isLiveChannel(id)) continue;
         if (c.loaded) {
-          void catchUp(id).catch(() => {});
+          void catchUpWithRetry(id);
           // An older page that failed has a Retry in the channel, and a reconnect is a good time to try it again.
           if (c.olderError) void loadHistory(id, 'older').catch(() => {});
         } else if (c.loading) catchUpWanted.add(id);

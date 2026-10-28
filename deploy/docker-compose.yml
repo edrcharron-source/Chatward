@@ -23,6 +23,7 @@ services:
     restart: unless-stopped
   server:
     build: { context: .., dockerfile: deploy/Dockerfile.server }
+    depends_on: [livekit]   # starts LiveKit first; the server's own check still retries, since "started" is not "ready"
     environment:
       PORT: 3000
       DATA_DIR: /data

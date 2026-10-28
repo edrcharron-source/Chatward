@@ -462,21 +462,27 @@ async function ensureGroup(channelId: string, members: Member[]): Promise<boolea
   }
   // No Welcome for us. Create the group only if nobody has committed yet; otherwise an existing member adds us.
   const info = await api.get<{ epoch: number }>(`/api/groups/${channelId}/commits?from=0`);
-  if (info.epoch !== 0) return (await adoptLateCreate(channelId)) || changed;
+  // Check our earlier create Commits before building another solo group, since one of them may have landed late.
+  if (await adoptLateCreate(channelId)) return true;
+  if (info.epoch !== 0) return changed;
   return (await createGroup(channelId, members)) || changed;
 }
 
 /**
- * Our createGroup Commit got no answer, and the server stored it after we gave up. That Commit is the group at epoch 1,
- * so adopt the step we kept rather than waiting for a Welcome that will never come.
+ * Our createGroup Commits got no answer, and the server stored one of them after we gave up. That Commit is the group at
+ * epoch 1, so adopt the step we kept rather than waiting for a Welcome that will never come.
  */
 async function adoptLateCreate(channelId: string): Promise<boolean> {
-  const pending = pendingCommits.get(channelId)?.find((p) => p.epoch === 0);
-  if (!pending || (await checkStored(channelId, 0, getDevice().deviceId, pending.commit)) !== 'stored') return false;
-  // Settling here is the same as after an accepted POST: the step's Commit is now the group's history.
-  keepPending(channelId, (p) => p !== pending);
-  await setGroup(channelId, pending.step.state, 1);
-  return true;
+  const creates = (pendingCommits.get(channelId) ?? []).filter((p) => p.epoch === 0);
+  for (const pending of creates) {
+    if ((await checkStored(channelId, 0, getDevice().deviceId, pending.commit)) !== 'stored') continue;
+    // Settling here is the same as after an accepted POST: the step's Commit is now the group's history. The other
+    // create steps can no longer land, since the group has moved past epoch 0.
+    keepPending(channelId, (p) => p.epoch > 0);
+    await setGroup(channelId, pending.step.state, 1);
+    return true;
+  }
+  return false;
 }
 
 async function joinFromPool(welcome: string): Promise<ClientState | null> {
@@ -539,6 +545,7 @@ async function catchUpChunk(channelId: string): Promise<{ moved: boolean; more: 
   if (res.commits.length === 0) return { moved: false, more: false };
   let stuck = false;
   let dropUnreadable = false;
+  let ownStuck = false;
   for (const c of res.commits) {
     if (c.epoch !== epoch) break;
     // Our own Commit arriving after we gave up waiting for its answer. The server is at the epoch it makes, so adopt the
@@ -557,6 +564,7 @@ async function catchUpChunk(channelId: string): Promise<{ moved: boolean; more: 
       stuck = true;
       // Never ask the server to drop a Commit this device sent: its Welcomes may already have added devices.
       if (c.senderDeviceId === me.deviceId) {
+        ownStuck = true;
         console.warn(`Our own Commit in channel ${channelId} cannot be applied, and no pending step matches it. The device may need re-adding.`);
       } else {
         dropUnreadable = true;
@@ -575,8 +583,9 @@ async function catchUpChunk(channelId: string): Promise<{ moved: boolean; more: 
   }
   const moved = epoch !== stored.epoch;
   if (moved) await setGroup(channelId, state, epoch);
-  // A pending step is only good for its own epoch. Once the group moves past it, or a Commit at that epoch fails, it is stale.
-  keepPending(channelId, (p) => p.epoch >= epoch && !stuck);
+  // A pending step is only good for its own epoch. Once the group moves past it, or our own Commit fails, it is stale.
+  // Another device's bad Commit does not make our step stale: its POST may still land at this epoch.
+  keepPending(channelId, (p) => p.epoch >= epoch && !ownStuck);
   if (dropUnreadable) await dropCommitsFrom(channelId, epoch);
   const applied = epoch - stored.epoch === res.commits.length;
   return { moved, more: !stuck && !!res.more && applied };
@@ -585,7 +594,7 @@ async function catchUpChunk(channelId: string): Promise<{ moved: boolean; more: 
 function forgetGroup(channelId: string): void {
   delete vault.groups[channelId];
   groupStates.delete(channelId);
-  pendingCommits.delete(channelId);
+  keepPending(channelId, () => false);
 }
 
 /** Remember a Commit that got no answer. Keeps the newest few, since the oldest are the first to go stale. */
@@ -820,6 +829,7 @@ export function forgetChannels(channelIds: string[]): Promise<void> {
     if (isDemo() || !device || !privates) return;
     let changed = false;
     for (const channelId of channelIds) {
+      keepPending(channelId, () => false);
       if (!(channelId in vault.channels) && !(channelId in vault.groups) && !(channelId in vault.shared)) continue;
       delete vault.channels[channelId];
       delete vault.groups[channelId];

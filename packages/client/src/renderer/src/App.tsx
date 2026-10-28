@@ -114,6 +114,8 @@ function Shell() {
     let stopTokenCheck: (() => void) | undefined;
     let seenReady = false;
     let active = true;
+    // Each reconnect starts its own refresh. An older refresh that is still retrying gives up once a newer one starts.
+    let refreshRun = 0;
     (async () => {
       const { serverUrl, user } = useSession.getState();
       await initDevice(accountKey(serverUrl, user?.username ?? ''));
@@ -134,7 +136,9 @@ function Shell() {
             useSession.setState({ presence: { ...f.presence, [f.user.id]: mine } });
             if (mine !== 'online') sendFrame({ t: 'presence', status: mine });
             if (seenReady) {
-              loadServers().catch((e) => console.error('Could not refresh after reconnect', e));
+              const run = ++refreshRun;
+              retryWithBackoff(loadServers, () => active && run === refreshRun)
+                .catch((e) => console.error('Could not refresh after reconnect', e));
               resumeVoiceSlot();
             } else {
               clearLeftoverVoiceSlot();
@@ -276,21 +280,32 @@ function Shell() {
     await syncChannelKeys(servers);
   }
 
-  /** Retries the startup load with growing waits until the server answers. A 401 means the session is gone, so it is rethrown and signs out. */
-  async function loadServersUntilReachable(stillActive: () => boolean) {
+  /** Runs a load again with growing waits until it succeeds. A 401 means the session is gone, so it is rethrown and signs out. */
+  async function retryWithBackoff(load: () => Promise<void>, stillWanted: () => boolean, onFailure?: () => void) {
     for (let attempt = 0; ; attempt++) {
       try {
-        await loadServers();
-        setUnreachable(false);
+        await load();
         return;
       } catch (e) {
         if (e instanceof ApiError && e.status === 401) throw e;
         console.error('Could not load servers, retrying', e);
-        setUnreachable(true);
+        onFailure?.();
         await new Promise((resolve) => setTimeout(resolve, Math.min(15000, 1000 * 2 ** attempt)));
-        if (!stillActive()) return;
+        if (!stillWanted()) return;
       }
     }
+  }
+
+  /** Retries the startup load until the server answers, showing the unreachable screen meanwhile. */
+  function loadServersUntilReachable(stillActive: () => boolean) {
+    return retryWithBackoff(
+      async () => {
+        await loadServers();
+        setUnreachable(false);
+      },
+      stillActive,
+      () => setUnreachable(true),
+    );
   }
 
   if (!ready) {

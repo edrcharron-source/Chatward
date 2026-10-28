@@ -219,16 +219,31 @@ function broadcastState(ctx: Ctx, channelId: string): void {
   ctx.broadcastToServer(channel.serverId, { t: 'voice.state', serverId: channel.serverId, channelId, userIds });
 }
 
-/** Logs whether LiveKit's API answers with the configured URL and keys. Only logs: a failure does not stop the server. */
+const LIVEKIT_CHECK_EVERY_MS = 5_000; // LiveKit often starts a few seconds after the server
+const LIVEKIT_CHECK_QUICK_TRIES = 12; // about a minute of quick checks before a failure is logged
+const LIVEKIT_CHECK_SLOW_MS = 60_000; // after that, keep checking once a minute until it answers
+
+/**
+ * Logs whether LiveKit's API answers with the configured URL and keys. Only logs: a failure does not stop the server.
+ * Retries until it answers, so a LiveKit that is still starting does not leave a false error in the log.
+ */
 function checkLiveKitApi(ctx: Ctx): void {
   const { apiUrl } = ctx.config.livekit;
-  roomService(ctx).listRooms().then(
-    () => console.log(`LiveKit API check ok (${apiUrl})`),
-    (err: unknown) => console.error(
-      `LiveKit API check failed (${apiUrl}). Check LIVEKIT_API_URL, LIVEKIT_API_KEY and LIVEKIT_API_SECRET. Rejoins and kicks fail until this works.`,
-      err,
-    ),
-  );
+  let tries = 0;
+  const attempt = (): void => {
+    tries += 1;
+    roomService(ctx).listRooms().then(
+      () => console.log(`LiveKit API check ok (${apiUrl})`),
+      (err: unknown) => {
+        if (tries === LIVEKIT_CHECK_QUICK_TRIES) console.error(
+          `LiveKit API check failed (${apiUrl}). Check LIVEKIT_API_URL, LIVEKIT_API_KEY and LIVEKIT_API_SECRET. Rejoins and kicks fail until this works.`,
+          err,
+        );
+        setTimeout(attempt, tries < LIVEKIT_CHECK_QUICK_TRIES ? LIVEKIT_CHECK_EVERY_MS : LIVEKIT_CHECK_SLOW_MS);
+      },
+    );
+  };
+  attempt();
 }
 
 export function register(app: Express, ctx: Ctx): void {
