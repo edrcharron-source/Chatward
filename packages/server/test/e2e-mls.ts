@@ -430,7 +430,7 @@ async function main() {
     const bob2Commit = await api(bob2.token, 'POST', `/api/groups/${CHANNEL}/commits`, {
       deviceId: bob2.id, epoch: 0, commit: b64(new Uint8Array([1, 2, 3])), members: [], welcomes: [],
     });
-    assert.equal(bob2Commit.status, 403, 'removed device cannot post a Commit');
+    assert.equal(bob2Commit.status, 401, 'removed device cannot post a Commit (its login is revoked)');
     log('a removed device keeps its keys for old Commits, but cannot post new ones');
 
     // Reset codes: an owner-issued code dies when its member leaves the owner's server, and is refused after that.
