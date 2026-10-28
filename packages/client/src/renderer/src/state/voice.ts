@@ -4,7 +4,7 @@ import { ExternalE2EEKeyProvider, Room, RoomEvent, Track, type Participant } fro
 import { DEFAULT_VOICE_BITRATE_KBPS, VOICE_BITRATES_KBPS, type Channel } from '@chatward/shared';
 import { api, postOnUnload } from '../api/http';
 import { voiceKey } from '../crypto';
-import { startCamera, stopCamera, startScreen, stopScreen } from '../components/voice/media';
+import { startCamera, stopCamera, startScreen, stopScreen, switchCamera } from '../components/voice/media';
 import { attachRemote, closeAudio, detachRemote, micLevel, openMic, setDeafened, setTransmitting, setVoiceNotifier, startPlayback } from './voiceAudio';
 import { onBeforeSignOut, useSession } from './session';
 import { useSettings } from './settings';
@@ -393,4 +393,12 @@ useSession.subscribe((s, prev) => {
   const next = channelBitrate(find(s));
   if (next === channelBitrate(find(prev))) return;
   applyBitrate(room, next).catch((e) => console.warn('bitrate change failed', e));
+});
+
+// A camera picked in Settings: switch the live camera now, if we are sending video.
+useSettings.subscribe((s, prev) => {
+  if (s.cameraDeviceId === prev.cameraDeviceId) return;
+  const { room, cameraOn } = useVoice.getState();
+  if (!room || !cameraOn) return;
+  switchCamera(room, s.cameraDeviceId).catch((e) => console.warn('camera change failed', e));
 });
