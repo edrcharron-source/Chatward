@@ -120,12 +120,14 @@ function endMeter(): void {
 export const useVoice = create<VoiceState>((set, get) => {
   /** muted and deafened both close the mic path; deafening also silences playback */
   function syncMic(): void {
-    const { muted, deafened, room } = get();
+    const { muted, deafened, room, channelId } = get();
     const open = !muted && !deafened;
     setDeafened(deafened);
     setTransmitting(open);
     const track = room?.localParticipant.getTrackPublication(Track.Source.Microphone)?.track;
     if (track) void (open ? track.unmute() : track.mute()).catch(() => {});
+    // The server uses this to refuse soundboard plays from muted or deafened users.
+    if (channelId && !isDemo()) void api.post('/api/voice/state', { channelId, muted, deafened }).catch(() => {});
   }
 
   function wire(room: Room): void {
