@@ -64,6 +64,8 @@ async function main() {
   const bob = new Device('bob');
   let failed = false;
   const crowd: Device[] = [];
+  // Devices removed mid-scenario. They are no longer in the channel, so they stay out of crowd.
+  const removed: Device[] = [];
   try {
     await alice.call('init', { serverUrl: BASE, username: 'alice' });
     await bob.call('init', { serverUrl: BASE, username: 'bob' });
@@ -165,6 +167,25 @@ async function main() {
     assert.ok(aliceAfterLeave.includes('bob can talk again'), `alice reads bob after he leaves and rejoins: ${JSON.stringify(aliceAfterLeave)}`);
     log('bob leaves and rejoins while alice is offline; he reads and sends again without being locked out');
 
+    // 5c2. Bob stays offline while alice adds erin and then removes her, sending a message in each epoch. Bob catches up
+    // through both Commits. The middle-epoch message is only readable if catch-up keeps every epoch's key, not just the last.
+    const erin = new Device('erin');
+    removed.push(erin);
+    await erin.call('init', { serverUrl: BASE, username: 'erin' });
+    const erinInvite = await alice.call('invite', { serverId });
+    const { userId: erinId } = await erin.call('register', { username: 'erin', inviteCode: erinInvite.code });
+    await erin.call('sync'); // uploads erin's KeyPackages
+    await alice.call('sync'); // commit: add erin
+    await alice.call('send', { channelId, text: 'middle epoch message' });
+    await alice.call('kick', { serverId, userId: erinId });
+    await alice.call('sync'); // commit: remove erin
+    await alice.call('send', { channelId, text: 'latest epoch message' });
+    await bob.call('sync');
+    const bobCaughtUp = (await bob.call('read', { channelId })).texts;
+    assert.ok(bobCaughtUp.includes('middle epoch message'), `bob reads a message from an epoch he passed through: ${JSON.stringify(bobCaughtUp)}`);
+    assert.ok(bobCaughtUp.includes('latest epoch message'), `bob reads the latest message: ${JSON.stringify(bobCaughtUp)}`);
+    log('bob is offline while two Commits pass; after catching up he reads a message sent in the epoch between them');
+
     // 5d. Dave's KeyPackage upload reaches the server, but its reply is lost. Alice then adds dave using one of the packages
     // the server now holds. Dave must still join from that Welcome, so his device has to have saved the private parts first.
     await bob.call('init', { serverUrl: BASE, username: 'dave' });
@@ -228,6 +249,7 @@ async function main() {
     alice.stop();
     bob.stop();
     crowd.forEach((pal) => pal.stop());
+    removed.forEach((d) => d.stop());
     server.kill();
     fs.rmSync(dataDir, { recursive: true, force: true });
     if (failed) process.exitCode = 1;
