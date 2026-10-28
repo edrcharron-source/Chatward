@@ -263,6 +263,38 @@ async function main() {
     assert.equal(stale.json.currentEpoch, 4);
     log('stale commit at epoch 0 refused with 409 and currentEpoch 4');
 
+    // 8. Moderation: revoked invites stop working, bans block rejoin until lifted.
+    const revoked = await invite(1);
+    const revokeRes = await api(alice.token, 'DELETE', `/api/servers/${serverId}/invites/${revoked}`);
+    assert.equal(revokeRes.status, 200, 'owner revokes an invite');
+    const listed = (await api(alice.token, 'GET', `/api/servers/${serverId}/invites`)).json.invites as { code: string }[];
+    assert.ok(!listed.some((i) => i.code === revoked), 'revoked invite is no longer listed');
+    const lateReg = await api(null, 'POST', '/api/auth/register', {
+      username: 'erin', displayName: 'Erin', password: PASSWORD, device: await makeDeviceKeys(), inviteCode: revoked,
+    });
+    assert.equal(lateReg.status, 403, 'revoked invite cannot be redeemed');
+    log('revoked invite listed as gone and refused on register');
+
+    const daveReg = (await api(null, 'POST', '/api/auth/register', {
+      username: 'dave', displayName: 'Dave', password: PASSWORD, device: await makeDeviceKeys(), inviteCode: await invite(5),
+    })).json;
+    const dave = { id: daveReg.user.id as string, token: daveReg.token as string };
+    const banRes = await api(alice.token, 'POST', `/api/servers/${serverId}/bans`, { userId: dave.id });
+    assert.equal(banRes.status, 200, 'owner bans dave');
+    const daveServers = (await api(dave.token, 'GET', '/api/servers')).json.servers as { server: { id: string } }[];
+    assert.ok(!daveServers.some((b) => b.server.id === serverId), 'banned dave is removed from the server');
+    const rejoin = await api(dave.token, 'POST', `/api/invites/${await invite(5)}/join`, {});
+    assert.equal(rejoin.status, 403, 'banned dave cannot rejoin with a fresh invite');
+    const bans = (await api(alice.token, 'GET', `/api/servers/${serverId}/bans`)).json.bans as { user: { id: string } }[];
+    assert.ok(bans.some((b) => b.user.id === dave.id), 'ban is listed');
+    log('ban removes dave and blocks a fresh invite; ban listed for admins');
+
+    const unban = await api(alice.token, 'DELETE', `/api/servers/${serverId}/bans/${dave.id}`);
+    assert.equal(unban.status, 200, 'owner lifts the ban');
+    const back = await api(dave.token, 'POST', `/api/invites/${await invite(5)}/join`, {});
+    assert.equal(back.status, 200, 'dave can join again after unban');
+    log('unban lets dave rejoin with an invite');
+
     console.log('\nE2E MLS: all checks passed');
   } catch (err) {
     failed = true;

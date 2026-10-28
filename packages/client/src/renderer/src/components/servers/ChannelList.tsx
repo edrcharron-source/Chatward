@@ -7,6 +7,7 @@ import { useMemberMenu } from '../voice/MemberMenu';
 import VoiceDock from '../voice/VoiceDock';
 import Avatar from './Avatar';
 import ChannelSettingsDialog from './ChannelSettingsDialog';
+import InvitesDialog from './InvitesDialog';
 import Dialog from './Dialog';
 import { errorText, isAdmin } from './util';
 import './servers.css';
@@ -163,7 +164,7 @@ export default function ChannelList({ onOpenSettings, onReload }: { onOpenSettin
         <ChannelSettingsDialog channel={settingsChannel} onClose={() => setSettingsChannel(null)} onReload={onReload} />
       )}
       {dialog === 'invite' && bundle && (
-        <InviteDialog serverId={bundle.server.id} onClose={() => setDialog(null)} />
+        <InvitesDialog serverId={bundle.server.id} onClose={() => setDialog(null)} />
       )}
     </aside>
   );
@@ -211,64 +212,6 @@ function CreateChannelDialog({ serverId, onClose, onReload }: { serverId: string
           <button type="submit" className="primary" disabled={busy}>{busy ? 'Creating…' : 'Create channel'}</button>
         </div>
       </form>
-    </Dialog>
-  );
-}
-
-function InviteDialog({ serverId, onClose }: { serverId: string; onClose: () => void }) {
-  const [maxUses, setMaxUses] = useState(1);
-  const [invite, setInvite] = useState<{ code: string; expiresAt: number | string } | null>(null);
-  const [copied, setCopied] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function generate() {
-    setBusy(true);
-    setError(null);
-    setCopied(false);
-    try {
-      setInvite(await api.post<{ code: string; expiresAt: number | string }>(`/api/servers/${serverId}/invites`, { maxUses }));
-    } catch (err) {
-      setError(errorText(err));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function copy() {
-    if (!invite) return;
-    try {
-      await navigator.clipboard.writeText(invite.code);
-      setCopied(true);
-    } catch {
-      setError('Copy failed. Select the code and copy it manually.');
-    }
-  }
-
-  return (
-    <Dialog title="Invite people" onClose={onClose}>
-      <label>
-        Uses
-        <select value={maxUses} onChange={(e) => setMaxUses(Number(e.target.value))}>
-          <option value={1}>Single use</option>
-          <option value={5}>5 people</option>
-          <option value={10}>10 people</option>
-        </select>
-      </label>
-      <p className="cw-hint">Invites expire after 7 days.</p>
-      {invite && (
-        <>
-          <div className="cw-invite-code">{invite.code}</div>
-          <p className="cw-hint">Expires {new Date(invite.expiresAt).toLocaleString()}</p>
-        </>
-      )}
-      {error && <p className="cw-error" role="alert">{error}</p>}
-      <div className="cw-dialog-actions">
-        {invite && <button type="button" onClick={() => void copy()}>{copied ? 'Copied' : 'Copy code'}</button>}
-        <button type="button" className="primary" onClick={() => void generate()} disabled={busy}>
-          {busy ? 'Generating…' : invite ? 'New invite' : 'Generate invite'}
-        </button>
-      </div>
     </Dialog>
   );
 }

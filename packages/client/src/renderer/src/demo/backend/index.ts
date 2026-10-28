@@ -239,6 +239,26 @@ on('POST', /^\/api\/servers\/([^/]+)\/invites$/, (r) => {
   return json({ code: 'DEMO-INVITE', expiresAt: Date.now() + 7 * 24 * 3600_000 }, 201);
 });
 on('POST', /^\/api\/invites\/([^/]+)\/join$/, () => json({ server: world.server }));
+on('GET', /^\/api\/servers\/([^/]+)\/invites$/, (r) => {
+  serverGuard(r.match[1]);
+  return json({ invites: [] });
+});
+on('DELETE', /^\/api\/servers\/([^/]+)\/invites\/([^/]+)$/, (r) => {
+  serverGuard(r.match[1]);
+  return json({ ok: true });
+});
+on('GET', /^\/api\/servers\/([^/]+)\/bans$/, (r) => {
+  serverGuard(r.match[1]);
+  return json({ bans: [] });
+});
+on('POST', /^\/api\/servers\/([^/]+)\/bans$/, (r) => {
+  serverGuard(r.match[1]);
+  return json({ ok: true });
+});
+on('DELETE', /^\/api\/servers\/([^/]+)\/bans\/([^/]+)$/, (r) => {
+  serverGuard(r.match[1]);
+  return json({ ok: true });
+});
 on('GET', /^\/api\/servers\/([^/]+)\/voice-state$/, (r) => {
   serverGuard(r.match[1]);
   return json({ channels: world.voice });

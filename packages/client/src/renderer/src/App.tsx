@@ -215,7 +215,7 @@ function Shell() {
               ? <ChatView key={channel.id} channel={channel} />
               : <div style={{ margin: 'auto' }} className="muted">{bundle ? 'Select a channel' : 'Create or join a server to get started'}</div>}
       </main>
-      {bundle && !hideSidebars && <MemberList members={bundle.members as Member[]} />}
+      {bundle && !hideSidebars && <MemberList serverId={bundle.server.id} members={bundle.members as Member[]} />}
       {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
       {/* keep voice room mounted even when browsing text channels */}
       {voiceChannelId && null}

@@ -57,6 +57,13 @@ export function openDb(): DB {
     max_uses INTEGER NOT NULL DEFAULT 1,
     uses INTEGER NOT NULL DEFAULT 0
   );
+  CREATE TABLE IF NOT EXISTS bans (
+    server_id TEXT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    banned_by TEXT NOT NULL REFERENCES users(id),
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (server_id, user_id)
+  );
   CREATE TABLE IF NOT EXISTS messages (
     id TEXT PRIMARY KEY,
     channel_id TEXT NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
