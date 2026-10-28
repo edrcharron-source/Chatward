@@ -3,7 +3,10 @@ import type { MessagePayload } from '@chatward/shared';
 
 export function demoEncode(payload: MessagePayload): string {
   const bytes = new TextEncoder().encode(JSON.stringify(payload));
-  return btoa(String.fromCharCode(...bytes));
+  // Not String.fromCharCode(...bytes): spreading a large preview (an embedded image) overflows the call stack.
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
 }
 
 export function demoDecode(ciphertext: string): MessagePayload | null {

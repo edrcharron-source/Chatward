@@ -10,7 +10,8 @@
     "build": "electron-vite build",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "dist:win": "electron-vite build && electron-builder --win nsis portable --publish never",
-    "test:crypto": "esbuild src/renderer/src/crypto/crypto.test.ts --bundle --platform=node --format=esm --outfile=out/test/crypto.test.mjs --log-level=warning && node --test out/test/crypto.test.mjs"
+    "test:crypto": "esbuild src/renderer/src/crypto/crypto.test.ts --bundle --platform=node --format=esm --outfile=out/test/crypto.test.mjs --log-level=warning && node --test out/test/crypto.test.mjs",
+    "test:demo": "esbuild src/renderer/src/demo/codec.test.ts --bundle --platform=node --format=esm --outfile=out/test/codec.test.mjs --log-level=warning && node --test out/test/codec.test.mjs"
   },
   "devDependencies": {
     "@chatward/shared": "*",
