@@ -1,6 +1,7 @@
 import { useState, type ReactElement } from 'react';
 import type { LinkPreview } from '@chatward/shared';
 import { useSettings } from '../../state/settings';
+import { isSafeEmbed, isSafeImageUrl } from './safeUrls';
 
 type Embed = NonNullable<LinkPreview['embed']>;
 
@@ -46,7 +47,8 @@ function EmbedCard({ preview, embed }: { preview: LinkPreview; embed: Embed }): 
 }
 
 export function LinkPreviewCard({ preview }: { preview: LinkPreview }): ReactElement | null {
-  if (preview.embed) return <EmbedCard preview={preview} embed={preview.embed} />;
+  // An embed with an id that is not a real YouTube or X id is shown as a plain link instead.
+  if (preview.embed && isSafeEmbed(preview.embed)) return <EmbedCard preview={preview} embed={preview.embed} />;
 
   return (
     <a className="media-link-card" href={preview.url} target="_blank" rel="noopener noreferrer">
@@ -55,7 +57,7 @@ export function LinkPreviewCard({ preview }: { preview: LinkPreview }): ReactEle
         <span className="media-link-title">{preview.title || preview.url}</span>
         {preview.description && <span className="media-link-desc">{preview.description}</span>}
       </span>
-      {preview.image && <img className="media-link-image" src={preview.image} alt="" />}
+      {isSafeImageUrl(preview.image) && <img className="media-link-image" src={preview.image} alt="" />}
     </a>
   );
 }
