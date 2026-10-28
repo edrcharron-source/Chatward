@@ -10,6 +10,11 @@ const selfState = new Map<string, { muted: boolean; deafened: boolean }>(); // u
 // Only needed to join. An active call keeps its LiveKit session, so a short TTL does not cut calls off.
 const TOKEN_TTL = '10m';
 
+// A dropped websocket does not end a call: LiveKit keeps the media flowing. Hold the voice slot this long so a
+// quick reconnect keeps it. Kicks and explicit leaves ignore this and still act at once.
+const VOICE_GRACE_MS = 30_000;
+const graceTimers = new Map<string, ReturnType<typeof setTimeout>>(); // userId -> pending slot removal
+
 /** True if the user currently holds a voice slot in this channel. Used by soundboard. */
 export function isInVoiceChannel(channelId: string, userId: string): boolean {
   return occupants.get(channelId)?.has(userId) ?? false;
@@ -21,10 +26,18 @@ export function isVoiceSilenced(userId: string): boolean {
   return !!state && (state.muted || state.deafened);
 }
 
-/** Removes the user from whatever voice channel they are in. For ctx.onDisconnect and kicks. */
+/** Removes the user from whatever voice channel they are in. For kicks, explicit leaves and the grace timer. */
 export function leaveVoice(ctx: Ctx, userId: string): void {
+  cancelGrace(userId);
   const channelId = voiceChannelOf.get(userId);
   if (channelId) leaveChannel(ctx, channelId, userId);
+}
+
+function cancelGrace(userId: string): void {
+  const timer = graceTimers.get(userId);
+  if (!timer) return;
+  clearTimeout(timer);
+  graceTimers.delete(userId);
 }
 
 /**
@@ -74,7 +87,16 @@ function broadcastState(ctx: Ctx, channelId: string): void {
 }
 
 export function register(app: Express, ctx: Ctx): void {
-  ctx.onDisconnect.push((userId) => leaveVoice(ctx, userId));
+  // Last socket closed: keep the voice slot for the grace period. If they reconnect in time, onConnect cancels this.
+  ctx.onDisconnect.push((userId) => {
+    if (!voiceChannelOf.has(userId)) return;
+    cancelGrace(userId);
+    graceTimers.set(userId, setTimeout(() => {
+      graceTimers.delete(userId);
+      leaveVoice(ctx, userId);
+    }, VOICE_GRACE_MS));
+  });
+  ctx.onConnect.push(cancelGrace);
 
   app.post('/api/voice/token', ctx.requireAuth, async (req, res) => {
     const userId = (req as AuthedRequest).userId;

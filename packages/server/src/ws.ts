@@ -21,6 +21,7 @@ export function attachWs(http: HttpServer, ctx: Ctx) {
       if (!set) socketsByUser.set(userId, (set = new Set()));
       set.add(ws);
       statusByUser.set(userId, 'online');
+      for (const cb of ctx.onConnect) cb(userId);
       send(ws, { t: 'ready', user: ctx.getUser(userId)!, presence: presenceFor(userId) });
       sendPresenceSnapshot(ws, userId);
       announce(userId, 'online');
