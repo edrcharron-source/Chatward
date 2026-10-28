@@ -20,7 +20,9 @@ export function attachWs(http: HttpServer, ctx: Ctx) {
   const deviceBySocket = new WeakMap<WebSocket, string | null>();
 
   http.on('upgrade', (req, socket, head) => {
-    const url = new URL(req.url ?? '', 'http://x');
+    // A malformed request target (for example "GET //") makes URL throw; that must not reach the process.
+    let url: URL;
+    try { url = new URL(req.url ?? '', 'http://x'); } catch { socket.destroy(); return; }
     if (url.pathname !== '/ws') { socket.destroy(); return; }
     const session = ctx.verifySession(url.searchParams.get('token') ?? '');
     if (!session) { socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n'); socket.destroy(); return; }

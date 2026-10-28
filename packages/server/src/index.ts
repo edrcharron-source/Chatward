@@ -21,6 +21,10 @@ import { register as groups } from './modules/groups.js';
 import { register as watchparty } from './modules/watchparty.js';
 import { register as updates } from './modules/updates.js';
 
+// Log instead of exiting, so one bad request or a failed async task cannot take down every voice call and open socket.
+process.on('uncaughtException', (err) => { console.error('Uncaught exception:', err); });
+process.on('unhandledRejection', (reason) => { console.error('Unhandled rejection:', reason); });
+
 const db = openDb();
 const { signToken, verifySession, requireAuth } = makeAuth(db);
 
