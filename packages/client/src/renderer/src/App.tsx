@@ -3,7 +3,8 @@ import type { Channel, Member } from '@chatward/shared';
 import { api } from './api/http';
 import { connectWs, disconnectWs, onFrame } from './api/ws';
 import { useSession, type ServerBundle } from './state/session';
-import { useSettings, applyTheme } from './state/settings';
+import { useSettings, applyTheme, applyUiStyle } from './state/settings';
+import { installLcarsBeeps } from './lcars/sound';
 import { useVoice } from './state/voice';
 import { initDevice, syncChannelKeys, handleEnvelope, handleMemberLeave } from './crypto';
 import { installNotifications } from './notify/notify';
@@ -25,7 +26,10 @@ export function App() {
   const serverUrl = useSession((s) => s.serverUrl);
   const server = useUpdates((s) => s.server);
   const theme = useSettings((s) => s.theme);
+  const uiStyle = useSettings((s) => s.uiStyle);
   useEffect(() => { void checkServerVersion(serverUrl); }, [serverUrl]);
+  useEffect(() => applyUiStyle(uiStyle), [uiStyle]);
+  useEffect(() => installLcarsBeeps(), []);
   useEffect(() => {
     applyTheme(theme);
     if (theme !== 'system') return;

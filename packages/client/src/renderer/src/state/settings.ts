@@ -2,6 +2,8 @@ import { create } from 'zustand';
 
 export interface Settings {
   theme: 'dark' | 'light' | 'system';
+  uiStyle: 'classic' | 'lcars';  // layout skin; classic is the default
+  lcarsBeeps: boolean;      // short LCARS chirp on button presses (LCARS skin only)
   inputDeviceId: string;   // '' = default
   outputDeviceId: string;
   cameraDeviceId: string;
@@ -23,7 +25,8 @@ export interface Settings {
 
 const LS = 'chatward.settings';
 const defaults = {
-  theme: 'dark' as const, inputDeviceId: '', outputDeviceId: '', cameraDeviceId: '',
+  theme: 'dark' as const, uiStyle: 'classic' as const, lcarsBeeps: false,
+  inputDeviceId: '', outputDeviceId: '', cameraDeviceId: '',
   masterVolume: 1, micGain: 1, noiseSuppression: true, echoCancellation: true,
   messageSounds: true, mutedChannels: [] as string[], voiceJoinLeaveSounds: true, soundVolume: 0.6,
   autoLoadEmbeds: false, linkPreviews: true, userVolumes: {} as Record<string, number>,
@@ -39,6 +42,10 @@ export const useSettings = create<Settings>((set, get) => ({
 function persist(s: Settings) {
   const { set: _s, setUserVolume: _u, ...data } = s;
   localStorage.setItem(LS, JSON.stringify(data));
+}
+
+export function applyUiStyle(style: Settings['uiStyle']) {
+  document.documentElement.dataset.ui = style;
 }
 
 export function applyTheme(t: Settings['theme']) {
