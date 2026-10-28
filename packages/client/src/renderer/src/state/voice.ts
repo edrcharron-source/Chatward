@@ -43,7 +43,8 @@ export interface VoiceState {
   setTheater: (key: string | null) => void;
 }
 
-// Waits before each retry of a rejoin that failed for a reason other than the server refusing the slot.
+// Waits before each retry of a rejoin that failed for a reason other than the server refusing the slot. A rejoin that
+// LiveKit could not answer for, or that LiveKit says is not in the room, is retried on the same schedule before we hang up.
 const REJOIN_RETRY_MS = [3_000, 6_000, 12_000];
 let rejoinRetry: ReturnType<typeof setTimeout> | undefined;
 
@@ -63,14 +64,21 @@ export function resumeVoiceSlot(attempt = 0): void {
   void api.post('/api/voice/rejoin', { channelId, muted, deafened })
     .catch((e) => {
       console.warn('could not restore voice slot', e);
-      if (!(e instanceof ApiError) || ![403, 404, 409].includes(e.status)) {
+      // LiveKit not answering, or not showing us in the room right after a restart or reconnect, may both clear up.
+      const maybeTransient = e instanceof ApiError && (e.status === 503 || (e.status === 409 && e.code === 'not_in_room'));
+      const refused = e instanceof ApiError && !maybeTransient && [403, 404, 409].includes(e.status);
+      if (!refused) {
         // A timeout or network error says nothing about the slot, so try again a few times while the call goes on.
         const delay = REJOIN_RETRY_MS[attempt];
-        if (delay === undefined) return;
-        rejoinRetry = setTimeout(() => {
-          if (useVoice.getState().room === room) resumeVoiceSlot(attempt + 1);
-        }, delay);
-        return;
+        if (delay !== undefined) {
+          rejoinRetry = setTimeout(() => {
+            if (useVoice.getState().room === room) resumeVoiceSlot(attempt + 1);
+          }, delay);
+          return;
+        }
+        // Out of retries. A timeout or network error keeps the call going, as before. A refusal that may still clear
+        // (LiveKit down, or not in the room) hangs up, since the call is not coming back.
+        if (!maybeTransient) return;
       }
       // Skip the leave call: the server has already refused this slot, so it would be refused again.
       const notice = e.status === 409 && e.message.includes('another device')

@@ -1,7 +1,8 @@
 import { signOut, useSession } from '../state/session';
 
 export class ApiError extends Error {
-  constructor(public status: number, message: string) { super(message); }
+  // code is the server's short reason for a refusal that several statuses share, such as "not_in_room".
+  constructor(public status: number, message: string, public code?: string) { super(message); }
 }
 
 // A request that never gets an answer would leave the screen waiting forever, so each one gives up after this long.
@@ -20,10 +21,11 @@ async function req<T>(method: string, path: string, body?: unknown, opts: { raw?
   const res = await fetch(serverUrl.replace(/\/$/, '') + path, { method, headers, body: payload, signal });
   if (!res.ok) {
     let msg = res.statusText;
-    try { msg = (await res.json()).error ?? msg; } catch { /* ignore */ }
+    let code: string | undefined;
+    try { const body = await res.json(); msg = body.error ?? msg; code = body.code; } catch { /* ignore */ }
     // Sign out only if the refused token is still the current one. A password change swaps in a new token, so requests still in flight with the old one fail without ending the session.
     if (res.status === 401 && token && useSession.getState().token === token) void signOut();
-    throw new ApiError(res.status, msg);
+    throw new ApiError(res.status, msg, code);
   }
   if (res.status === 204) return undefined as T;
   const ct = res.headers.get('content-type') ?? '';

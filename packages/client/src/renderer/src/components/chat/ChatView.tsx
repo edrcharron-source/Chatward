@@ -101,11 +101,13 @@ export default function ChatView({ channel }: { channel: Channel }) {
         {chat?.error && (
           <div className="cv-error">
             {chat.error}
-            {!chat.loaded && (
-              <button className="cv-retry" disabled={chat.loading} onClick={() => loadHistory(channel.id).catch(() => {})}>
-                Retry
-              </button>
-            )}
+            <button
+              className="cv-retry"
+              disabled={chat.loading}
+              onClick={() => loadHistory(channel.id, chat.loaded ? 'older' : 'initial').catch(() => {})}
+            >
+              Retry
+            </button>
           </div>
         )}
         {chat?.loaded && messages.length === 0 && <div className="cv-empty muted">No messages yet. Say hi 👋</div>}

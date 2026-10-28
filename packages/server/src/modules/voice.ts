@@ -1,6 +1,7 @@
 import type { Express } from 'express';
-import { AccessToken, RoomServiceClient } from 'livekit-server-sdk';
+import { AccessToken, RoomServiceClient, ServerError } from 'livekit-server-sdk';
 import type { Ctx, AuthedRequest } from '../ctx.js';
+import { perMember } from '../userLimit.js';
 
 // In-memory voice occupancy. Lost on restart, which is fine: clients rejoin.
 const occupants = new Map<string, Set<string>>(); // channelId -> userIds
@@ -121,13 +122,24 @@ function removeFromRoom(ctx: Ctx, channelId: string, userId: string, quiet = fal
   });
 }
 
-/** True if LiveKit has the user in this room right now. A failed lookup counts as not in it, so nothing is assumed. */
-async function inLiveKitRoom(ctx: Ctx, channelId: string, userId: string): Promise<boolean> {
+// How long a rejoin waits for LiveKit to say whether the user is in the room before it gives up on the lookup.
+const ROOM_LOOKUP_MS = 3_000;
+
+/**
+ * Asks LiveKit whether the user is in the room. 'absent' only when LiveKit itself says so. A failed or slow lookup is
+ * 'unknown': the user may still be in the call, so the caller must not treat it as a refusal.
+ */
+async function lookupInRoom(ctx: Ctx, channelId: string, userId: string): Promise<'in' | 'absent' | 'unknown'> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<'unknown'>((resolve) => { timer = setTimeout(() => resolve('unknown'), ROOM_LOOKUP_MS); });
+  const lookup = roomService(ctx).getParticipant(channelId, userId).then(
+    () => 'in' as const,
+    (err: unknown) => (err instanceof ServerError && err.code === 'not_found' ? 'absent' as const : 'unknown' as const),
+  );
   try {
-    await roomService(ctx).getParticipant(channelId, userId);
-    return true;
-  } catch {
-    return false;
+    return await Promise.race([lookup, timeout]);
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -284,7 +296,7 @@ export function register(app: Express, ctx: Ctx): void {
   // The client calls this after its websocket reconnects while it is still in a call. A server restart clears the
   // occupancy above, but LiveKit keeps the media flowing, so the client puts its slot back. No new token is issued.
   // The client also reports its mute state here, since the server clears it along with the slot.
-  app.post('/api/voice/rejoin', ctx.requireAuth, async (req, res) => {
+  app.post('/api/voice/rejoin', ctx.requireAuth, perMember(60_000, 30), async (req, res) => {
     const userId = (req as AuthedRequest).userId;
     const body = (req.body ?? {}) as { channelId?: unknown; muted?: unknown; deafened?: unknown };
     const channelId = body.channelId;
@@ -295,18 +307,36 @@ export function register(app: Express, ctx: Ctx): void {
     if (!channel) { res.status(404).json({ error: 'channel not found' }); return; }
     if (channel.kind !== 'voice') { res.status(400).json({ error: 'not a voice channel' }); return; }
     const { deviceId } = req as AuthedRequest;
+    const key = `${channelId}:${userId}`;
     if (heldByOtherDevice(userId, deviceId)) { res.status(409).json({ error: 'The call is on another device.' }); return; }
     // Removed from this call and the removal is still being enforced. Putting the slot back would show them in the call
     // until the next sweep, so refuse. The client then hangs up. A fresh join clears the removal.
-    if (evictions.has(`${channelId}:${userId}`)) { res.status(409).json({ error: 'You were removed from this call.' }); return; }
+    if (evictions.has(key)) { res.status(409).json({ error: 'You were removed from this call.' }); return; }
     // Without a slot here, the user must be in the LiveKit room. A token's age does not show that: LiveKit refreshes the
     // token inside a call, so a call can outlive the join token. Only LiveKit can say whether the session is still there,
     // and a room the user never joined has no session, so any member still cannot show themselves in it. A slot that is
     // already there is trusted as before.
-    if (!isInVoiceChannel(channelId, userId) && !(await inLiveKitRoom(ctx, channelId, userId))) {
-      res.status(409).json({ error: 'You are not in this call. Join it again.' });
-      return;
+    if (!isInVoiceChannel(channelId, userId)) {
+      // Set before the lookup, so a removal that lands during it starts the repeat. After a restart this is the only
+      // token record the room has, and the client still holds the token from before the restart.
+      lastToken.set(key, Date.now());
+      const inRoom = await lookupInRoom(ctx, channelId, userId);
+      // LiveKit could not answer, which says nothing about the call. The client retries rather than hanging up.
+      if (inRoom === 'unknown') {
+        res.status(503).json({ error: 'Could not reach the call server. Try again shortly.', code: 'lookup_unavailable' });
+        return;
+      }
+      if (inRoom === 'absent') {
+        res.status(409).json({ error: 'You are not in this call. Join it again.', code: 'not_in_room' });
+        return;
+      }
     }
+
+    // The lookup took time. A removal, a ban or a second device may have landed meanwhile, so check again before the slot
+    // goes back.
+    if (evictions.has(key)) { res.status(409).json({ error: 'You were removed from this call.' }); return; }
+    if (heldByOtherDevice(userId, deviceId)) { res.status(409).json({ error: 'The call is on another device.' }); return; }
+    if (!ctx.serverIdForChannelMember(channelId, userId)) { res.status(404).json({ error: 'channel not found' }); return; }
 
     // Moving from another voice channel works like a join: end the old room and tell the account's other sockets.
     const previous = voiceChannelOf.get(userId);
