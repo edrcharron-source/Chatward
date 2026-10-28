@@ -136,7 +136,12 @@ function Shell() {
             if (b) st.upsertServer({ ...b, server: f.server });
             break;
           }
-          case 'server.delete': st.removeServer(f.serverId); break;
+          case 'server.delete': {
+            // the server has already dropped every voice slot, so end our own call in it too
+            if (useVoice.getState().serverId === f.serverId) void useVoice.getState().leave();
+            st.removeServer(f.serverId);
+            break;
+          }
           case 'member.role': {
             const b = st.servers.find((x) => x.server.id === f.serverId);
             if (b) st.upsertServer({ ...b, members: b.members.map((m) => (m.user.id === f.userId ? { ...m, role: f.role } : m)) });
@@ -149,7 +154,12 @@ function Shell() {
             break;
           }
           case 'member.leave': {
-            if (f.userId === st.user?.id) { st.removeServer(f.serverId); break; }
+            if (f.userId === st.user?.id) {
+              // we left (or were kicked), so end any call we had in this server
+              if (useVoice.getState().serverId === f.serverId) void useVoice.getState().leave();
+              st.removeServer(f.serverId);
+              break;
+            }
             const b = st.servers.find((x) => x.server.id === f.serverId);
             if (b) st.upsertServer({ ...b, members: b.members.filter((m) => m.user.id !== f.userId) });
             void handleMemberLeave(f.serverId, f.userId, useSession.getState().servers)

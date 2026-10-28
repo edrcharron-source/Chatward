@@ -11,7 +11,7 @@ import {
 } from '@chatward/shared';
 import type { AuthedRequest, Ctx } from '../ctx.js';
 import { newId } from '../db.js';
-import { clearVoiceChannel, kickFromCall, leaveVoice } from './voice.js';
+import { clearVoiceChannel, kickFromCall } from './voice.js';
 
 const { SERVER_NAME_MAX, CHANNEL_NAME_MAX } = LIMITS;
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -262,7 +262,7 @@ export function register(app: Express, ctx: Ctx): void {
     const members = ctx.db.prepare('SELECT user_id FROM members WHERE server_id=?').all(serverId) as { user_id: string }[];
     const gone: ServerFrame = { t: 'server.delete', serverId };
     ctx.broadcastToServer(serverId, gone);
-    for (const { user_id } of members) leaveVoice(ctx, user_id);
+    for (const { user_id } of members) kickFromCall(ctx, serverId, user_id);
     ctx.db.prepare('DELETE FROM servers WHERE id=?').run(serverId);
     res.json({ ok: true });
   }));
@@ -279,7 +279,7 @@ export function register(app: Express, ctx: Ctx): void {
     const leave: ServerFrame = { t: 'member.leave', serverId, userId: uid };
     ctx.broadcastToServer(serverId, leave);
     ctx.sendToUser(uid, leave);
-    leaveVoice(ctx, uid);
+    kickFromCall(ctx, serverId, uid);
     res.json({ ok: true });
   }));
 
