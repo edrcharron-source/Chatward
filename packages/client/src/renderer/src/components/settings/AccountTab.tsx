@@ -18,6 +18,7 @@ export default function AccountTab() {
   const [name, setName] = useState(user?.displayName ?? '');
   const [status, setStatus] = useState<Status | null>(null);
   const [busy, setBusy] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
 
   const [current, setCurrent] = useState<string | null>(null);
   const [rev, setRev] = useState(0);
@@ -66,6 +67,20 @@ export default function AccountTab() {
     } catch (err) {
       setStatus({ ok: false, text: errorText(err) });
     } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deleteAccount(e: FormEvent) {
+    e.preventDefault();
+    if (!window.confirm('Delete your account? You will leave every server. This cannot be undone.')) return;
+    setBusy(true);
+    try {
+      await api.post('/api/me/delete', { password: deletePassword });
+      // The account is gone, so there is no server call left to make. Clear the local session directly.
+      useSession.getState().logout();
+    } catch (err) {
+      setStatus({ ok: false, text: errorText(err) });
       setBusy(false);
     }
   }
@@ -154,7 +169,21 @@ export default function AccountTab() {
 
       <ProfileEditor user={user} />
 
-      {status && <p className={status.ok ? 'ok-text' : 'error-text'} role="status">{status.text}</p>}
+      <Section title="Delete account">
+        <form className="setting-row" onSubmit={deleteAccount}>
+          <label className="field grow">
+            <span>
+              Removes you from every server and deletes your devices and profile picture.
+              Your old messages stay. Owners must hand off or delete their servers first.
+            </span>
+            <input type="password" value={deletePassword} placeholder="Password"
+              autoComplete="current-password" onChange={(e) => setDeletePassword(e.target.value)} />
+          </label>
+          <button type="submit" className="danger" disabled={busy || !deletePassword}>Delete account</button>
+        </form>
+      </Section>
+
+      {status &&<p className={status.ok ? 'ok-text' : 'error-text'} role="status">{status.text}</p>}
     </>
   );
 }

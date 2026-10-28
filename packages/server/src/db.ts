@@ -186,6 +186,8 @@ export function openDb(): DB {
   for (const [col, def] of Object.entries(profileCols)) {
     if (!userCols.has(col)) db.exec(`ALTER TABLE users ADD COLUMN ${col} ${def}`);
   }
+  // Deleted accounts keep their row so old messages still point at a user. This marks them as gone.
+  if (!userCols.has('deleted_at')) db.exec('ALTER TABLE users ADD COLUMN deleted_at INTEGER');
   // Upload cleanup: `tracked` marks uploads from clients that report which message they were attached to.
   // Older uploads stay tracked=0 and are never swept, since the server cannot see inside message ciphertext.
   const uploadCols = new Set((db.pragma('table_info(uploads)') as { name: string }[]).map((c) => c.name));

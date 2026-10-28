@@ -14,6 +14,7 @@ import {
   cleanText,
   peerIds,
   redeemInvite,
+  removeMember,
   route,
   userIdOf,
 } from './servers.js';
@@ -166,7 +167,7 @@ export function register(app: Express, ctx: Ctx): void {
     const password = typeof body.password === 'string' && body.password.length <= PASSWORD_MAX ? body.password : '';
     const device = parseDevice(body.device);
     const row = username
-      ? (ctx.db.prepare('SELECT id, password_hash FROM users WHERE username=?').get(username) as
+      ? (ctx.db.prepare('SELECT id, password_hash FROM users WHERE username=? AND deleted_at IS NULL').get(username) as
           { id: string; password_hash: string } | undefined)
       : undefined;
     const ok = password !== '' && (await verify(row?.password_hash ?? (await dummyHash), password));
@@ -230,6 +231,45 @@ export function register(app: Express, ctx: Ctx): void {
       .run(displayName, bio, pronouns, accentColor, bannerColor, uid);
     broadcastUser(ctx, uid);
     res.json({ user: mustUser(ctx, uid) });
+  }));
+
+  // Deletes the caller's account. Owners must hand off or delete their servers first. The row stays as a
+  // tombstone so old messages still point at a user; everything personal is wiped.
+  app.post('/api/me/delete', ctx.requireAuth, route(async (req, res) => {
+    const uid = userIdOf(req);
+    const body = bodyOf(req);
+    const password = typeof body.password === 'string' && body.password.length <= PASSWORD_MAX ? body.password : '';
+    const row = ctx.db.prepare('SELECT password_hash FROM users WHERE id=?').get(uid) as
+      { password_hash: string } | undefined;
+    if (!row) throw new ApiError(401, 'unauthorized');
+    if (!password || !(await verify(row.password_hash, password))) throw new ApiError(403, 'password is incorrect');
+
+    const owned = ctx.db.prepare('SELECT name FROM servers WHERE owner_id=?').all(uid) as { name: string }[];
+    if (owned.length > 0) {
+      throw new ApiError(409, `transfer or delete your servers first: ${owned.map((s) => s.name).join(', ')}`);
+    }
+
+    // Read before the wipe: the broadcasts below still need the servers the user is in.
+    const serverIds = (ctx.db.prepare('SELECT server_id FROM members WHERE user_id=?').all(uid) as
+      { server_id: string }[]).map((r) => r.server_id);
+    const files = ctx.db.prepare('SELECT avatar_path, banner_path FROM users WHERE id=?').get(uid) as
+      { avatar_path: string | null; banner_path: string | null };
+
+    ctx.db.transaction(() => {
+      ctx.db.prepare('DELETE FROM mls_keypackages WHERE device_id IN (SELECT device_id FROM devices WHERE user_id=?)').run(uid);
+      ctx.db.prepare('DELETE FROM devices WHERE user_id=?').run(uid);
+      ctx.db.prepare(`UPDATE users SET username=?, display_name='Deleted user', password_hash='', avatar_path=NULL,
+          banner_path=NULL, bio='', pronouns='', accent_color=NULL, banner_color=NULL, deleted_at=? WHERE id=?`)
+        .run(`deleted-${uid}`, Date.now(), uid);
+    })();
+    // Peers still share a server with the user at this point, so they hear about the wipe before the removal.
+    broadcastDevices(ctx, uid);
+    broadcastUser(ctx, uid);
+    for (const serverId of serverIds) removeMember(ctx, serverId, uid);
+
+    if (files.avatar_path) fs.rmSync(path.join(avatarDir, path.basename(files.avatar_path)), { force: true });
+    if (files.banner_path) fs.rmSync(path.join(bannerDir, path.basename(files.banner_path)), { force: true });
+    res.json({ ok: true });
   }));
 
   app.put('/api/me/banner', ctx.requireAuth, rawBody(LIMITS.BANNER_MAX_BYTES), route((req, res) => {

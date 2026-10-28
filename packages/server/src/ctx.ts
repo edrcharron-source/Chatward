@@ -39,7 +39,7 @@ export function makeAuth(db: DB) {
       const p = jwt.verify(token, config.jwtSecret) as jwt.JwtPayload;
       const id = typeof p.sub === 'string' ? p.sub : null;
       if (!id) return null;
-      return db.prepare('SELECT 1 FROM users WHERE id=?').get(id) ? id : null;
+      return db.prepare('SELECT 1 FROM users WHERE id=? AND deleted_at IS NULL').get(id) ? id : null;
     } catch {
       return null;
     }
