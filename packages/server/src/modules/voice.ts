@@ -8,8 +8,9 @@ const voiceChannelOf = new Map<string, string>(); // userId -> channelId (a user
 const voiceDeviceOf = new Map<string, string>(); // userId -> the device that holds the voice slot
 const selfState = new Map<string, { muted: boolean; deafened: boolean }>(); // userId -> self mute/deafen, reported by the client
 
-// Only needed to join. An active call keeps its LiveKit session, so a short TTL does not cut calls off.
-const TOKEN_TTL = '10m';
+// Only needed to join. An active call keeps its LiveKit session, so a short TTL does not cut calls off. Kept short so a
+// token taken before a kick or ban stops working within a minute.
+const TOKEN_TTL = '1m';
 
 // A dropped websocket does not end a call: LiveKit keeps the media flowing. Hold the voice slot this long so a
 // quick reconnect keeps it. Kicks and explicit leaves ignore this and still act at once.
