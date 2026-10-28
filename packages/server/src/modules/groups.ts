@@ -241,6 +241,8 @@ export function register(app: Express, ctx: Ctx): void {
     res.json({
       epoch: current,
       commits: rows.map((r) => ({ epoch: r.epoch, senderDeviceId: r.sender_device_id, commit: r.commit_bytes })),
+      // A full chunk means there may be more Commits after it: the client asks again from the last epoch it applied.
+      more: rows.length === MAX_COMMITS_PER_FETCH,
     });
   });
 
