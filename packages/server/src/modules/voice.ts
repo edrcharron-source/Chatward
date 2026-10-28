@@ -1,12 +1,13 @@
 import type { Express } from 'express';
-import { AccessToken } from 'livekit-server-sdk';
+import { AccessToken, RoomServiceClient } from 'livekit-server-sdk';
 import type { Ctx, AuthedRequest } from '../ctx.js';
 
 // In-memory voice occupancy. Lost on restart, which is fine: clients rejoin.
 const occupants = new Map<string, Set<string>>(); // channelId -> userIds
 const voiceChannelOf = new Map<string, string>(); // userId -> channelId (a user is in at most one VC)
 
-const TOKEN_TTL = '1h';
+// Only needed to join. An active call keeps its LiveKit session, so a short TTL does not cut calls off.
+const TOKEN_TTL = '10m';
 
 /** True if the user currently holds a voice slot in this channel. Used by soundboard. */
 export function isInVoiceChannel(channelId: string, userId: string): boolean {
@@ -17,6 +18,21 @@ export function isInVoiceChannel(channelId: string, userId: string): boolean {
 export function leaveVoice(ctx: Ctx, userId: string): void {
   const channelId = voiceChannelOf.get(userId);
   if (channelId) leaveChannel(ctx, channelId, userId);
+}
+
+/**
+ * For a server kick: drops the user from voice, then removes them from every voice room on the server, so they stop
+ * receiving media now. Not used on a dropped socket, where a reconnect should keep the call. Checks every room
+ * rather than the in-memory occupancy, which a dropped socket may have cleared.
+ */
+export function kickFromCall(ctx: Ctx, serverId: string, userId: string): void {
+  leaveVoice(ctx, userId);
+  const rooms = new RoomServiceClient(ctx.config.livekit.apiUrl, ctx.config.livekit.apiKey, ctx.config.livekit.apiSecret);
+  const channels = ctx.db.prepare("SELECT id FROM channels WHERE server_id=? AND kind='voice'").all(serverId) as { id: string }[];
+  for (const { id } of channels) {
+    // Fails for rooms the user is not in, which is expected. A real failure is logged.
+    rooms.removeParticipant(id, userId).catch((err: unknown) => console.warn('livekit removeParticipant failed', id, err));
+  }
 }
 
 function leaveChannel(ctx: Ctx, channelId: string, userId: string): boolean {

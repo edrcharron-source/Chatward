@@ -4,7 +4,7 @@ import { api } from './api/http';
 import { connectWs, disconnectWs, onFrame } from './api/ws';
 import { useSession, type ServerBundle } from './state/session';
 import { useSettings, applyTheme } from './state/settings';
-import { useVoice } from './state/voice';
+import { useVoice, rekeyActiveCall } from './state/voice';
 import { initDevice, syncChannelKeys, handleEnvelope, handleMemberLeave } from './crypto';
 import { installNotifications } from './notify/notify';
 import AuthScreen from './components/auth/AuthScreen';
@@ -125,7 +125,9 @@ function Shell() {
             if (f.userId === st.user?.id) { st.setServers(st.servers.filter((b) => b.server.id !== f.serverId)); break; }
             const b = st.servers.find((x) => x.server.id === f.serverId);
             if (b) st.upsertServer({ ...b, members: b.members.filter((m) => m.user.id !== f.userId) });
-            void handleMemberLeave(f.serverId, f.userId, useSession.getState().servers);
+            void handleMemberLeave(f.serverId, f.userId, useSession.getState().servers)
+              .then(rekeyActiveCall)
+              .catch((e) => console.error(e));
             break;
           }
           case 'member.devices': {
@@ -134,6 +136,11 @@ function Shell() {
             void syncChannelKeys(useSession.getState().servers);
             break;
           }
+          // Another device moved a group on, so catch up now. Then the call key follows the new epoch.
+          case 'group.commit':
+          case 'group.welcome':
+            void syncChannelKeys(useSession.getState().servers).then(rekeyActiveCall).catch((e) => console.error(e));
+            break;
           case 'key.envelope': void handleEnvelope(f.envelope); break;
         }
       });

@@ -251,7 +251,7 @@ async function reconcile(channelId: string, members: Member[]): Promise<boolean>
   if (gone.length) {
     const step = await mls.removeMembers(state, gone.map((l) => l.leafIndex));
     const remaining = mls.memberLeaves(step.state).map((l) => l.deviceId);
-    if ((await postCommit(channelId, epoch, step, remaining, [])) === 'conflict') return false;
+    if ((await postCommit(channelId, epoch, step, remaining, [])) === 'conflict') return (await catchUp(channelId)) || changed;
     await setGroup(channelId, step.state, epoch + 1);
     state = step.state;
     epoch += 1;
@@ -265,7 +265,7 @@ async function reconcile(channelId: string, members: Member[]): Promise<boolean>
   if (added.length === 0) return changed;
   const step = await mls.addMembers(state, added.map((a) => a.kp));
   const after = [...inGroup, ...added.map((a) => a.deviceId)];
-  if ((await postCommit(channelId, epoch, step, after, added.map((a) => a.deviceId))) === 'conflict') return changed;
+  if ((await postCommit(channelId, epoch, step, after, added.map((a) => a.deviceId))) === 'conflict') return (await catchUp(channelId)) || changed;
   await setGroup(channelId, step.state, epoch + 1);
   return true;
 }

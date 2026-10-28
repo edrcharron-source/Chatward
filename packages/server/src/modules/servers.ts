@@ -10,7 +10,7 @@ import {
 } from '@chatward/shared';
 import type { AuthedRequest, Ctx } from '../ctx.js';
 import { newId } from '../db.js';
-import { leaveVoice } from './voice.js';
+import { kickFromCall } from './voice.js';
 
 const SERVER_NAME_MAX = 64;
 const CHANNEL_NAME_MAX = 32;
@@ -257,7 +257,7 @@ export function register(app: Express, ctx: Ctx): void {
     const leave: ServerFrame = { t: 'member.leave', serverId, userId: targetId };
     ctx.broadcastToServer(serverId, leave);
     ctx.sendToUser(targetId, leave);
-    leaveVoice(ctx, targetId);
+    kickFromCall(ctx, serverId, targetId);
     res.json({ ok: true });
   }));
 }
