@@ -1,6 +1,13 @@
 import crypto from 'node:crypto';
 import type { Express, NextFunction, Request, Response } from 'express';
-import type { Channel, Member, Server, ServerFrame } from '@chatward/shared';
+import {
+  DEFAULT_VOICE_BITRATE_KBPS,
+  VOICE_BITRATES_KBPS,
+  type Channel,
+  type Member,
+  type Server,
+  type ServerFrame,
+} from '@chatward/shared';
 import type { AuthedRequest, Ctx } from '../ctx.js';
 import { newId } from '../db.js';
 import { leaveVoice } from './voice.js';
@@ -11,7 +18,13 @@ const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const INVITE_MAX_USES = 100;
 
 type ServerRow = { id: string; name: string; owner_id: string };
-type ChannelRow = { id: string; server_id: string; name: string; kind: Channel['kind'] };
+type ChannelRow = {
+  id: string;
+  server_id: string;
+  name: string;
+  kind: Channel['kind'];
+  bitrate_kbps: number;
+};
 type InviteRow = { server_id: string; expires_at: number; max_uses: number; uses: number };
 
 export class ApiError extends Error {
@@ -54,11 +67,28 @@ export function serverOf(ctx: Ctx, id: string): Server {
   return { id: r.id, name: r.name, ownerId: r.owner_id };
 }
 
+const CHANNEL_COLUMNS = 'id, server_id, name, kind, bitrate_kbps';
+
+/** bitrateKbps is only meaningful for voice channels, so text channels omit it. */
+function toChannel(r: ChannelRow): Channel {
+  return {
+    id: r.id,
+    serverId: r.server_id,
+    name: r.name,
+    kind: r.kind,
+    ...(r.kind === 'voice' ? { bitrateKbps: r.bitrate_kbps } : {}),
+  };
+}
+
 export function channelsOf(ctx: Ctx, serverId: string): Channel[] {
   return (ctx.db
-    .prepare('SELECT id, server_id, name, kind FROM channels WHERE server_id=? ORDER BY rowid')
+    .prepare(`SELECT ${CHANNEL_COLUMNS} FROM channels WHERE server_id=? ORDER BY rowid`)
     .all(serverId) as ChannelRow[])
-    .map((r) => ({ id: r.id, serverId: r.server_id, name: r.name, kind: r.kind }));
+    .map(toChannel);
+}
+
+function channelOf(ctx: Ctx, channelId: string): Channel {
+  return toChannel(ctx.db.prepare(`SELECT ${CHANNEL_COLUMNS} FROM channels WHERE id=?`).get(channelId) as ChannelRow);
 }
 
 function insertChannel(ctx: Ctx, serverId: string, name: string, kind: Channel['kind']): Channel {
@@ -66,7 +96,7 @@ function insertChannel(ctx: Ctx, serverId: string, name: string, kind: Channel['
   ctx.db
     .prepare('INSERT INTO channels (id, server_id, name, kind, created_at) VALUES (?, ?, ?, ?, ?)')
     .run(id, serverId, name, kind, Date.now());
-  return { id, serverId, name, kind };
+  return channelOf(ctx, id);
 }
 
 /** Owner or admin only. 404 for non-members so existence is not leaked. */
@@ -118,6 +148,14 @@ export function announceJoin(ctx: Ctx, serverId: string, userId: string): void {
 }
 
 export function register(app: Express, ctx: Ctx): void {
+  // Databases created before per-channel bitrate lack the column; add it in place.
+  const cols = ctx.db.prepare('PRAGMA table_info(channels)').all() as { name: string }[];
+  if (!cols.some((c) => c.name === 'bitrate_kbps')) {
+    ctx.db.exec(
+      `ALTER TABLE channels ADD COLUMN bitrate_kbps INTEGER NOT NULL DEFAULT ${DEFAULT_VOICE_BITRATE_KBPS}`,
+    );
+  }
+
   app.post('/api/servers', ctx.requireAuth, route((req, res) => {
     const uid = userIdOf(req);
     const name = cleanText(bodyOf(req).name, SERVER_NAME_MAX, 'server name');
@@ -158,6 +196,25 @@ export function register(app: Express, ctx: Ctx): void {
     const name = cleanText(body.name, CHANNEL_NAME_MAX, 'channel name');
     const channel = insertChannel(ctx, serverId, name, body.kind);
     ctx.broadcastToServer(serverId, { t: 'channel.new', channel });
+    res.json({ channel });
+  }));
+
+  app.patch('/api/servers/:id/channels/:channelId', ctx.requireAuth, route((req, res) => {
+    const serverId = String(req.params.id);
+    const channelId = String(req.params.channelId);
+    requireAdmin(ctx, serverId, userIdOf(req));
+    const row = ctx.db
+      .prepare('SELECT kind FROM channels WHERE id=? AND server_id=?')
+      .get(channelId, serverId) as { kind: Channel['kind'] } | undefined;
+    if (!row) throw new ApiError(404, 'channel not found');
+    const bitrate = bodyOf(req).bitrateKbps;
+    if (typeof bitrate !== 'number' || !(VOICE_BITRATES_KBPS as readonly number[]).includes(bitrate)) {
+      bad(`bitrateKbps must be one of ${VOICE_BITRATES_KBPS.join(', ')}`);
+    }
+    if (row.kind !== 'voice') bad('bitrate can only be set on voice channels');
+    ctx.db.prepare('UPDATE channels SET bitrate_kbps=? WHERE id=?').run(bitrate, channelId);
+    const channel = channelOf(ctx, channelId);
+    ctx.broadcastToServer(serverId, { t: 'channel.update', channel });
     res.json({ channel });
   }));
 
