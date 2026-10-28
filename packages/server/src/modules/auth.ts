@@ -128,6 +128,14 @@ function mustUser(ctx: Ctx, userId: string) {
   return user;
 }
 
+/** Profile pictures are visible to the account itself and to anyone who shares a server with it. */
+function canSeeProfileImage(ctx: Ctx, viewerId: string, ownerId: string): boolean {
+  if (viewerId === ownerId) return true;
+  return !!ctx.db.prepare(
+    'SELECT 1 FROM members a JOIN members b ON b.server_id=a.server_id WHERE a.user_id=? AND b.user_id=? LIMIT 1',
+  ).get(viewerId, ownerId);
+}
+
 /** Free text that may be empty. Bios may contain line breaks; other fields may not. */
 function freeText(v: unknown, max: number, label: string, multiline: boolean): string {
   if (typeof v !== 'string') bad(`${label} must be text`);
@@ -425,9 +433,10 @@ export function register(app: Express, ctx: Ctx): void {
   }));
 
   app.get('/api/banners/:userId', ctx.requireAuth, route((req, res) => {
-    const row = ctx.db.prepare('SELECT banner_path FROM users WHERE id=?').get(String(req.params.userId)) as
+    const ownerId = String(req.params.userId);
+    const row = ctx.db.prepare('SELECT banner_path FROM users WHERE id=?').get(ownerId) as
       { banner_path: string | null } | undefined;
-    if (!row?.banner_path) throw new ApiError(404, 'no banner');
+    if (!row?.banner_path || !canSeeProfileImage(ctx, userIdOf(req), ownerId)) throw new ApiError(404, 'no banner');
     res.setHeader('Cache-Control', 'private, no-cache');
     res.sendFile(path.join(bannerDir, path.basename(row.banner_path)), (err) => {
       if (err && !res.headersSent) res.status(404).json({ error: 'no banner' });
@@ -466,9 +475,10 @@ export function register(app: Express, ctx: Ctx): void {
   }));
 
   app.get('/api/avatars/:userId', ctx.requireAuth, route((req, res) => {
-    const row = ctx.db.prepare('SELECT avatar_path FROM users WHERE id=?').get(String(req.params.userId)) as
+    const ownerId = String(req.params.userId);
+    const row = ctx.db.prepare('SELECT avatar_path FROM users WHERE id=?').get(ownerId) as
       { avatar_path: string | null } | undefined;
-    if (!row?.avatar_path) throw new ApiError(404, 'no avatar');
+    if (!row?.avatar_path || !canSeeProfileImage(ctx, userIdOf(req), ownerId)) throw new ApiError(404, 'no avatar');
     res.setHeader('Cache-Control', 'private, no-cache');
     res.sendFile(path.join(avatarDir, path.basename(row.avatar_path)), (err) => {
       if (err && !res.headersSent) res.status(404).json({ error: 'no avatar' });
