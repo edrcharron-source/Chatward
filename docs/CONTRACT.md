@@ -57,6 +57,7 @@ Desktop updates (module `updates`), public, no auth
 Voice (module `voice`)
 - POST /api/voice/token {channelId} -> {url, token}   LiveKit JWT (room = channelId, identity = userId). Env LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET (defaults devkey/secret/ws://localhost:7880).
 - POST /api/voice/leave {channelId} -> {ok}
+- POST /api/voice/state {channelId, muted, deafened} -> {ok}  (client reports its own mic/speaker state; muted or deafened users get 409 on sound-play)
 - GET  /api/servers/:id/voice-state -> {channels: Record<channelId, userId[]>}   who is in each voice channel
   Server tracks occupancy in memory: token request = join (and leaving any other voice channel first), /leave or WS disconnect (ctx.onDisconnect) = leave.
   Every change broadcasts `voice.state` {serverId, channelId, userIds} so all members see who is in VC.

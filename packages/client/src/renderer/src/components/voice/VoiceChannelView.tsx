@@ -8,6 +8,7 @@ import { useSession } from '../../state/session';
 import { useSettings } from '../../state/settings';
 import { useVoice } from '../../state/voice';
 import ProfileTrigger from '../profile/ProfileTrigger';
+import SoundboardPanel from '../soundboard/SoundboardPanel';
 
 const NOBODY: string[] = [];
 
@@ -132,14 +133,21 @@ export default function VoiceChannelView({ channel, theaterOnly = false }: { cha
         <div role="alert" style={{ padding: '8px 16px', color: 'var(--danger)' }}>{error}</div>
       )}
 
-      <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: 16 }}>
-        {entries.length === 0
-          ? <div className="muted" style={{ margin: 'auto', textAlign: 'center', paddingTop: 40 }}>Nobody is in this voice channel yet.</div>
-          : theaterLayout || (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 12 }}>
-              {specs.map((s) => <Fragment key={s.key}>{renderTile(s)}</Fragment>)}
-            </div>
-          )}
+      <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
+        <div style={{ flex: 1, minWidth: 0, overflow: 'auto', padding: 16 }}>
+          {entries.length === 0
+            ? <div className="muted" style={{ margin: 'auto', textAlign: 'center', paddingTop: 40 }}>Nobody is in this voice channel yet.</div>
+            : theaterLayout || (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 12 }}>
+                {specs.map((s) => <Fragment key={s.key}>{renderTile(s)}</Fragment>)}
+              </div>
+            )}
+        </div>
+        {inCall && (
+          <aside style={{ flex: '0 0 260px', minHeight: 0, overflow: 'auto', borderLeft: '1px solid var(--border)' }}>
+            <SoundboardPanel serverId={channel.serverId} channelId={channel.id} />
+          </aside>
+        )}
       </div>
     </div>
   );

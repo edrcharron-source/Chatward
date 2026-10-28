@@ -5,12 +5,19 @@ import type { Ctx, AuthedRequest } from '../ctx.js';
 // In-memory voice occupancy. Lost on restart, which is fine: clients rejoin.
 const occupants = new Map<string, Set<string>>(); // channelId -> userIds
 const voiceChannelOf = new Map<string, string>(); // userId -> channelId (a user is in at most one VC)
+const selfState = new Map<string, { muted: boolean; deafened: boolean }>(); // userId -> self mute/deafen, reported by the client
 
 const TOKEN_TTL = '1h';
 
 /** True if the user currently holds a voice slot in this channel. Used by soundboard. */
 export function isInVoiceChannel(channelId: string, userId: string): boolean {
   return occupants.get(channelId)?.has(userId) ?? false;
+}
+
+/** True if the user has muted or deafened themselves in their current call. Used by soundboard. */
+export function isVoiceSilenced(userId: string): boolean {
+  const state = selfState.get(userId);
+  return !!state && (state.muted || state.deafened);
 }
 
 /** Removes the user from whatever voice channel they are in. For ctx.onDisconnect and kicks. */
@@ -25,6 +32,7 @@ function leaveChannel(ctx: Ctx, channelId: string, userId: string): boolean {
   set.delete(userId);
   if (set.size === 0) occupants.delete(channelId);
   voiceChannelOf.delete(userId);
+  selfState.delete(userId);
   broadcastState(ctx, channelId);
   return true;
 }
@@ -75,6 +83,18 @@ export function register(app: Express, ctx: Ctx): void {
     const channelId = (req.body as { channelId?: unknown } | undefined)?.channelId;
     if (typeof channelId !== 'string') { res.status(400).json({ error: 'channelId required' }); return; }
     leaveChannel(ctx, channelId, userId);
+    res.json({ ok: true });
+  });
+
+  // The client reports its own mic/speaker state so the server can refuse soundboard plays from silenced users.
+  app.post('/api/voice/state', ctx.requireAuth, (req, res) => {
+    const userId = (req as AuthedRequest).userId;
+    const body = (req.body ?? {}) as { channelId?: unknown; muted?: unknown; deafened?: unknown };
+    if (typeof body.channelId !== 'string' || typeof body.muted !== 'boolean' || typeof body.deafened !== 'boolean') {
+      res.status(400).json({ error: 'channelId, muted and deafened required' }); return;
+    }
+    if (!isInVoiceChannel(body.channelId, userId)) { res.status(409).json({ error: 'join the voice channel first' }); return; }
+    selfState.set(userId, { muted: body.muted, deafened: body.deafened });
     res.json({ ok: true });
   });
 
