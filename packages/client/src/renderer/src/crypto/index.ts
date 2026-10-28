@@ -318,14 +318,21 @@ async function setGroup(channelId: string, state: ClientState, epoch: number): P
 
 async function ensureGroup(channelId: string, members: Member[]): Promise<boolean> {
   let changed = false;
-  if (groupOf(channelId)) {
-    changed = await catchUp(channelId);
-    // Still in the group: nothing more to do. Otherwise catchUp forgot it, and we rejoin below.
-    if (groupOf(channelId)) return changed;
-  }
   const me = getDevice();
   const welcomes = await api.get<{ welcomes: { epoch: number; toDeviceId: string; welcome: string }[] }>(`/api/groups/${channelId}/welcomes`);
   const latest = welcomes.welcomes.filter((w) => w.toDeviceId === me.deviceId).at(-1);
+  // A Welcome newer than our state means this device was added again after the state we hold (for example after a
+  // kick). Our old state cannot follow the Commits that led to it, so drop it and join from the Welcome. Never reset.
+  const stored = vault.groups[channelId];
+  if (latest && stored && latest.epoch > stored.epoch) {
+    forgetGroup(channelId);
+    changed = true;
+  }
+  if (groupOf(channelId)) {
+    changed = (await catchUp(channelId)) || changed;
+    // Still in the group: nothing more to do. Otherwise catchUp forgot it, and we rejoin below.
+    if (groupOf(channelId)) return changed;
+  }
   if (latest) {
     const state = await joinFromPool(latest.welcome);
     if (!state) return changed;
@@ -391,6 +398,11 @@ async function catchUp(channelId: string): Promise<boolean> {
       break;
     }
     epoch += 1;
+    // A Commit removed this device. Nothing after it applies to us, so forget the group. A later add rejoins from a Welcome.
+    if (state.groupActiveState.kind === 'removedFromGroup') {
+      forgetGroup(channelId);
+      return true;
+    }
   }
   const moved = epoch !== stored.epoch;
   if (moved) await setGroup(channelId, state, epoch);
@@ -512,6 +524,26 @@ export function handleEnvelope(env: KeyEnvelope): Promise<void> {
 }
 
 /**
+ * Call when this account leaves or is kicked from a server. Its groups there are no longer ours to follow, so they are
+ * forgotten. History keys already held are kept, and a later invite rejoins from a Welcome.
+ */
+export function forgetChannelGroups(channelIds: string[]): Promise<void> {
+  return serial(async () => {
+    if (isDemo() || !device) return;
+    let changed = false;
+    for (const id of channelIds) {
+      if (!vault.groups[id]) continue;
+      forgetGroup(id);
+      changed = true;
+    }
+    if (changed) {
+      await persistVault();
+      notify();
+    }
+  });
+}
+
+/**
  * Call on member.leave (after a kick). Runs the channel sync for the server without the removed user, so the
  * remaining members commit the Remove. Keys the removed user already held are not erased.
  */
@@ -586,6 +618,8 @@ function localKey(channelId: string, version: number): Bytes | null {
 
 function putKey(channelId: string, version: number, key: Bytes): void {
   vault.channels[channelId] = { ...vault.channels[channelId], [String(version)]: toB64(key as Uint8Array<ArrayBuffer>) };
+  // A replaced key must not keep decrypting with the CryptoKey imported from the old one.
+  aesCache.delete(`${channelId}#${version}`);
 }
 
 function aesKeyFor(channelId: string, version: number): Promise<CryptoKey> | null {

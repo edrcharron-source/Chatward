@@ -53,6 +53,9 @@ export function register(app: Express, ctx: Ctx): void {
   const groupDevices = db.prepare('SELECT device_id FROM mls_group_devices WHERE group_id=?');
   const dropCommitsFrom = db.prepare('DELETE FROM mls_commits WHERE group_id=? AND epoch>=?');
   const dropWelcomesAfter = db.prepare('DELETE FROM mls_welcomes WHERE group_id=? AND epoch>?');
+  // A Commit at epoch e comes with Welcomes at e+1, so these are the Welcomes a reset from `epoch` would drop.
+  const welcomeForDeviceAfter = db.prepare(
+    'SELECT 1 FROM mls_welcomes WHERE group_id=? AND epoch>? AND to_device_id=? LIMIT 1');
   // Copies the device's keys into the seen list. A device that is later deleted leaves no devices row, but its
   // Commits must still verify for peers who catch up, so the seen list keeps its own copy.
   const insertSeenDevice = db.prepare(
@@ -230,10 +233,13 @@ export function register(app: Express, ctx: Ctx): void {
     if (!requireOwnDevice(userId, body.deviceId, res)) return;
     if (!isEpoch(body.epoch)) return void bad(res, 'invalid epoch');
     const epoch = body.epoch;
+    const deviceId = body.deviceId as string;
     const result = db.transaction(() => {
       const current = (groupEpoch.get(ch.id) as { epoch: number } | undefined)?.epoch ?? 0;
       if (epoch > current) return { ok: false as const, currentEpoch: current };
       if (epoch < current) {
+        // A Commit that added this device is not junk: the device must join from its Welcome, not drop the Commit.
+        if (welcomeForDeviceAfter.get(ch.id, epoch, deviceId)) return { ok: false as const, addedCaller: true as const, currentEpoch: current };
         // Commits that some device already applied are not junk: dropping them would fork that device off the group.
         if (someoneAheadOf.get(ch.id, epoch, ch.id, epoch)) return { ok: false as const, appliedBy: true as const, currentEpoch: current };
         dropCommitsFrom.run(ch.id, epoch);
@@ -242,6 +248,9 @@ export function register(app: Express, ctx: Ctx): void {
       }
       return { ok: true as const };
     })();
+    if (!result.ok && 'addedCaller' in result) {
+      return void res.status(409).json({ error: 'a commit added this device; join from its welcome', currentEpoch: result.currentEpoch });
+    }
     if (!result.ok && 'appliedBy' in result) {
       return void res.status(409).json({ error: 'a member already applied a later commit', currentEpoch: result.currentEpoch });
     }
