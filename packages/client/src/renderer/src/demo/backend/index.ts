@@ -205,6 +205,46 @@ on('POST', /^\/api\/auth\/(login|register)$/, () => json({ token: DEMO_TOKEN, us
 on('GET', /^\/api\/me$/, () => json({ user: world.you }));
 // Demo mode has no real devices to list.
 on('GET', /^\/api\/me\/devices$/, () => json({ devices: [] }));
+
+// The demo has no passwords, so these accept any password or code. They keep the server's shape rules and its
+// refusals that do not depend on a real password, so the same mistakes show the same messages in both modes.
+const RESET_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const RESET_CODE_MS = 24 * 60 * 60_000;
+
+function demoNewPassword(v: unknown, current: unknown): void {
+  if (typeof v !== 'string' || v.length < LIMITS.PASSWORD_MIN) throw new HttpError(400, `password must be at least ${LIMITS.PASSWORD_MIN} characters`);
+  if (v === current) throw new HttpError(400, 'the new password must be different from the current one');
+}
+
+on('POST', /^\/api\/me\/password$/, (r) => {
+  const body = (r.body ?? {}) as Record<string, unknown>;
+  if (typeof body.currentPassword !== 'string' || body.currentPassword === '') throw new HttpError(403, 'current password is wrong');
+  demoNewPassword(body.newPassword, body.currentPassword);
+  return json({ token: DEMO_TOKEN, user: world.you });
+});
+on('POST', /^\/api\/me\/delete$/, (r) => {
+  const body = (r.body ?? {}) as Record<string, unknown>;
+  if (typeof body.password !== 'string' || body.password === '') throw new HttpError(403, 'password is incorrect');
+  // Same rule as the server: an owner must hand off or delete their servers first.
+  if (world.server.ownerId === YOU_ID) throw new HttpError(409, `transfer or delete your servers first: ${world.server.name}`);
+  // Nothing is really deleted here. The caller signs out, and the next entry into demo mode starts a fresh world.
+  return json({ ok: true });
+});
+on('POST', /^\/api\/auth\/reset$/, (r) => {
+  const body = (r.body ?? {}) as Record<string, unknown>;
+  if (typeof body.code !== 'string' || body.code.trim() === '') throw new HttpError(403, 'reset code is invalid or expired');
+  demoNewPassword(body.newPassword, undefined);
+  return json({ token: DEMO_TOKEN, user: world.you });
+});
+on('POST', /^\/api\/servers\/([^/]+)\/members\/([^/]+)\/reset-code$/, (r) => {
+  serverGuard(r.match[1]);
+  if (world.server.ownerId !== YOU_ID) throw new HttpError(403, 'only the owner can issue reset codes');
+  if (r.match[2] === YOU_ID) throw new HttpError(400, 'use Change password to change your own password');
+  if (!world.members.some((m) => m.user.id === r.match[2])) throw new HttpError(404, 'member not found');
+  const chars = [...crypto.getRandomValues(new Uint8Array(12))].map((b) => RESET_CODE_ALPHABET[b % 32]).join('');
+  const code = `${chars.slice(0, 4)}-${chars.slice(4, 8)}-${chars.slice(8)}`;
+  return json({ code, expiresAt: Date.now() + RESET_CODE_MS });
+});
 on('PATCH', /^\/api\/me$/, (r) => {
   const body = (r.body ?? {}) as Record<string, unknown>;
   const name = body.displayName === undefined ? world.you.displayName : str(body.displayName, 'displayName', 48);
