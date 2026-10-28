@@ -1,5 +1,5 @@
 // In-memory state for the demo. Rebuilt from scratch every time demo mode is entered.
-import type { Channel, Member, Message, MessagePayload, Server, SoundboardSound, User } from '@chatward/shared';
+import { DEFAULT_VOICE_BITRATE_KBPS, type Channel, type Member, type Message, type MessagePayload, type Server, type SoundboardSound, type User } from '@chatward/shared';
 import { demoEncode } from '../codec';
 import { gifDataUrl, sunsetSvg, toneWav } from './assets';
 
@@ -39,8 +39,8 @@ export function createWorld(): World {
     { id: 'demo-ch-general', serverId: SERVER_ID, name: 'general', kind: 'text' },
     { id: 'demo-ch-memes', serverId: SERVER_ID, name: 'memes', kind: 'text' },
     { id: 'demo-ch-watch', serverId: SERVER_ID, name: 'watch-party', kind: 'text' },
-    { id: 'demo-vc-lounge', serverId: SERVER_ID, name: 'Lounge', kind: 'voice' },
-    { id: 'demo-vc-gaming', serverId: SERVER_ID, name: 'Gaming', kind: 'voice' },
+    { id: 'demo-vc-lounge', serverId: SERVER_ID, name: 'Lounge', kind: 'voice', bitrateKbps: DEFAULT_VOICE_BITRATE_KBPS },
+    { id: 'demo-vc-gaming', serverId: SERVER_ID, name: 'Gaming', kind: 'voice', bitrateKbps: DEFAULT_VOICE_BITRATE_KBPS },
   ];
   const members: Member[] = [you, ...bots.map((b) => b.user)].map((user) => ({
     user,
