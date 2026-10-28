@@ -6,6 +6,7 @@ import { api, fetchObjectUrl } from '../../api/http';
 import { useSession } from '../../state/session';
 import { cropToAvatar } from './avatar';
 import { Section, errorText } from './controls';
+import ProfileEditor from '../profile/ProfileEditor';
 
 interface Status { ok: boolean; text: string }
 
@@ -150,6 +151,8 @@ export default function AccountTab() {
           </div>
         )}
       </Section>
+
+      <ProfileEditor user={user} />
 
       {status && <p className={status.ok ? 'ok-text' : 'error-text'} role="status">{status.text}</p>}
     </>

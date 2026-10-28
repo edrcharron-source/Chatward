@@ -9,6 +9,7 @@ import ChannelSettingsDialog from './ChannelSettingsDialog';
 import Dialog from './Dialog';
 import { errorText, isAdmin } from './util';
 import './servers.css';
+import ProfileTrigger from '../profile/ProfileTrigger';
 
 type DialogKind = 'channel' | 'invite' | null;
 
@@ -119,8 +120,10 @@ export default function ChannelList({ onOpenSettings, onReload }: { onOpenSettin
                       <ul className="cw-occupants" aria-label={`In ${c.name}`}>
                         {occupants.map((u) => (
                           <li key={u.id} data-speaking={speaking.includes(u.id) || undefined}>
-                            <Avatar user={u} size={18} />
-                            <span>{u.displayName}</span>
+                            <ProfileTrigger user={u}>
+                              <Avatar user={u} size={18} />
+                              <span>{u.displayName}</span>
+                            </ProfileTrigger>
                           </li>
                         ))}
                       </ul>

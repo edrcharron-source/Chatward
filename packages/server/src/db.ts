@@ -124,5 +124,17 @@ export function openDb(): DB {
     PRIMARY KEY (group_id, device_id)
   );
   `);
+  // Profile columns were added after the first release; existing databases get them here.
+  const userCols = new Set((db.pragma('table_info(users)') as { name: string }[]).map((c) => c.name));
+  const profileCols: Record<string, string> = {
+    bio: "TEXT NOT NULL DEFAULT ''",
+    pronouns: "TEXT NOT NULL DEFAULT ''",
+    accent_color: 'TEXT',
+    banner_color: 'TEXT',
+    banner_path: 'TEXT',
+  };
+  for (const [col, def] of Object.entries(profileCols)) {
+    if (!userCols.has(col)) db.exec(`ALTER TABLE users ADD COLUMN ${col} ${def}`);
+  }
   return db;
 }

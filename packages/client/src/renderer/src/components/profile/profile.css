@@ -1,0 +1,28 @@
+.profile-trigger {
+  display: inline-flex; align-items: center; gap: 6px; padding: 0; border: 0;
+  background: none; color: inherit; font: inherit; cursor: pointer; border-radius: 6px;
+}
+.profile-trigger:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.profile-card {
+  background: var(--bg-1); color: var(--text); border-radius: 10px; overflow: hidden;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35); border: 1px solid var(--bg-3);
+}
+.profile-banner { height: 84px; position: relative; overflow: hidden; }
+.profile-banner img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.profile-body { padding: 0 14px 14px; position: relative; }
+.profile-avatar {
+  margin-top: -36px; width: 80px; height: 80px; border-radius: 50%;
+  border: 5px solid var(--bg-1); box-sizing: border-box; display: flex; align-items: center; justify-content: center;
+}
+.profile-name { margin-top: 8px; font-weight: 700; font-size: 18px; }
+.profile-handle { color: var(--text-muted); font-size: 13px; }
+.profile-pronouns { opacity: .8; }
+.profile-bio { margin: 10px 0 0; white-space: pre-wrap; font-size: 13px; line-height: 1.45; }
+.profile-since { margin-top: 10px; font-size: 12px; opacity: .7; }
+
+.profile-editor { display: grid; gap: 12px; }
+.profile-editor textarea { resize: vertical; min-height: 64px; }
+.profile-editor .color-row { display: flex; gap: 12px; flex-wrap: wrap; }
+.profile-editor .color-row label { display: flex; align-items: center; gap: 8px; }
+.banner-crop { position: relative; width: 100%; height: 220px; background: var(--bg-0); border-radius: var(--radius); overflow: hidden; }

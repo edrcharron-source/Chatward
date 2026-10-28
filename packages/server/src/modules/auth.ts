@@ -83,6 +83,22 @@ function mustUser(ctx: Ctx, userId: string) {
   return user;
 }
 
+/** Free text that may be empty. Bios may contain line breaks; other fields may not. */
+function freeText(v: unknown, max: number, label: string, multiline: boolean): string {
+  if (typeof v !== 'string') bad(`${label} must be text`);
+  const s = v.trim();
+  const control = multiline ? /[\u0000-\u0009\u000b-\u001f\u007f]/ : /[\u0000-\u001f\u007f]/;
+  if (s.length > max || control.test(s)) bad(`${label} must be at most ${max} printable characters`);
+  return s;
+}
+
+/** A #rrggbb color, stored lowercase, or null to clear it. */
+function colorOrNull(v: unknown, label: string): string | null {
+  if (v === null || v === '') return null;
+  if (typeof v !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(v)) bad(`${label} must be a #rrggbb color`);
+  return v.toLowerCase();
+}
+
 /** Magic-byte sniff; returns the real image MIME type or null. */
 function sniffImage(b: Buffer): string | null {
   if (b.subarray(0, 8).equals(PNG_SIG)) return 'image/png';
@@ -104,6 +120,7 @@ function rawBody(limit: number) {
 
 export function register(app: Express, ctx: Ctx): void {
   const avatarDir = path.join(ctx.config.dataDir, 'avatars');
+  const bannerDir = path.join(ctx.config.dataDir, 'banners');
   // Timing equaliser: unknown usernames still pay one argon2 verify.
   const dummyHash = hash(crypto.randomBytes(16).toString('hex'));
 
@@ -162,12 +179,66 @@ export function register(app: Express, ctx: Ctx): void {
     res.json({ user: mustUser(ctx, userIdOf(req)) });
   }));
 
+  // Each field is optional; a missing field keeps its current value.
   app.patch('/api/me', ctx.requireAuth, route((req, res) => {
     const uid = userIdOf(req);
-    const displayName = cleanText(bodyOf(req).displayName, DISPLAY_NAME_MAX, 'display name');
-    ctx.db.prepare('UPDATE users SET display_name=? WHERE id=?').run(displayName, uid);
+    const body = bodyOf(req);
+    const cur = mustUser(ctx, uid);
+    const displayName = body.displayName === undefined
+      ? cur.displayName
+      : cleanText(body.displayName, DISPLAY_NAME_MAX, 'display name');
+    const bio = body.bio === undefined ? cur.profile.bio : freeText(body.bio, LIMITS.BIO_MAX, 'bio', true);
+    const pronouns = body.pronouns === undefined
+      ? cur.profile.pronouns
+      : freeText(body.pronouns, LIMITS.PRONOUNS_MAX, 'pronouns', false);
+    const accentColor = body.accentColor === undefined ? cur.profile.accentColor : colorOrNull(body.accentColor, 'accent color');
+    const bannerColor = body.bannerColor === undefined ? cur.profile.bannerColor : colorOrNull(body.bannerColor, 'banner color');
+    ctx.db
+      .prepare('UPDATE users SET display_name=?, bio=?, pronouns=?, accent_color=?, banner_color=? WHERE id=?')
+      .run(displayName, bio, pronouns, accentColor, bannerColor, uid);
     broadcastUser(ctx, uid);
     res.json({ user: mustUser(ctx, uid) });
+  }));
+
+  app.put('/api/me/banner', ctx.requireAuth, rawBody(LIMITS.BANNER_MAX_BYTES), route((req, res) => {
+    const uid = userIdOf(req);
+    const body = req.body as unknown;
+    if (!Buffer.isBuffer(body) || body.length === 0) bad('image body required');
+    const declared = String(req.headers['content-type'] ?? '').split(';')[0].trim().toLowerCase();
+    const actual = sniffImage(body);
+    if (!actual || actual !== declared) bad('banner must be PNG, JPEG or WebP matching its Content-Type');
+
+    const file = `${uid}.${EXT_BY_MIME[actual]}`;
+    const prev = (ctx.db.prepare('SELECT banner_path FROM users WHERE id=?').get(uid) as
+      { banner_path: string | null }).banner_path;
+    fs.mkdirSync(bannerDir, { recursive: true });
+    const tmp = path.join(bannerDir, `${file}.tmp`);
+    fs.writeFileSync(tmp, body);
+    fs.renameSync(tmp, path.join(bannerDir, file));
+    if (prev && prev !== file) fs.rmSync(path.join(bannerDir, prev), { force: true });
+    ctx.db.prepare('UPDATE users SET banner_path=? WHERE id=?').run(file, uid);
+    broadcastUser(ctx, uid);
+    res.json({ user: mustUser(ctx, uid) });
+  }));
+
+  app.delete('/api/me/banner', ctx.requireAuth, route((req, res) => {
+    const uid = userIdOf(req);
+    const prev = (ctx.db.prepare('SELECT banner_path FROM users WHERE id=?').get(uid) as
+      { banner_path: string | null }).banner_path;
+    if (prev) fs.rmSync(path.join(bannerDir, prev), { force: true });
+    ctx.db.prepare('UPDATE users SET banner_path=NULL WHERE id=?').run(uid);
+    broadcastUser(ctx, uid);
+    res.json({ user: mustUser(ctx, uid) });
+  }));
+
+  app.get('/api/banners/:userId', ctx.requireAuth, route((req, res) => {
+    const row = ctx.db.prepare('SELECT banner_path FROM users WHERE id=?').get(String(req.params.userId)) as
+      { banner_path: string | null } | undefined;
+    if (!row?.banner_path) throw new ApiError(404, 'no banner');
+    res.setHeader('Cache-Control', 'private, no-cache');
+    res.sendFile(path.join(bannerDir, path.basename(row.banner_path)), (err) => {
+      if (err && !res.headersSent) res.status(404).json({ error: 'no banner' });
+    });
   }));
 
   app.put('/api/me/avatar', ctx.requireAuth, rawBody(LIMITS.AVATAR_MAX_BYTES), route((req, res) => {
