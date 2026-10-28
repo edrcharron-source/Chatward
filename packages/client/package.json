@@ -9,7 +9,8 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "dist:win": "electron-vite build && electron-builder --win nsis portable --publish never"
+    "dist:win": "electron-vite build && electron-builder --win nsis portable --publish never",
+    "test:crypto": "esbuild src/renderer/src/crypto/crypto.test.ts --bundle --platform=node --format=esm --outfile=out/test/crypto.test.mjs --log-level=warning && node --test out/test/crypto.test.mjs"
   },
   "dependencies": {
     "@chatward/shared": "*",
@@ -34,9 +35,21 @@
   "build": {
     "appId": "app.chatward.client",
     "productName": "Chatward",
-    "directories": { "output": "release" },
-    "files": ["out/**"],
-    "win": { "target": ["nsis", "portable"] },
-    "nsis": { "oneClick": false, "allowToChangeInstallationDirectory": true }
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "out/**"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
   }
 }
