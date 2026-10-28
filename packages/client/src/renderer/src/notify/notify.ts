@@ -48,13 +48,15 @@ export function playSound(kind: SoundKind) {
 
 function onNewMessage(m: Message) {
   const { messageSounds, mutedChannels } = useSettings.getState();
-  const { user, activeChannelId, myStatus } = useSession.getState();
+  const { user, activeChannelId, theaterChatId, myStatus } = useSession.getState();
   if (!messageSounds || m.authorId === user?.id) return;
   // Do Not Disturb: the user asked not to be interrupted, so stay silent.
   if (myStatus === 'dnd') return;
   if (mutedChannels.includes(m.channelId)) return;
   // The channel is on screen and the window has focus: the user already sees it.
   if (m.channelId === activeChannelId && document.hasFocus()) return;
+  // The chat shown alongside theater mode is on screen, so it needs no ping.
+  if (m.channelId === theaterChatId) return;
   playSound('message');
 }
 
