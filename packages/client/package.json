@@ -10,16 +10,18 @@
     "build": "electron-vite build",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "dist:win": "electron-vite build && electron-builder --win nsis portable --publish never",
-    "test:crypto": "esbuild src/renderer/src/crypto/crypto.test.ts --bundle --platform=node --format=esm --outfile=out/test/crypto.test.mjs --log-level=warning && node --test out/test/crypto.test.mjs"
+    "test:crypto": "esbuild src/renderer/src/crypto/crypto.test.ts src/renderer/src/crypto/mls.test.ts --bundle --platform=node --format=esm --outdir=out/test --out-extension:.js=.mjs --log-level=warning && node --test out/test/crypto.test.mjs out/test/mls.test.mjs"
   },
   "dependencies": {
     "@chatward/shared": "*",
+    "@noble/hashes": "2.4.0",
     "emoji-picker-element": "^1.26.0",
     "emoji-picker-element-data": "^1.6.0",
     "livekit-client": "^2.5.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-easy-crop": "^5.0.8",
+    "ts-mls": "1.6.4",
     "zustand": "^5.0.0"
   },
   "devDependencies": {

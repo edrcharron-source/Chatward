@@ -70,7 +70,7 @@ Server exposes `ctx.broadcastToServer(serverId, frame)` and `ctx.sendToUser(user
 - Attachments: random per-file AES key, blob uploaded encrypted, key+iv inside the message payload.
 - Voice/video/screen: LiveKit E2EE with a key derived from the channel key (HKDF info "chatward-voice").
 - Device verification: safety number = SHA-256 over sorted device signPublic keys, shown as 6x5 digit groups.
-- Planned v2: migrate group key mgmt to MLS (OpenMLS). Soundboard clips + avatars are NOT E2EE in v1.
+- Planned v2: migrate group key mgmt to MLS (RFC 9420, via ts-mls; not yet wired in). Soundboard clips + avatars are NOT E2EE in v1.
 
 ## Layout / ownership
 packages/shared      types (lead)

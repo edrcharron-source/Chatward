@@ -28,7 +28,13 @@ Known limits:
 - **Voice uses only the latest version.** A participant still on an older version cannot join voice until it syncs.
 - **New devices wait for a sync.** A brand-new device cannot read history until an online member syncs and wraps the keys for it.
 - Soundboard clips and avatars are not E2EE in v1 (per CONTRACT).
-- v2 plan: migrate group key management to MLS (OpenMLS), which adds forward secrecy and authenticated membership changes.
+- v2 plan: migrate group key management to MLS (RFC 9420), which adds forward secrecy and authenticated membership changes. Status below.
+
+## MLS (v2) status
+- `mls.ts` is the MLS group layer on [ts-mls](https://www.npmjs.com/package/ts-mls) 1.6.4 (pure TypeScript, WebCrypto-backed, no native code). Suite: `MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519`. OpenMLS has no npm build, so it was not used.
+- ts-mls has **not had a formal security audit** (its README says so). Do not describe v2 as audited until that changes.
+- Covered by `mls.test.ts`: join by Welcome, Commit from a non-creator, removed members cannot decrypt, voice key changes per epoch.
+- **Not yet wired in.** `index.ts` still runs the v1 protocol above. The cutover needs server support: KeyPackage upload and fetch, Commit and Welcome delivery, and a per-group epoch check so the server accepts one Commit per epoch (this also fixes the concurrent first-key race).
 
 ## Tests
 `npm run test:crypto -w @chatward/client` runs `crypto.test.ts` with `node --test` (round trip, AAD and tamper detection, envelope signatures and addressing, rotation, voice key separation, safety number).
