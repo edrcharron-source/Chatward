@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# PC-only, local test server. Not for cloud servers: a cloud server (AWS Lightsail) runs the
+# HTTPS setup in deploy/ (deploy/docker-compose.yml with DOMAIN set, see deploy/Caddyfile).
 # Installs a new server bundle in place. Unzip the new chatward-server.zip over this folder first.
 # Your .env, updates/ (desktop installers) and backups/ are kept. Usage: ./update-server.sh
 #
