@@ -62,6 +62,20 @@ export function kickFromCall(ctx: Ctx, serverId: string, userId: string): void {
  */
 export function endCallOnDevice(ctx: Ctx, userId: string, deviceId: string): void {
   if (voiceDeviceOf.get(userId) !== deviceId) return;
+  endCall(ctx, userId);
+}
+
+/**
+ * For a password change or reset, which signs out every device except the one it was made from. If the call runs on
+ * any other device, it ends for the account. A call on the device that stays signed in is left alone.
+ */
+export function endCallOnOtherDevices(ctx: Ctx, userId: string, keepDeviceId: string): void {
+  if (!voiceChannelOf.has(userId) || voiceDeviceOf.get(userId) === keepDeviceId) return;
+  endCall(ctx, userId);
+}
+
+/** Drops the account's call and its LiveKit session, in one place for the device-based endings above. */
+function endCall(ctx: Ctx, userId: string): void {
   const channelId = voiceChannelOf.get(userId);
   leaveVoice(ctx, userId);
   if (channelId) removeFromRoom(ctx, channelId, userId);
