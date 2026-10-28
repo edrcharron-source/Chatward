@@ -53,6 +53,14 @@ export function register(app: Express, ctx: Ctx): void {
   const groupDevices = db.prepare('SELECT device_id FROM mls_group_devices WHERE group_id=?');
   const dropCommitsFrom = db.prepare('DELETE FROM mls_commits WHERE group_id=? AND epoch>=?');
   const dropWelcomesAfter = db.prepare('DELETE FROM mls_welcomes WHERE group_id=? AND epoch>?');
+  const insertSeenDevice = db.prepare('INSERT OR IGNORE INTO mls_group_seen_devices (group_id, device_id) VALUES (?,?)');
+  const seenDevices = db.prepare(
+    'SELECT d.device_id AS deviceId, d.user_id AS userId, d.ecdh_public AS ecdhPublic, d.sign_public AS signPublic '
+    + 'FROM mls_group_seen_devices s JOIN devices d ON d.device_id=s.device_id WHERE s.group_id=?');
+  const recordAck = db.prepare(
+    'INSERT INTO mls_group_acks (group_id, device_id, epoch) VALUES (?,?,?) '
+    + 'ON CONFLICT(group_id, device_id) DO UPDATE SET epoch=MAX(epoch, excluded.epoch)');
+  const someoneAheadOf = db.prepare('SELECT 1 FROM mls_group_acks WHERE group_id=? AND epoch>? LIMIT 1');
 
   const devicesOwner = (deviceId: string): string =>
     (db.prepare('SELECT user_id FROM devices WHERE device_id=?').get(deviceId) as { user_id: string }).user_id;
@@ -177,6 +185,7 @@ export function register(app: Express, ctx: Ctx): void {
       clearGroupDevices.run(ch.id);
       for (const d of members) insertGroupDevice.run(ch.id, d);
       for (const w of welcomes) insertWelcome.run(ch.id, epoch + 1, w.toDeviceId, w.welcome);
+      for (const d of [...members, body.deviceId as string, ...welcomes.map((w) => w.toDeviceId as string)]) insertSeenDevice.run(ch.id, d);
       return { ok: true as const };
     })();
 
@@ -216,14 +225,42 @@ export function register(app: Express, ctx: Ctx): void {
       const current = (groupEpoch.get(ch.id) as { epoch: number } | undefined)?.epoch ?? 0;
       if (epoch > current) return { ok: false as const, currentEpoch: current };
       if (epoch < current) {
+        // Commits that some device already applied are not junk: dropping them would fork that device off the group.
+        if (someoneAheadOf.get(ch.id, epoch)) return { ok: false as const, appliedBy: true as const, currentEpoch: current };
         dropCommitsFrom.run(ch.id, epoch);
         dropWelcomesAfter.run(ch.id, epoch);
         upsertGroupEpoch.run(ch.id, epoch);
       }
       return { ok: true as const };
     })();
+    if (!result.ok && 'appliedBy' in result) {
+      return void res.status(409).json({ error: 'a member already applied a later commit', currentEpoch: result.currentEpoch });
+    }
     if (!result.ok) return void res.status(409).json({ error: 'epoch is ahead of the group', currentEpoch: result.currentEpoch });
     res.json({ epoch });
+  });
+
+  // Every device that has ever been in this group, with its registered keys. Clients check Commits against this list,
+  // so a Commit from someone who has since left still verifies. Public keys only.
+  app.get('/api/groups/:id/devices', ctx.requireAuth, (req, res) => {
+    const userId = (req as AuthedRequest).userId;
+    const ch = memberChannel(req.params.id, userId, res);
+    if (!ch) return;
+    res.json({ devices: seenDevices.all(ch.id) });
+  });
+
+  // A device reports the epoch it has reached. Only its own devices, and never past the group's current epoch.
+  app.post('/api/groups/:id/epoch', ctx.requireAuth, (req: Request, res: Response) => {
+    const userId = (req as AuthedRequest).userId;
+    const ch = memberChannel(req.params.id, userId, res);
+    if (!ch) return;
+    const body = (req.body ?? {}) as { deviceId?: unknown; epoch?: unknown };
+    if (!requireOwnDevice(userId, body.deviceId, res)) return;
+    if (!isEpoch(body.epoch)) return void bad(res, 'invalid epoch');
+    const current = (groupEpoch.get(ch.id) as { epoch: number } | undefined)?.epoch ?? 0;
+    if (body.epoch > current) return void res.status(409).json({ error: 'epoch is ahead of the group', currentEpoch: current });
+    recordAck.run(ch.id, body.deviceId as string, body.epoch);
+    res.json({ epoch: body.epoch });
   });
 
   // Welcomes addressed to the caller's own devices. Only the target device can fetch its Welcome.

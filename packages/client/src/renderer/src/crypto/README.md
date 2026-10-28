@@ -20,7 +20,7 @@ Group membership and epoch keys use MLS (RFC 9420) via `mls.ts`, which wraps [ts
 1. **Keys**: each device keeps a pool of single-use KeyPackages on the server (refilled below 5), plus one last-resort package. Private parts stay in the vault.
 2. **Group**: a channel's group is created by the first device that finds no commits and no Welcome. The creator commits at epoch 0 and adds every other member device it can claim a KeyPackage for. A 409 means another device won, so this device joins by Welcome.
 3. **Join**: a device with a Welcome for its KeyPackage joins at that epoch and derives the current history key.
-4. **Follow**: every sync applies Commits from the local epoch on. A failure to apply one (usually a Remove naming this device) drops the local group.
+4. **Follow**: every sync applies Commits from the local epoch on. Commits are checked against every device that has ever been in the group, so a member who left still verifies. A Commit that will not apply is dropped with `/reset`, unless another device has already built on it. If the server reports an epoch behind ours, the local group is forgotten and rebuilt from a Welcome.
 5. **Reconcile**: a device removes group members the server no longer lists, then adds server devices the group lacks. Each change is one Commit.
 6. **History**: members send every history key they hold to devices that have not received them yet, as v1 envelopes. Devices that left the server are forgotten.
 7. **Kick**: `handleMemberLeave` runs the sync without the removed user, so a remaining member commits the Remove.

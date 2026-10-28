@@ -358,6 +358,21 @@ async function main() {
     assert.equal(new TextDecoder().decode((await mls.receive(bob.state.get(CHANNEL)!, healed.ciphertext)).plaintext!), 'back in sync');
     log('junk Commit at epoch 4 cannot be applied; reset refused for outsiders and future epochs; after reset a valid Commit moves the group on');
 
+    // Epoch reports: a device that applied a Commit reports it, and a reset may not drop that Commit.
+    const futureAck = await api(bob.token, 'POST', `/api/groups/${CHANNEL}/epoch`, { deviceId: bob.id, epoch: 9 });
+    assert.equal(futureAck.status, 409, 'a device cannot report an epoch the group has not reached');
+    const bobAck = await api(bob.token, 'POST', `/api/groups/${CHANNEL}/epoch`, { deviceId: bob.id, epoch: 5 });
+    assert.equal(bobAck.status, 200, 'bob reports he applied the Commit at epoch 4');
+    const rewind = await api(alice.token, 'POST', `/api/groups/${CHANNEL}/reset`, { deviceId: alice.id, epoch: 4 });
+    assert.equal(rewind.status, 409, 'reset refused: bob already built on the Commit at epoch 4');
+    assert.equal(rewind.json.currentEpoch, 5);
+    log('a reset cannot drop a Commit another device has already applied');
+
+    // Removed devices stay in the group device list, so Commits from before their removal still verify.
+    const groupDeviceList = await api(alice.token, 'GET', `/api/groups/${CHANNEL}/devices`);
+    assert.ok(groupDeviceList.json.devices.some((d: DeviceKeys) => d.deviceId === carol.id), 'removed carol is still listed');
+    log('removed devices stay in the group device list with their registered keys');
+
     // Deleting a server removes its soundboard audio from disk, not just the database rows.
     const doomedId = (await api(alice.token, 'POST', '/api/servers', { name: 'Doomed' })).json.server.id as string;
     const oggFile = Buffer.concat([Buffer.from('OggS'), Buffer.alloc(16)]);

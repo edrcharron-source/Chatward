@@ -3,7 +3,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { createCommit, defaultAuthenticationService, encodeMlsMessage, type ClientState } from 'ts-mls';
 import {
-  addMembers, createMlsGroup, cipherSuite, encryptMessage, joinFromWelcome, newMemberKeys, receive, removeMembers, selfUpdate,
+  addMembers, createMlsGroup, cipherSuite, decodeGroup, encodeGroup, encryptMessage, joinFromWelcome, memberLeaves, newMemberKeys,
+  receive, removeMembers, selfUpdate,
   voiceKey, type DeviceDirectory, type MemberKeys,
 } from './mls';
 import { exportRawPublic, generateSigning, toB64, utf8 } from './primitives';
@@ -142,5 +143,37 @@ describe('ghost leaves', () => {
     );
     await assert.rejects(receive(alice.state!, encodeMlsMessage(forged.commit)), 'alice must reject the forged Commit');
     await assert.rejects(receive(bob.state!, encodeMlsMessage(forged.commit)), 'bob must reject the forged Commit');
+  });
+});
+
+describe('departed members', () => {
+  it('replays a Commit from a member who has since left, given their device key', async () => {
+    const alice = await member('alice');
+    const bob = await member('bob');
+    const carol = await member('carol');
+    alice.state = await createMlsGroup('room-7', alice.keys, devices);
+    const added = await addMembers(alice.state, [bob.keys.publicPackage, carol.keys.publicPackage]);
+    alice.state = added.state;
+    bob.state = await joinFromWelcome(added.welcome!, bob.keys, devices);
+    carol.state = await joinFromWelcome(added.welcome!, carol.keys, devices);
+
+    // Carol commits, alice applies it and then removes carol. Bob has not caught up, so he replays both Commits.
+    const carolStep = await selfUpdate(carol.state!);
+    alice.state = (await receive(alice.state!, carolStep.commit!)).state;
+    const carolLeaf = memberLeaves(alice.state!).find((l) => l.deviceId === 'carol')!;
+    const removal = await removeMembers(alice.state!, [carolLeaf.leafIndex]);
+    alice.state = removal.state;
+
+    // Carol is not a current member, so a directory of current members alone cannot vouch for her Commit.
+    const currentOnly: DeviceDirectory = (deviceId) => (deviceId === 'carol' ? undefined : registered.get(deviceId));
+    const strictBob = decodeGroup(encodeGroup(bob.state!), currentOnly);
+    await assert.rejects(receive(strictBob, carolStep.commit!), 'current-members-only directory rejects her Commit');
+
+    // With her registered key in the group device list, bob replays both Commits and follows the group.
+    bob.state = (await receive(bob.state!, carolStep.commit!)).state;
+    bob.state = (await receive(bob.state!, removal.commit!)).state;
+    const msg = await encryptMessage(alice.state!, utf8('after carol left'));
+    alice.state = msg.state;
+    assert.equal(Buffer.from((await receive(bob.state!, msg.ciphertext)).plaintext!).toString('utf8'), 'after carol left');
   });
 });
