@@ -41,6 +41,8 @@ const LEGACY_VAULT_STORE = 'crypto.vault.v2';
 /** Refill the single-use KeyPackage pool when the server reports fewer than this. */
 const KEYPACKAGE_LOW_WATER = 5;
 const KEYPACKAGE_BATCH = 10;
+/** Devices added per Commit. One Commit per device list grows past the server's body limit once a channel has ~8 devices. */
+const ADD_BATCH_SIZE = 4;
 
 let account: string | null = null;
 let device: DeviceKeys | null = null;
@@ -385,7 +387,9 @@ async function createGroup(channelId: string, members: Member[]): Promise<boolea
   const solo = await mls.createMlsGroup(
     channelId, await mls.newMemberKeys({ deviceId: me.deviceId, signPrivate: privates!.sign }), deviceDirectory(),
   );
-  const added = await claimFor(members, new Set(members.flatMap((m) => m.devices).map((d) => d.deviceId).filter((id) => id !== me.deviceId)));
+  // Only the first batch goes in here. reconcile, run right after in the same sync, adds the rest batch by batch.
+  const others = members.flatMap((m) => m.devices).map((d) => d.deviceId).filter((id) => id !== me.deviceId);
+  const added = await claimFor(members, new Set(others.slice(0, ADD_BATCH_SIZE)));
   const step = added.length ? await mls.addMembers(solo, added.map((a) => a.kp)) : await mls.selfUpdate(solo);
   // Publishing the commit is what makes this the group. A 409 means another device created it first; we join by Welcome.
   const outcome = await postCommit(channelId, 0, step, [me.deviceId, ...added.map((a) => a.deviceId)], added.map((a) => a.deviceId));
@@ -467,16 +471,21 @@ async function reconcile(channelId: string, members: Member[]): Promise<boolean>
     changed = true;
   }
 
-  const inGroup = new Set(mls.memberLeaves(state).map((l) => l.deviceId));
-  const wanted = new Set([...live].filter((id) => !inGroup.has(id) && id !== me.deviceId));
-  if (wanted.size === 0) return changed;
-  const added = await claimFor(members, wanted);
-  if (added.length === 0) return changed;
-  const step = await mls.addMembers(state, added.map((a) => a.kp));
-  const after = [...inGroup, ...added.map((a) => a.deviceId)];
-  if ((await postCommit(channelId, epoch, step, after, added.map((a) => a.deviceId))) === 'conflict') return (await catchUp(channelId)) || changed;
-  await setGroup(channelId, step.state, epoch + 1);
-  return true;
+  const present = mls.memberLeaves(state).map((l) => l.deviceId);
+  const wanted = [...live].filter((id) => !present.includes(id) && id !== me.deviceId);
+  // One Commit per batch of devices. Each Commit lists every device in the group after it, as the server stores that list.
+  for (let i = 0; i < wanted.length; i += ADD_BATCH_SIZE) {
+    const added = await claimFor(members, new Set(wanted.slice(i, i + ADD_BATCH_SIZE)));
+    if (added.length === 0) continue;
+    const step = await mls.addMembers(state, added.map((a) => a.kp));
+    present.push(...added.map((a) => a.deviceId));
+    if ((await postCommit(channelId, epoch, step, present, added.map((a) => a.deviceId))) === 'conflict') return (await catchUp(channelId)) || changed;
+    await setGroup(channelId, step.state, epoch + 1);
+    state = step.state;
+    epoch += 1;
+    changed = true;
+  }
+  return changed;
 }
 
 /** Claim one KeyPackage per wanted device, one request per user who has any wanted device. */
