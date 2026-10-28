@@ -411,15 +411,48 @@ async function main() {
     // Bob can list and remove his own devices. Another user's device is not his to remove.
     const bobDevices = await api(bob.token, 'GET', '/api/me/devices');
     assert.ok(bobDevices.json.devices.some((d: { deviceId: string }) => d.deviceId === bob2.id), 'bob lists his second device');
-    assert.equal((await api(alice.token, 'DELETE', `/api/me/devices/${bob2.id}`)).status, 404, 'alice cannot remove bob\'s device');
-    assert.equal((await api(bob.token, 'DELETE', `/api/me/devices/${bob2.id}`)).status, 204, 'bob removes his second device');
+    assert.equal((await api(alice.token, 'DELETE', `/api/me/devices/${bob2.id}`, { password: PASSWORD })).status, 404, 'alice cannot remove bob\'s device');
+    assert.equal((await api(bob.token, 'DELETE', `/api/me/devices/${bob2.id}`, {})).status, 403, 'removing a device needs the password');
+    assert.equal((await api(bob.token, 'DELETE', `/api/me/devices/${bob2.id}`, { password: PASSWORD })).status, 204, 'bob removes his second device');
     const afterRemove = await api(bob.token, 'GET', '/api/me/devices');
     assert.ok(!afterRemove.json.devices.some((d: { deviceId: string }) => d.deviceId === bob2.id), 'removed device is no longer listed');
+    assert.equal((await api(bob.token, 'GET', '/api/me')).status, 200, 'bob\'s other device stays signed in');
     const removedCount = await api(bob2.token, 'GET', `/api/devices/${bob2.id}/keypackages/count`);
-    assert.equal(removedCount.status, 403, 'removed device can no longer use its account keys');
+    assert.equal(removedCount.status, 401, 'removed device\'s token is refused, so it can no longer use its account keys');
     const claimAfter = await claim(alice, bob.user);
     assert.ok(!claimAfter.some((k) => k.deviceId === bob2.id), 'removed device is no longer offered for new groups');
     log('a device can be listed and removed, and is then cut off from new keys');
+
+    // A removed device's keys stay in the group's device list, so its old Commits still verify for a peer that restarts.
+    // The device itself can no longer post Commits.
+    const seenAfterDelete = await api(alice.token, 'GET', `/api/groups/${CHANNEL}/devices`);
+    assert.ok(seenAfterDelete.json.devices.some((d: DeviceKeys) => d.deviceId === bob2.id && d.signPublic), 'deleted bob2 is still listed with its keys');
+    const bob2Commit = await api(bob2.token, 'POST', `/api/groups/${CHANNEL}/commits`, {
+      deviceId: bob2.id, epoch: 0, commit: b64(new Uint8Array([1, 2, 3])), members: [], welcomes: [],
+    });
+    assert.equal(bob2Commit.status, 401, 'removed device cannot post a Commit (its login is revoked)');
+    log('a removed device keeps its keys for old Commits, but cannot post new ones');
+
+    // Reset codes: an owner-issued code dies when its member leaves the owner's server, and is refused after that.
+    const codesId = (await api(alice.token, 'POST', '/api/servers', { name: 'Codes' })).json.server.id as string;
+    const ritaInvite = (await api(alice.token, 'POST', `/api/servers/${codesId}/invites`, { maxUses: 1 })).json.code as string;
+    const ritaReg = (await api(null, 'POST', '/api/auth/register', {
+      username: 'rita', displayName: 'Rita', password: PASSWORD, device: await makeDeviceKeys(), inviteCode: ritaInvite,
+    })).json;
+    const issued = await api(alice.token, 'POST', `/api/servers/${codesId}/members/${ritaReg.user.id}/reset-code`, {});
+    assert.equal(issued.status, 200, 'owner issues a reset code');
+    const redeemed = await api(null, 'POST', '/api/auth/reset', {
+      username: 'rita', code: issued.json.code, newPassword: 'rita-new-pass-0', device: await makeDeviceKeys(),
+    });
+    assert.equal(redeemed.status, 200, 'a code redeems while the owner still shares a server with the member');
+    const reissued = await api(alice.token, 'POST', `/api/servers/${codesId}/members/${ritaReg.user.id}/reset-code`, {});
+    // The positive redeem changed rita's password, so her new token is the one that still works.
+    assert.equal((await api(redeemed.json.token, 'POST', `/api/servers/${codesId}/leave`, {})).status, 200, 'rita leaves');
+    const afterLeave = await api(null, 'POST', '/api/auth/reset', {
+      username: 'rita', code: reissued.json.code, newPassword: 'rita-new-pass-1', device: await makeDeviceKeys(),
+    });
+    assert.equal(afterLeave.status, 403, 'a code is dead once the member has left the owner\'s server');
+    log('a reset code is dropped when its member leaves, so it cannot be redeemed afterwards');
 
     console.log('\nE2E MLS: all checks passed');
   } catch (err) {

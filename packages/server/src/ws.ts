@@ -3,6 +3,12 @@ import { WebSocketServer, WebSocket } from 'ws';
 import type { ClientFrame, ServerFrame } from '@chatward/shared';
 import type { Ctx } from './ctx.js';
 
+// How often the server pings every socket. A socket that has not answered the previous ping is dead
+// (a laptop that slept or lost Wi-Fi never sends a close), so it is terminated and its user goes offline.
+const HEARTBEAT_MS = 30_000;
+
+type AliveSocket = WebSocket & { isAlive?: boolean };
+
 export function attachWs(http: HttpServer, ctx: Ctx) {
   const wss = new WebSocketServer({ noServer: true, maxPayload: 4096 });
   const socketsByUser = new Map<string, Set<WebSocket>>();
@@ -10,16 +16,22 @@ export function attachWs(http: HttpServer, ctx: Ctx) {
   const statusByUser = new Map<string, 'online' | 'idle' | 'dnd'>();
   // The only statuses a client may set; 'offline' is decided by the server, never by the client.
   const CLIENT_STATUSES: string[] = ['online', 'idle', 'dnd'];
+  // Which device each socket belongs to, so removing one device closes only its sockets.
+  const deviceBySocket = new WeakMap<WebSocket, string | null>();
 
   http.on('upgrade', (req, socket, head) => {
     const url = new URL(req.url ?? '', 'http://x');
     if (url.pathname !== '/ws') { socket.destroy(); return; }
-    const userId = ctx.verifyToken(url.searchParams.get('token') ?? '');
-    if (!userId) { socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n'); socket.destroy(); return; }
-    wss.handleUpgrade(req, socket, head, (ws) => {
+    const session = ctx.verifySession(url.searchParams.get('token') ?? '');
+    if (!session) { socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n'); socket.destroy(); return; }
+    const { userId, deviceId } = session;
+    wss.handleUpgrade(req, socket, head, (ws: AliveSocket) => {
+      ws.isAlive = true;
+      ws.on('pong', () => { ws.isAlive = true; });
       let set = socketsByUser.get(userId);
       if (!set) socketsByUser.set(userId, (set = new Set()));
       set.add(ws);
+      deviceBySocket.set(ws, deviceId);
       statusByUser.set(userId, 'online');
       for (const cb of ctx.onConnect) cb(userId);
       send(ws, { t: 'ready', user: ctx.getUser(userId)!, presence: presenceFor(userId) });
@@ -41,6 +53,17 @@ export function attachWs(http: HttpServer, ctx: Ctx) {
       });
     });
   });
+
+  // terminate() emits 'close' on the socket, so the normal cleanup above marks the user offline.
+  const heartbeat = setInterval(() => {
+    for (const ws of wss.clients as Set<AliveSocket>) {
+      if (ws.isAlive === false) { ws.terminate(); continue; }
+      ws.isAlive = false;
+      ws.ping();
+    }
+  }, HEARTBEAT_MS);
+  heartbeat.unref();
+  wss.on('close', () => clearInterval(heartbeat));
 
   function send(ws: WebSocket, f: ServerFrame) {
     if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(f));
@@ -82,8 +105,11 @@ export function attachWs(http: HttpServer, ctx: Ctx) {
     const ids = ctx.db.prepare('SELECT user_id FROM members WHERE server_id=?').all(serverId) as { user_id: string }[];
     for (const { user_id } of ids) ctx.sendToUser(user_id, frame);
   };
-  ctx.revokeSockets = (userId) => {
+  ctx.revokeSockets = (userId, deviceId) => {
     // 4401: the client reconnects with its current token, which is the new one if this session made the change.
-    for (const ws of socketsByUser.get(userId) ?? []) ws.close(4401, 'session revoked');
+    // A removed device's token no longer verifies, so its reconnect is refused and it stays offline.
+    for (const ws of socketsByUser.get(userId) ?? []) {
+      if (deviceId === undefined || deviceBySocket.get(ws) === deviceId) ws.close(4401, 'session revoked');
+    }
   };
 }

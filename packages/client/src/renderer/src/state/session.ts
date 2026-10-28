@@ -19,6 +19,9 @@ interface SessionState {
   voiceOccupants: Record<string, string[]>;
   /** channelId -> unread count (text) */
   unread: Record<string, number>;
+  /** The text chat shown under a featured screen share in theater mode, or null. Read on screen, so it counts as visible. */
+  theaterChatId: string | null;
+  setTheaterChatId: (channelId: string | null) => void;
   setServerUrl: (u: string) => void;
   setAuth: (token: string, user: User) => void;
   setUser: (u: User) => void;
@@ -39,16 +42,21 @@ interface SessionState {
   clearUnread: (channelId: string) => void;
 }
 
-type SignOutHook = () => void | Promise<void>;
+export interface SignOutOptions {
+  /** False after the account is deleted: the token no longer works, so hooks must skip server calls. */
+  serverAvailable?: boolean;
+}
+
+type SignOutHook = (opts: { serverAvailable: boolean }) => void | Promise<void>;
 const signOutHooks: SignOutHook[] = [];
 
-/** Cleanup that must run while the token is still set, such as leaving a call on the server. */
+/** Cleanup that must run before the session is cleared. Hooks get `serverAvailable` so they know whether they may call the server. */
 export function onBeforeSignOut(hook: SignOutHook) { signOutHooks.push(hook); }
 
 /** Logs out. Hooks run first, so their server calls still go out as this user. Then the session is cleared. */
-export async function signOut() {
+export async function signOut({ serverAvailable = true }: SignOutOptions = {}) {
   for (const hook of signOutHooks) {
-    try { await hook(); } catch { /* cleanup is best effort; logging out must still finish */ }
+    try { await hook({ serverAvailable }); } catch { /* cleanup is best effort; logging out must still finish */ }
   }
   useSession.getState().logout();
 }
@@ -61,7 +69,8 @@ export const useSession = create<SessionState>((set, get) => ({
   token: saved.token ?? null,
   user: saved.user ?? null,
   servers: [], activeServerId: null, activeChannelId: null,
-  presence: {}, myStatus: 'online', voiceOccupants: {}, unread: {},
+  presence: {}, myStatus: 'online', voiceOccupants: {}, unread: {}, theaterChatId: null,
+  setTheaterChatId: (theaterChatId) => set({ theaterChatId }),
   setServerUrl: (serverUrl) => { set({ serverUrl }); persist(); },
   setAuth: (token, user) => { set({ token, user }); persist(); },
   setUser: (user) => { set({ user }); persist(); },

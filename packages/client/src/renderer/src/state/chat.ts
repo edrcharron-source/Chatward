@@ -223,7 +223,9 @@ function onIncoming(m: Message) {
   }
   if (m.authorId === useSession.getState().user?.id) return;
   const session = useSession.getState();
-  const visible = session.activeChannelId === m.channelId && !document.hidden;
+  // The open text channel and the chat under a theater-mode share are both on screen.
+  const onScreen = session.activeChannelId === m.channelId || session.theaterChatId === m.channelId;
+  const visible = onScreen && !document.hidden;
   if (visible) session.clearUnread(m.channelId);
   else session.bumpUnread(m.channelId);
 }

@@ -3,7 +3,7 @@ import Cropper, { type Area } from 'react-easy-crop';
 import 'react-easy-crop/react-easy-crop.css';
 import { LIMITS, type User } from '@chatward/shared';
 import { api, fetchObjectUrl } from '../../api/http';
-import { useSession } from '../../state/session';
+import { signOut, useSession } from '../../state/session';
 import { cropToAvatar } from './avatar';
 import { Section, errorText } from './controls';
 import ProfileEditor from '../profile/ProfileEditor';
@@ -78,8 +78,8 @@ export default function AccountTab() {
     setBusy(true);
     try {
       await api.post('/api/me/delete', { password: deletePassword });
-      // The account is gone, so there is no server call left to make. Clear the local session directly.
-      useSession.getState().logout();
+      // The account is gone, so the token no longer works. Run the local sign-out cleanup without server calls.
+      await signOut({ serverAvailable: false });
     } catch (err) {
       setStatus({ ok: false, text: errorText(err) });
       setBusy(false);

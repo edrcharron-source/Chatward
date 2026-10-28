@@ -521,15 +521,27 @@ export function handleMemberLeave(serverId: string, userId: string, servers: Ser
     const bundle = servers.find((b) => b.server.id === serverId);
     if (!bundle) return;
     const remaining = bundle.members.filter((m) => m.user.id !== userId);
+    // A retry must not sync with the removed user still listed, so it gets the same member list.
+    lastServers = servers.map((b) => (b.server.id === serverId ? { ...b, members: remaining } : b));
     let changed = false;
+    let failed = false;
+    // One channel failing must not stop the others. Its partial progress is still saved below.
     for (const channel of bundle.channels) {
       if (channel.kind !== 'text') continue;
-      changed = (await syncChannel(channel.id, remaining)) || changed;
+      try {
+        changed = (await syncChannel(channel.id, remaining)) || changed;
+      } catch (err) {
+        failed = true;
+        changed = true;
+        console.error(`Could not sync keys for channel ${channel.id} after a member left; will retry`, err);
+      }
     }
     if (changed) {
       await persistVault();
       notify();
     }
+    // Only a failure schedules a retry. A clean pass here must not cancel a retry owed to another server.
+    if (failed) scheduleSyncRetry(true);
   });
 }
 

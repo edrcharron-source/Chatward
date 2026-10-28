@@ -53,10 +53,14 @@ export function register(app: Express, ctx: Ctx): void {
   const groupDevices = db.prepare('SELECT device_id FROM mls_group_devices WHERE group_id=?');
   const dropCommitsFrom = db.prepare('DELETE FROM mls_commits WHERE group_id=? AND epoch>=?');
   const dropWelcomesAfter = db.prepare('DELETE FROM mls_welcomes WHERE group_id=? AND epoch>?');
-  const insertSeenDevice = db.prepare('INSERT OR IGNORE INTO mls_group_seen_devices (group_id, device_id) VALUES (?,?)');
+  // Copies the device's keys into the seen list. A device that is later deleted leaves no devices row, but its
+  // Commits must still verify for peers who catch up, so the seen list keeps its own copy.
+  const insertSeenDevice = db.prepare(
+    'INSERT OR IGNORE INTO mls_group_seen_devices (group_id, device_id, user_id, ecdh_public, sign_public) '
+    + 'SELECT ?, device_id, user_id, ecdh_public, sign_public FROM devices WHERE device_id=?');
   const seenDevices = db.prepare(
-    'SELECT d.device_id AS deviceId, d.user_id AS userId, d.ecdh_public AS ecdhPublic, d.sign_public AS signPublic '
-    + 'FROM mls_group_seen_devices s JOIN devices d ON d.device_id=s.device_id WHERE s.group_id=?');
+    'SELECT device_id AS deviceId, user_id AS userId, ecdh_public AS ecdhPublic, sign_public AS signPublic '
+    + 'FROM mls_group_seen_devices WHERE group_id=? AND sign_public IS NOT NULL');
   const recordAck = db.prepare(
     'INSERT INTO mls_group_acks (group_id, device_id, epoch) VALUES (?,?,?) '
     + 'ON CONFLICT(group_id, device_id) DO UPDATE SET epoch=MAX(epoch, excluded.epoch)');

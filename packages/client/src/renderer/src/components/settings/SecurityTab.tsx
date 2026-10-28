@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import type { Member } from '@chatward/shared';
 import { api } from '../../api/http';
 import { getDevice, safetyNumber } from '../../crypto';
@@ -15,6 +15,9 @@ function YourDevices() {
   const [devices, setDevices] = useState<OwnDevice[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The device whose Remove form is open, and the password typed into it.
+  const [pending, setPending] = useState<OwnDevice | null>(null);
+  const [password, setPassword] = useState('');
   const thisDevice = getDevice().deviceId;
 
   async function load() {
@@ -28,12 +31,21 @@ function YourDevices() {
 
   useEffect(() => { void load(); }, []);
 
-  async function remove(d: OwnDevice) {
-    if (!window.confirm('Remove this device? It will stop receiving new messages once your friends update their copies of your chats. It keeps any messages it already has.')) return;
+  function openRemove(d: OwnDevice) {
+    setPending(d);
+    setPassword('');
+    setError(null);
+  }
+
+  async function remove(e: FormEvent) {
+    e.preventDefault();
+    if (!pending) return;
     setBusy(true);
     setError(null);
     try {
-      await api.del(`/api/me/devices/${encodeURIComponent(d.deviceId)}`);
+      await api.del(`/api/me/devices/${encodeURIComponent(pending.deviceId)}`, { password });
+      setPending(null);
+      setPassword('');
       await load();
     } catch (err) {
       setError(errorText(err));
@@ -51,13 +63,28 @@ function YourDevices() {
       {devices === null && !error && <p className="muted">Loading…</p>}
       {devices?.length === 0 && <p className="muted">No devices to show.</p>}
       {devices?.map((d) => (
-        <div key={d.deviceId} className="setting-row">
-          <span className="setting-text">
-            <span>{d.deviceId === thisDevice ? 'This device' : `Device ${d.deviceId.slice(0, 8)}`}</span>
-            <small className="muted">Added {new Date(d.createdAt).toLocaleDateString()}</small>
-          </span>
-          {d.deviceId !== thisDevice && (
-            <button type="button" className="danger" onClick={() => void remove(d)} disabled={busy}>Remove</button>
+        <div key={d.deviceId}>
+          <div className="setting-row">
+            <span className="setting-text">
+              <span>{d.deviceId === thisDevice ? 'This device' : `Device ${d.deviceId.slice(0, 8)}`}</span>
+              <small className="muted">Added {new Date(d.createdAt).toLocaleDateString()}</small>
+            </span>
+            {d.deviceId !== thisDevice && (
+              <button type="button" className="danger" onClick={() => openRemove(d)} disabled={busy}>Remove</button>
+            )}
+          </div>
+          {pending?.deviceId === d.deviceId && (
+            <form onSubmit={remove}>
+              <p className="muted">
+                Removing it signs it out at once and stops it getting new messages once your friends update their copies of your chats. It keeps any messages it already has. Enter your password to confirm.
+              </p>
+              <label className="field">
+                <span>Password</span>
+                <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required autoFocus />
+              </label>
+              <button type="submit" className="danger" disabled={busy}>Remove device</button>
+              <button type="button" onClick={() => setPending(null)} disabled={busy}>Cancel</button>
+            </form>
           )}
         </div>
       ))}

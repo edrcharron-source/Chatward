@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { LIMITS, type User } from '@chatward/shared';
 import { api } from '../../api/http';
+import { getDevice } from '../../crypto';
 import { useSession } from '../../state/session';
 import { Section, errorText } from './controls';
 
@@ -30,7 +31,7 @@ export default function PasswordSection() {
     }
     setBusy(true);
     try {
-      const res = await api.post<{ token: string; user: User }>('/api/me/password', { currentPassword: current, newPassword: next });
+      const res = await api.post<{ token: string; user: User }>('/api/me/password', { currentPassword: current, newPassword: next, deviceId: getDevice().deviceId });
       setAuth(res.token, res.user);
       setCurrent('');
       setNext('');

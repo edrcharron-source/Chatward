@@ -3,8 +3,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import express, { type Express, type NextFunction, type Request, type Response } from 'express';
 import { hash, verify } from '@node-rs/argon2';
+import rateLimit from 'express-rate-limit';
 import { LIMITS, type DeviceKeys } from '@chatward/shared';
-import type { Ctx } from '../ctx.js';
+import type { AuthedRequest, Ctx } from '../ctx.js';
 import { newId } from '../db.js';
 import {
   ApiError,
@@ -12,7 +13,9 @@ import {
   bad,
   bodyOf,
   cleanText,
+  ISSUER_OWNS_SHARED_SERVER,
   peerIds,
+  pruneResetCodes,
   redeemInvite,
   removeMember,
   route,
@@ -91,6 +94,33 @@ function broadcastUser(ctx: Ctx, userId: string): void {
     ctx.sendToUser(id, { t: 'user.update', user });
   }
 }
+
+/** Checks the caller's own password for a destructive action. Wrong or missing is a 403, never a 401, so the client doesn't read it as signed out. */
+async function requirePassword(ctx: Ctx, userId: string, value: unknown): Promise<void> {
+  const row = ctx.db.prepare('SELECT password_hash FROM users WHERE id=?').get(userId) as { password_hash: string } | undefined;
+  if (!row) throw new ApiError(401, 'unauthorized');
+  const password = typeof value === 'string' && value.length <= PASSWORD_MAX ? value : '';
+  if (!password || !(await verify(row.password_hash, password))) throw new ApiError(403, 'password is incorrect');
+}
+
+/** The device a password change should keep signed in. Tokens from before per-device sessions name none, so the client sends its device id. */
+function callerDevice(ctx: Ctx, req: Request, body: Record<string, unknown>, userId: string): string {
+  const deviceId = (req as AuthedRequest).deviceId ?? (typeof body.deviceId === 'string' ? body.deviceId : '');
+  if (!ctx.db.prepare('SELECT 1 FROM devices WHERE device_id=? AND user_id=?').get(deviceId, userId)) {
+    bad('this device is not registered to your account');
+  }
+  return deviceId;
+}
+
+/** Limits signed-in, password-checked actions per account, so a stolen token can't guess the password quickly. */
+const sensitiveLimit = rateLimit({
+  windowMs: 15 * 60_000,
+  limit: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => (req as AuthedRequest).userId,
+  message: { error: 'too many attempts, try again later' },
+});
 
 function mustUser(ctx: Ctx, userId: string) {
   const user = ctx.getUser(userId);
@@ -172,7 +202,7 @@ export function register(app: Express, ctx: Ctx): void {
     })();
 
     if (joinedServerId) announceJoin(ctx, joinedServerId, id);
-    res.json({ token: ctx.signToken(id), user: mustUser(ctx, id) });
+    res.json({ token: ctx.signToken(id, device.deviceId), user: mustUser(ctx, id) });
   }));
 
   app.post('/api/auth/login', route(async (req, res) => {
@@ -187,12 +217,12 @@ export function register(app: Express, ctx: Ctx): void {
     const ok = password !== '' && (await verify(row?.password_hash ?? (await dummyHash), password));
     if (!row || !ok) throw new ApiError(401, 'invalid username or password');
     if (ctx.db.transaction(() => upsertDevice(ctx, row.id, device))()) broadcastDevices(ctx, row.id);
-    res.json({ token: ctx.signToken(row.id), user: mustUser(ctx, row.id) });
+    res.json({ token: ctx.signToken(row.id, device.deviceId), user: mustUser(ctx, row.id) });
   }));
 
   // Signed-in password change. Needs the current password, and signs out every other session.
   // A wrong current password gets 403, not 401: the client treats 401 as "logged out".
-  app.post('/api/me/password', ctx.requireAuth, route(async (req, res) => {
+  app.post('/api/me/password', ctx.requireAuth, sensitiveLimit, route(async (req, res) => {
     const uid = userIdOf(req);
     const body = bodyOf(req);
     const row = ctx.db.prepare('SELECT password_hash FROM users WHERE id=?').get(uid) as { password_hash: string } | undefined;
@@ -201,11 +231,14 @@ export function register(app: Express, ctx: Ctx): void {
     if (current === '' || !(await verify(row.password_hash, current))) throw new ApiError(403, 'current password is wrong');
     const newPassword = validPassword(body.newPassword);
     if (newPassword === current) bad('the new password must be different from the current one');
+    const deviceId = callerDevice(ctx, req, body, uid);
     const passwordHash = await hash(newPassword);
     ctx.db
       .prepare('UPDATE users SET password_hash=?, session_version=session_version+1 WHERE id=?')
       .run(passwordHash, uid);
-    res.json({ token: ctx.signToken(uid), user: mustUser(ctx, uid) });
+    // A reset code issued before this change would let someone overwrite the password just set.
+    ctx.db.prepare('DELETE FROM password_resets WHERE user_id=?').run(uid);
+    res.json({ token: ctx.signToken(uid, deviceId), user: mustUser(ctx, uid) });
     ctx.revokeSockets(uid);
   }));
 
@@ -243,7 +276,7 @@ export function register(app: Express, ctx: Ctx): void {
     const passwordHash = await hash(newPassword);
     const devicesChanged = ctx.db.transaction(() => {
       const used = user
-        ? ctx.db.prepare('DELETE FROM password_resets WHERE user_id=? AND code_hash=? AND expires_at>?')
+        ? ctx.db.prepare(`DELETE FROM password_resets WHERE user_id=? AND code_hash=? AND expires_at>? AND ${ISSUER_OWNS_SHARED_SERVER}`)
           .run(user.id, codeHash(code), Date.now())
         : { changes: 0 };
       if (!user || used.changes !== 1) throw new ApiError(403, 'reset code is invalid or expired');
@@ -253,12 +286,20 @@ export function register(app: Express, ctx: Ctx): void {
       return upsertDevice(ctx, user.id, device);
     })();
     if (devicesChanged) broadcastDevices(ctx, user!.id);
-    res.json({ token: ctx.signToken(user!.id), user: mustUser(ctx, user!.id) });
+    res.json({ token: ctx.signToken(user!.id, device.deviceId), user: mustUser(ctx, user!.id) });
     ctx.revokeSockets(user!.id);
   }));
 
   app.get('/api/me', ctx.requireAuth, route((req, res) => {
     res.json({ user: mustUser(ctx, userIdOf(req)) });
+  }));
+
+  // Swaps a still-valid token for a new 30-day one. requireAuth rejects a revoked session, so it cannot renew.
+  app.post('/api/auth/refresh', ctx.requireAuth, route((req, res) => {
+    const deviceId = (req as AuthedRequest).deviceId;
+    // A token from before logins were tied to a device cannot be renewed; that user signs in again.
+    if (!deviceId) { res.status(401).json({ error: 'unauthorized' }); return; }
+    res.json({ token: ctx.signToken(userIdOf(req), deviceId) });
   }));
 
   // Whether a device id is registered to the caller. Lets a PC confirm an old device before using it.
@@ -275,11 +316,13 @@ export function register(app: Express, ctx: Ctx): void {
     res.json({ devices: rows.map((r) => ({ deviceId: r.device_id, createdAt: r.created_at })) });
   }));
 
-  // Removes one of the caller's devices. Its pending KeyPackages, Welcomes and acks go with it, so it can no longer
+  // Removes one of the caller's devices. Needs the account password. The device's token stops working at once,
+  // and its open sockets close. Its pending KeyPackages, Welcomes and acks go with it, so it can no longer
   // join groups or hold up a reset. Peers see the new device list and drop it from their groups with a Remove Commit.
-  app.delete('/api/me/devices/:deviceId', ctx.requireAuth, route((req, res) => {
+  app.delete('/api/me/devices/:deviceId', ctx.requireAuth, sensitiveLimit, route(async (req, res) => {
     const uid = userIdOf(req);
     const deviceId = String(req.params.deviceId);
+    await requirePassword(ctx, uid, bodyOf(req).password);
     const row = ctx.db.prepare('SELECT user_id FROM devices WHERE device_id=?').get(deviceId) as
       { user_id: string } | undefined;
     if (!row || row.user_id !== uid) throw new ApiError(404, 'device not found');
@@ -291,6 +334,7 @@ export function register(app: Express, ctx: Ctx): void {
     })();
     broadcastDevices(ctx, uid);
     res.status(204).end();
+    ctx.revokeSockets(uid, deviceId);
   }));
 
   // Each field is optional; a missing field keeps its current value.
@@ -316,14 +360,9 @@ export function register(app: Express, ctx: Ctx): void {
 
   // Deletes the caller's account. Owners must hand off or delete their servers first. The row stays as a
   // tombstone so old messages still point at a user; everything personal is wiped.
-  app.post('/api/me/delete', ctx.requireAuth, route(async (req, res) => {
+  app.post('/api/me/delete', ctx.requireAuth, sensitiveLimit, route(async (req, res) => {
     const uid = userIdOf(req);
-    const body = bodyOf(req);
-    const password = typeof body.password === 'string' && body.password.length <= PASSWORD_MAX ? body.password : '';
-    const row = ctx.db.prepare('SELECT password_hash FROM users WHERE id=?').get(uid) as
-      { password_hash: string } | undefined;
-    if (!row) throw new ApiError(401, 'unauthorized');
-    if (!password || !(await verify(row.password_hash, password))) throw new ApiError(403, 'password is incorrect');
+    await requirePassword(ctx, uid, bodyOf(req).password);
 
     const owned = ctx.db.prepare('SELECT name FROM servers WHERE owner_id=?').all(uid) as { name: string }[];
     if (owned.length > 0) {
@@ -339,6 +378,7 @@ export function register(app: Express, ctx: Ctx): void {
     ctx.db.transaction(() => {
       ctx.db.prepare('DELETE FROM mls_keypackages WHERE device_id IN (SELECT device_id FROM devices WHERE user_id=?)').run(uid);
       ctx.db.prepare('DELETE FROM devices WHERE user_id=?').run(uid);
+      ctx.db.prepare('DELETE FROM password_resets WHERE user_id=?').run(uid);
       ctx.db.prepare(`UPDATE users SET username=?, display_name='Deleted user', password_hash='', avatar_path=NULL,
           banner_path=NULL, bio='', pronouns='', accent_color=NULL, banner_color=NULL, deleted_at=? WHERE id=?`)
         .run(`deleted-${uid}`, Date.now(), uid);
