@@ -1,0 +1,34 @@
+:root, :root[data-theme='dark'] {
+  --bg-0: #1e1f22; --bg-1: #2b2d31; --bg-2: #313338; --bg-3: #383a40; --bg-hover: #3f4147;
+  --text: #dbdee1; --text-muted: #949ba4; --text-strong: #f2f3f5;
+  --accent: #6c7bff; --accent-hover: #5865f2; --accent-text: #fff;
+  --danger: #f23f43; --ok: #23a55a; --warn: #f0b232; --border: #1a1b1e;
+  --shadow: 0 8px 24px rgba(0,0,0,.4); --radius: 10px;
+}
+:root[data-theme='light'] {
+  --bg-0: #e3e5e8; --bg-1: #f2f3f5; --bg-2: #ffffff; --bg-3: #ebedef; --bg-hover: #dfe1e5;
+  --text: #313338; --text-muted: #5c6068; --text-strong: #060607;
+  --accent: #5865f2; --accent-hover: #4752c4; --accent-text: #fff;
+  --danger: #d83c3e; --ok: #1a8f48; --warn: #b87500; --border: #d4d7dc;
+  --shadow: 0 8px 24px rgba(0,0,0,.15);
+}
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; margin: 0; }
+body { background: var(--bg-2); color: var(--text); font: 14px/1.4 'Segoe UI', system-ui, sans-serif; overflow: hidden; }
+button { font: inherit; color: inherit; cursor: pointer; border: 0; border-radius: 8px; padding: 8px 14px; background: var(--bg-3); transition: background .12s; }
+button:hover { background: var(--bg-hover); }
+button.primary { background: var(--accent); color: var(--accent-text); }
+button.primary:hover { background: var(--accent-hover); }
+button.danger { background: var(--danger); color: #fff; }
+button.icon { padding: 6px; border-radius: 8px; background: transparent; display: inline-flex; align-items: center; justify-content: center; }
+button.icon:hover { background: var(--bg-hover); }
+button:disabled { opacity: .5; cursor: not-allowed; }
+input, textarea, select { font: inherit; color: var(--text); background: var(--bg-0); border: 1px solid transparent; border-radius: 8px; padding: 9px 11px; outline: none; }
+input:focus, textarea:focus, select:focus { border-color: var(--accent); }
+input[type='range'] { padding: 0; accent-color: var(--accent); }
+.card { background: var(--bg-1); border-radius: var(--radius); box-shadow: var(--shadow); }
+.avatar { border-radius: 50%; object-fit: cover; background: var(--bg-3); flex: none; }
+.muted { color: var(--text-muted); }
+.modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: grid; place-items: center; z-index: 100; }
+.modal { background: var(--bg-2); border-radius: 14px; box-shadow: var(--shadow); max-height: 90vh; overflow: auto; }
+::-webkit-scrollbar { width: 10px; } ::-webkit-scrollbar-thumb { background: var(--bg-3); border-radius: 8px; border: 2px solid transparent; background-clip: content-box; }

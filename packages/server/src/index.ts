@@ -1,0 +1,73 @@
+import http from 'node:http';
+import express from 'express';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
+import type { Channel, DeviceKeys, Member, User } from '@chatward/shared';
+import { config } from './config.js';
+import { openDb } from './db.js';
+import { makeAuth, type Ctx } from './ctx.js';
+import { attachWs } from './ws.js';
+import { register as auth } from './modules/auth.js';
+import { register as servers } from './modules/servers.js';
+import { register as messages } from './modules/messages.js';
+import { register as uploads } from './modules/uploads.js';
+import { register as soundboard } from './modules/soundboard.js';
+import { register as gifs } from './modules/gifs.js';
+import { register as linkpreview } from './modules/linkpreview.js';
+import { register as voice } from './modules/voice.js';
+
+const db = openDb();
+const { signToken, verifyToken, requireAuth } = makeAuth(db);
+
+type UserRow = { id: string; username: string; display_name: string; avatar_path: string | null };
+const toUser = (r: UserRow): User => ({
+  id: r.id, username: r.username, displayName: r.display_name,
+  avatarUrl: r.avatar_path ? `/api/avatars/${r.id}` : null,
+});
+
+const ctx: Ctx = {
+  db, config, requireAuth, signToken, verifyToken,
+  broadcastToServer: () => {},
+  sendToUser: () => {},
+  onDisconnect: [],
+  getUser: (id) => {
+    const r = db.prepare('SELECT id, username, display_name, avatar_path FROM users WHERE id=?').get(id) as UserRow | undefined;
+    return r ? toUser(r) : null;
+  },
+  getDevices: (userId) =>
+    (db.prepare('SELECT device_id, ecdh_public, sign_public FROM devices WHERE user_id=?').all(userId) as
+      { device_id: string; ecdh_public: string; sign_public: string }[])
+      .map((d): DeviceKeys => ({ deviceId: d.device_id, ecdhPublic: d.ecdh_public, signPublic: d.sign_public })),
+  getMembers: (serverId) =>
+    (db.prepare('SELECT user_id, role FROM members WHERE server_id=?').all(serverId) as { user_id: string; role: Member['role'] }[])
+      .map((m): Member => ({ user: ctx.getUser(m.user_id)!, role: m.role, devices: ctx.getDevices(m.user_id) })),
+  getChannel: (id) => {
+    const r = db.prepare('SELECT id, server_id, name, kind FROM channels WHERE id=?').get(id) as
+      { id: string; server_id: string; name: string; kind: Channel['kind'] } | undefined;
+    return r ? { id: r.id, serverId: r.server_id, name: r.name, kind: r.kind } : null;
+  },
+  roleIn: (serverId, userId) =>
+    ((db.prepare('SELECT role FROM members WHERE server_id=? AND user_id=?').get(serverId, userId) as { role: 'owner' | 'admin' | 'member' } | undefined)?.role ?? null),
+  serverIdForChannelMember: (channelId, userId) =>
+    ((db.prepare('SELECT c.server_id AS sid FROM channels c JOIN members m ON m.server_id=c.server_id WHERE c.id=? AND m.user_id=?').get(channelId, userId) as { sid: string } | undefined)?.sid ?? null),
+};
+
+const app = express();
+app.disable('x-powered-by');
+app.use(helmet());
+app.use('/api/auth', rateLimit({ windowMs: 15 * 60_000, limit: 40, standardHeaders: true }));
+app.use(express.json({ limit: '64kb' }));
+app.get('/api/health', (_req, res) => res.json({ ok: true }));
+
+for (const reg of [auth, servers, messages, uploads, soundboard, gifs, linkpreview, voice]) reg(app, ctx);
+
+app.use((_req, res) => res.status(404).json({ error: 'not found' }));
+app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  console.error(err);
+  res.status(500).json({ error: 'internal error' });
+});
+
+const server = http.createServer(app);
+attachWs(server, ctx);
+server.listen(config.port, config.host, () =>
+  console.log(`Chatward server listening on http://${config.host}:${config.port}`));

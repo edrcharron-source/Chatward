@@ -1,0 +1,13 @@
+{
+  "name": "chatward",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": ["packages/*"],
+  "scripts": {
+    "dev:server": "npm run dev -w @chatward/server",
+    "dev:client": "npm run dev -w @chatward/client",
+    "build": "npm run build -w @chatward/shared && npm run build -w @chatward/server && npm run build -w @chatward/client",
+    "typecheck": "npm run build -w @chatward/shared && npm run typecheck -w @chatward/server && npm run typecheck -w @chatward/client",
+    "dist:win": "npm run dist:win -w @chatward/client"
+  }
+}

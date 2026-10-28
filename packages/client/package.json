@@ -1,0 +1,42 @@
+{
+  "name": "@chatward/client",
+  "productName": "Chatward",
+  "version": "0.1.0",
+  "description": "Private, end-to-end encrypted chat for friends",
+  "author": "Chatward",
+  "main": "out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "dist:win": "electron-vite build && electron-builder --win nsis portable --publish never"
+  },
+  "dependencies": {
+    "@chatward/shared": "*",
+    "emoji-picker-element": "^1.26.0",
+    "emoji-picker-element-data": "^1.6.0",
+    "livekit-client": "^2.5.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-easy-crop": "^5.0.8",
+    "zustand": "^5.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.11",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.2",
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.8",
+    "electron-vite": "^2.3.0",
+    "typescript": "^5.6.0",
+    "vite": "^5.4.8"
+  },
+  "build": {
+    "appId": "app.chatward.client",
+    "productName": "Chatward",
+    "directories": { "output": "release" },
+    "files": ["out/**"],
+    "win": { "target": ["nsis", "portable"] },
+    "nsis": { "oneClick": false, "allowToChangeInstallationDirectory": true }
+  }
+}
