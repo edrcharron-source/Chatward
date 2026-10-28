@@ -92,7 +92,9 @@ app.get('/api/health', (_req, res) => res.json({ ok: true }));
 for (const reg of [auth, servers, messages, uploads, soundboard, gifs, linkpreview, voice, groups, watchparty, updates]) reg(app, ctx);
 
 app.use((_req, res) => res.status(404).json({ error: 'not found' }));
-app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+app.use((err: Error & { type?: string }, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  // express.json rejects an oversize body with this type; that is the client's fault, not a server error.
+  if (err.type === 'entity.too.large') { res.status(413).json({ error: 'request too large' }); return; }
   console.error(err);
   res.status(500).json({ error: 'internal error' });
 });
