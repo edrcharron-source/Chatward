@@ -135,4 +135,7 @@ export type ServerFrame =
   | { t: 'sound.play'; serverId: string; channelId: string; soundId: string; userId: string }
   | { t: 'voice.state'; serverId: string; channelId: string; userIds: string[] }
   | { t: 'user.update'; user: User }
+  | { t: 'group.commit'; channelId: string; epoch: number }
+  | { t: 'group.welcome'; channelId: string; epoch: number }
+  | { t: 'keypackages.low'; deviceId: string; remaining: number }
   | { t: 'pong' };

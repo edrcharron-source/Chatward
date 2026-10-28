@@ -6,7 +6,7 @@ import {
   joinGroup, mlsExporter, processMessage, zeroOutUint8Array, type CiphersuiteImpl, type ClientState, type Credential,
   type KeyPackage, type PrivateKeyPackage, type Proposal,
 } from 'ts-mls';
-import { utf8 } from './primitives';
+import { fromB64, toB64, utf8 } from './primitives';
 
 // DHKEM-X25519 / AES-128-GCM / Ed25519 is the only suite ts-mls supports without extra crypto packages.
 const SUITE = 'MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519';
@@ -25,6 +25,8 @@ export interface GroupStep {
   commit?: Bytes;
   /** Encoded Welcome for the members added in this commit. */
   welcome?: Bytes;
+  /** Keys consumed while creating the Commit. Pass to settle() once the server accepts it. */
+  consumed: Bytes[];
 }
 
 export interface Received {
@@ -74,12 +76,20 @@ export async function selfUpdate(state: ClientState): Promise<GroupStep> {
 async function commit(state: ClientState, options: { extraProposals?: Proposal[] }): Promise<GroupStep> {
   const cs = await cipherSuite();
   const result = await createCommit({ state, cipherSuite: cs }, { ...options, ratchetTreeExtension: true });
-  result.consumed.forEach(zeroOutUint8Array);
   return {
     state: result.newState,
     commit: encodeMlsMessage(result.commit),
     welcome: result.welcome && encodeMlsMessage({ welcome: result.welcome, wireformat: 'mls_welcome', version: WIRE_VERSION }),
+    consumed: result.consumed,
   };
+}
+
+/**
+ * Erase the key material a step used up. Call only after the server accepted the Commit: ts-mls's consumed
+ * keys can alias the input state, so zeroing them while a 409 might still discard that input would corrupt it.
+ */
+export function settle(step: GroupStep): void {
+  step.consumed.forEach(zeroOutUint8Array);
 }
 
 /** Join from a Welcome that an existing member produced for our KeyPackage. */
@@ -117,4 +127,26 @@ export async function receive(state: ClientState, bytes: Bytes): Promise<Receive
 /** Per-epoch 32-byte secret for LiveKit E2EE. Changes on every Commit, so removed members lose voice keys too. */
 export async function voiceKey(state: ClientState): Promise<Bytes> {
   return mlsExporter(state.keySchedule.exporterSecret, 'chatward-voice', utf8(''), 32, await cipherSuite()) as Promise<Bytes>;
+}
+
+/** Wire form of a KeyPackage (what a device uploads and others claim). */
+export async function encodeKeyPackage(keys: MemberKeys): Promise<string> {
+  return toB64(encodeMlsMessage({ keyPackage: keys.publicPackage, wireformat: 'mls_key_package', version: WIRE_VERSION }) as Uint8Array<ArrayBuffer>);
+}
+
+export function decodeKeyPackage(encoded: string): KeyPackage {
+  const [decoded] = decodeMlsMessage(fromB64(encoded), 0)!;
+  if (decoded.wireformat !== 'mls_key_package') throw new Error('Expected a KeyPackage message');
+  return decoded.keyPackage;
+}
+
+/** Leaf index and identity (deviceId) of every current member. */
+export function memberLeaves(state: ClientState): { leafIndex: number; deviceId: string }[] {
+  const out: { leafIndex: number; deviceId: string }[] = [];
+  state.ratchetTree.forEach((node, nodeIndex) => {
+    if (node?.nodeType !== 'leaf' || node.leaf.credential.credentialType !== 'basic') return;
+    // Leaves sit at even node indices; leaf index = nodeIndex / 2.
+    out.push({ leafIndex: nodeIndex / 2, deviceId: new TextDecoder().decode(node.leaf.credential.identity) });
+  });
+  return out;
 }
