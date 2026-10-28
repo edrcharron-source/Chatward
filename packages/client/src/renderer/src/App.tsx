@@ -106,18 +106,20 @@ function Shell() {
       <ServerSidebar onReload={loadServers} />
       <ChannelList onOpenSettings={() => setSettingsOpen(true)} onReload={loadServers} />
       <main style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+        {channel && (
+          <>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '4px 12px', background: 'var(--bg-2)' }}>
+              <button className="icon" onClick={() => setWatchOpen((o) => !o)} aria-pressed={watchOpen} title="Watch YouTube together">
+                🎬 {watchOpen ? 'Close watch party' : 'Watch together'}
+              </button>
+            </div>
+            {watchOpen && <WatchPartyPanel key={channel.id} channelId={channel.id} />}
+          </>
+        )}
         {channel?.kind === 'voice'
           ? <VoiceChannelView key={channel.id} channel={channel} />
           : channel
-            ? <>
-                <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '4px 12px', background: 'var(--bg-2)' }}>
-                  <button className="icon" onClick={() => setWatchOpen((o) => !o)} aria-pressed={watchOpen} title="Watch YouTube together">
-                    🎬 {watchOpen ? 'Close watch party' : 'Watch together'}
-                  </button>
-                </div>
-                {watchOpen && <WatchPartyPanel key={channel.id} channelId={channel.id} />}
-                <ChatView key={channel.id} channel={channel} />
-              </>
+            ? <ChatView key={channel.id} channel={channel} />
             : <div style={{ margin: 'auto' }} className="muted">{bundle ? 'Select a channel' : 'Create or join a server to get started'}</div>}
       </main>
       {bundle && <MemberList members={bundle.members as Member[]} />}
