@@ -4,6 +4,7 @@ import type { Express, Response } from 'express';
 import { LIMITS, type Channel, type KeyEnvelope, type Message } from '@chatward/shared';
 import type { AuthedRequest, Ctx } from '../ctx.js';
 import { newId } from '../db.js';
+import { perMember } from '../userLimit.js';
 
 interface MessageRow {
   id: string;
@@ -196,7 +197,7 @@ export function register(app: Express, ctx: Ctx): void {
     res.json({ messages: rows.reverse().map(toMessage) });
   });
 
-  app.post('/api/channels/:id/messages', ctx.requireAuth, (req, res) => {
+  app.post('/api/channels/:id/messages', ctx.requireAuth, perMember(60_000, 60), (req, res) => {
     const userId = (req as AuthedRequest).userId;
     const ch = textChannelFor(userId, req.params.id, res);
     if (!ch) return;

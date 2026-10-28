@@ -36,12 +36,14 @@ export function attachWs(http: HttpServer, ctx: Ctx) {
       if (!set) socketsByUser.set(userId, (set = new Set()));
       set.add(ws);
       deviceBySocket.set(ws, deviceId);
-      statusByUser.set(userId, 'online');
+      // Keep the status the user last chose while any device is connected, so a reconnect does not flash Online.
+      const status = statusByUser.get(userId) ?? 'online';
+      statusByUser.set(userId, status);
       for (const cb of ctx.onConnect) cb(userId, deviceId);
       send(ws, { t: 'ready', user: ctx.getUser(userId)!, presence: presenceFor(userId) });
       sendPresenceSnapshot(ws, userId);
       replayNewDeviceAlerts(ws, userId, deviceId);
-      announce(userId, 'online');
+      announce(userId, status);
       ws.on('message', (raw) => {
         // A malformed frame must never throw out of this listener: it would crash the whole server.
         try {

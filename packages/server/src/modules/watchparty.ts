@@ -13,6 +13,11 @@ interface Snapshot {
 
 const snapshots = new Map<string, Snapshot>();
 
+// Called when a channel is deleted, so its last snapshot does not stay in memory for the life of the process.
+export function forgetWatchParty(channelId: string): void {
+  snapshots.delete(channelId);
+}
+
 export function register(app: Express, ctx: Ctx): void {
   // Any member of the channel's server can read and set the shared playback state, same as posting a message.
   app.get('/api/channels/:id/watch', ctx.requireAuth, (req, res) => {
