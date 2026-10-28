@@ -1,5 +1,5 @@
 import type { Express } from 'express';
-import { AccessToken } from 'livekit-server-sdk';
+import { AccessToken, RoomServiceClient } from 'livekit-server-sdk';
 import type { Ctx, AuthedRequest } from '../ctx.js';
 
 // In-memory voice occupancy. Lost on restart, which is fine: clients rejoin.
@@ -17,6 +17,14 @@ export function isInVoiceChannel(channelId: string, userId: string): boolean {
 export function leaveVoice(ctx: Ctx, userId: string): void {
   const channelId = voiceChannelOf.get(userId);
   if (channelId) leaveChannel(ctx, channelId, userId);
+}
+
+/** Drops the user from the channel's voice slot and from the LiveKit room, so they stop hearing the call now. */
+function kickFromCall(ctx: Ctx, channelId: string, userId: string): void {
+  leaveChannel(ctx, channelId, userId);
+  const rooms = new RoomServiceClient(ctx.config.livekit.apiUrl, ctx.config.livekit.apiKey, ctx.config.livekit.apiSecret);
+  // Fails if LiveKit no longer has the participant (already left or still connecting). Either way they are out.
+  rooms.removeParticipant(channelId, userId).catch((err: unknown) => console.warn('livekit removeParticipant failed', err));
 }
 
 function leaveChannel(ctx: Ctx, channelId: string, userId: string): boolean {
@@ -75,6 +83,33 @@ export function register(app: Express, ctx: Ctx): void {
     const channelId = (req.body as { channelId?: unknown } | undefined)?.channelId;
     if (typeof channelId !== 'string') { res.status(400).json({ error: 'channelId required' }); return; }
     leaveChannel(ctx, channelId, userId);
+    res.json({ ok: true });
+  });
+
+  // Server admins can remove someone from a call. Joining again is still allowed; this only ends the current call.
+  app.post('/api/voice/kick', ctx.requireAuth, (req, res) => {
+    const actorId = (req as AuthedRequest).userId;
+    const body = (req.body ?? {}) as { channelId?: unknown; userId?: unknown };
+    if (typeof body.channelId !== 'string' || typeof body.userId !== 'string') {
+      res.status(400).json({ error: 'channelId and userId required' });
+      return;
+    }
+    const channelId = body.channelId;
+    const targetId = body.userId;
+    const channel = ctx.getChannel(channelId);
+    const actorRole = channel ? ctx.roleIn(channel.serverId, actorId) : null;
+    if (!channel || !actorRole) { res.status(404).json({ error: 'channel not found' }); return; }
+    if (channel.kind !== 'voice') { res.status(400).json({ error: 'not a voice channel' }); return; }
+    if (actorRole === 'member') { res.status(403).json({ error: 'admins only' }); return; }
+    if (targetId === actorId) { res.status(400).json({ error: 'use Leave voice to leave yourself' }); return; }
+    if (!occupants.get(channelId)?.has(targetId)) { res.status(404).json({ error: 'they are not in this call' }); return; }
+    // Same rule as removing a member from the server: admins cannot touch the owner or other admins.
+    const targetRole = ctx.roleIn(channel.serverId, targetId);
+    if (targetRole === 'owner' || (targetRole === 'admin' && actorRole !== 'owner')) {
+      res.status(403).json({ error: 'you cannot kick this member' });
+      return;
+    }
+    kickFromCall(ctx, channelId, targetId);
     res.json({ ok: true });
   });
 

@@ -153,10 +153,12 @@ export function setDeafened(on: boolean): void {
 
 function applyLevels(): void {
   if (!playCtx || !master) return;
-  const { masterVolume, userVolumes } = useSettings.getState();
+  const { masterVolume, userVolumes, mutedUsers } = useSettings.getState();
   const t = playCtx.currentTime;
   master.gain.setTargetAtTime(deafened ? 0 : masterVolume, t, 0.02);
-  for (const r of remotes.values()) r.gain.gain.setTargetAtTime(userVolumes[r.userId] ?? 1, t, 0.02);
+  for (const r of remotes.values()) {
+    r.gain.gain.setTargetAtTime(mutedUsers[r.userId] ? 0 : (userVolumes[r.userId] ?? 1), t, 0.02);
+  }
 }
 
 export function closeAudio(): void {
@@ -186,5 +188,5 @@ useSettings.subscribe((s, prev) => {
     setInputDevice(s.inputDeviceId).catch((e) => console.warn('mic change failed', e));
   }
   if (s.outputDeviceId !== prev.outputDeviceId) void applyOutputDevice();
-  if (s.masterVolume !== prev.masterVolume || s.userVolumes !== prev.userVolumes) applyLevels();
+  if (s.masterVolume !== prev.masterVolume || s.userVolumes !== prev.userVolumes || s.mutedUsers !== prev.mutedUsers) applyLevels();
 });

@@ -17,8 +17,11 @@ export interface Settings {
   linkPreviews: boolean;
   /** per remote user volume 0..3 (1 = 100%, up to 300% boost); keyed by userId */
   userVolumes: Record<string, number>;
-  set: (patch: Partial<Omit<Settings, 'set' | 'setUserVolume'>>) => void;
+  /** people you have muted for yourself only; keyed by userId */
+  mutedUsers: Record<string, boolean>;
+  set: (patch: Partial<Omit<Settings, 'set' | 'setUserVolume' | 'setUserMuted'>>) => void;
   setUserVolume: (userId: string, v: number) => void;
+  setUserMuted: (userId: string, muted: boolean) => void;
 }
 
 const LS = 'chatward.settings';
@@ -26,7 +29,7 @@ const defaults = {
   theme: 'dark' as const, inputDeviceId: '', outputDeviceId: '', cameraDeviceId: '',
   masterVolume: 1, micGain: 1, noiseSuppression: true, echoCancellation: true,
   messageSounds: true, mutedChannels: [] as string[], voiceJoinLeaveSounds: true, soundVolume: 0.6,
-  autoLoadEmbeds: false, linkPreviews: true, userVolumes: {} as Record<string, number>,
+  autoLoadEmbeds: false, linkPreviews: true, userVolumes: {} as Record<string, number>, mutedUsers: {} as Record<string, boolean>,
 };
 const saved = (() => { try { return JSON.parse(localStorage.getItem(LS) ?? '{}'); } catch { return {}; } })();
 
@@ -34,10 +37,11 @@ export const useSettings = create<Settings>((set, get) => ({
   ...defaults, ...saved,
   set: (patch) => { set(patch); persist(get()); },
   setUserVolume: (userId, v) => { set({ userVolumes: { ...get().userVolumes, [userId]: v } }); persist(get()); },
+  setUserMuted: (userId, muted) => { set({ mutedUsers: { ...get().mutedUsers, [userId]: muted } }); persist(get()); },
 }));
 
 function persist(s: Settings) {
-  const { set: _s, setUserVolume: _u, ...data } = s;
+  const { set: _s, setUserVolume: _u, setUserMuted: _m, ...data } = s;
   localStorage.setItem(LS, JSON.stringify(data));
 }
 
