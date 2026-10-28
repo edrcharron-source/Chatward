@@ -266,11 +266,16 @@ function groupOf(channelId: string): ClientState | null {
   return state;
 }
 
-/** Save a new group state and derive the history key for its epoch. */
+/**
+ * Save a new group state and derive the history key for its epoch. The vault is written here, not at the end of sync:
+ * the server has already accepted the Commit that produced this state, and if the app closes before a later write we
+ * would come back one epoch behind and could never apply our own Commit again.
+ */
 async function setGroup(channelId: string, state: ClientState, epoch: number): Promise<void> {
   groupStates.set(channelId, state);
   vault.groups[channelId] = { epoch, state: toB64(mls.encodeGroup(state) as Bytes as Uint8Array<ArrayBuffer>) };
   putKey(channelId, epoch + 1, await mls.historyKey(state));
+  await persistVault();
 }
 
 async function ensureGroup(channelId: string, members: Member[]): Promise<boolean> {
