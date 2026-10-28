@@ -51,6 +51,8 @@ const KEYPACKAGE_LOW_WATER = 5;
 const KEYPACKAGE_BATCH = 10;
 /** Devices added per Commit. One Commit per device list grows past the server's body limit once a channel has ~8 devices. */
 const ADD_BATCH_SIZE = 4;
+/** A Commit post can wait on the server to store it and fan out Welcomes, so it gets longer than a normal request. */
+const COMMIT_TIMEOUT_MS = 90_000;
 
 let account: string | null = null;
 let device: DeviceKeys | null = null;
@@ -192,7 +194,6 @@ export function getDevice(): DeviceKeys {
 }
 
 const SYNC_RETRY_MAX_MS = 60_000;
-let lastServers: ServerBundle[] = [];
 let retryTimer: ReturnType<typeof setTimeout> | null = null;
 let retryAttempts = 0;
 
@@ -200,7 +201,6 @@ let retryAttempts = 0;
 export function syncChannelKeys(servers: ServerBundle[]): Promise<void> {
   return serial(async () => {
     if (isDemo() || !device || !privates) return;
-    lastServers = servers;
     let changed = false;
     let failed = false;
     try {
@@ -244,7 +244,8 @@ function scheduleSyncRetry(failed: boolean): void {
   retryAttempts++;
   retryTimer = setTimeout(() => {
     retryTimer = null;
-    void syncChannelKeys(lastServers).catch((err) => console.error('Key sync retry failed', err));
+    // Read the list at retry time, so a server deleted or left since the failure is not synced again.
+    void syncChannelKeys(useSession.getState().servers).catch((err) => console.error('Key sync retry failed', err));
   }, delay);
 }
 
@@ -589,12 +590,27 @@ async function reconcile(channelId: string, members: Member[]): Promise<boolean>
   return changed;
 }
 
+// A 429 means the server did not claim anything, so waiting and asking again costs no KeyPackage.
+const CLAIM_RETRY_DELAYS_MS = [2_000, 4_000, 8_000, 16_000];
+
+async function fetchKeyPackages(userId: string): Promise<{ keyPackages: { deviceId: string; kp: string }[] }> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await api.get<{ keyPackages: { deviceId: string; kp: string }[] }>(`/api/users/${userId}/keypackages`);
+    } catch (err) {
+      const delay = CLAIM_RETRY_DELAYS_MS[attempt];
+      if (!(err instanceof ApiError && err.status === 429) || delay === undefined) throw err;
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+}
+
 /** Claim one KeyPackage per wanted device, one request per user who has any wanted device. */
 async function claimFor(members: Member[], wanted: Set<string>): Promise<{ deviceId: string; kp: mls.KeyPackageLike }[]> {
   const out: { deviceId: string; kp: mls.KeyPackageLike }[] = [];
   for (const m of members) {
     if (!m.devices.some((d) => wanted.has(d.deviceId))) continue;
-    const r = await api.get<{ keyPackages: { deviceId: string; kp: string }[] }>(`/api/users/${m.user.id}/keypackages`);
+    const r = await fetchKeyPackages(m.user.id);
     for (const k of r.keyPackages) {
       if (!wanted.has(k.deviceId)) continue;
       // A KeyPackage the server swapped in does not carry this device's signature, so it is never added.
@@ -613,20 +629,36 @@ async function claimFor(members: Member[], wanted: Set<string>): Promise<{ devic
 async function postCommit(channelId: string, epoch: number, step: mls.GroupStep, members: string[], welcomeTo: string[]): Promise<'ok' | 'conflict'> {
   const me = getDevice();
   const welcome = step.welcome ? toB64(step.welcome as Uint8Array<ArrayBuffer>) : null;
+  const commit = toB64(step.commit as Uint8Array<ArrayBuffer>);
   try {
     await api.post(`/api/groups/${channelId}/commits`, {
       deviceId: me.deviceId,
       epoch,
-      commit: toB64(step.commit as Uint8Array<ArrayBuffer>),
+      commit,
       members,
       welcomes: welcomeTo.map((toDeviceId) => ({ toDeviceId, welcome })),
-    });
+    }, COMMIT_TIMEOUT_MS);
   } catch (err) {
-    if (err instanceof ApiError && err.status === 409) return 'conflict';
-    throw err;
+    if (err instanceof ApiError) {
+      if (err.status === 409) return 'conflict';
+      throw err;
+    }
+    // No answer came back (timeout or dropped connection), but the server may have stored the Commit anyway. If it did,
+    // it is ours and already the group's next epoch, so we move on. Otherwise the failure is real.
+    if (!(await storedAsOurs(channelId, epoch, me.deviceId, commit))) throw err;
   }
   mls.settle(step);
   return 'ok';
+}
+
+/** True when the server holds exactly this Commit at `epoch`, sent by this device. Any failure to check counts as no. */
+async function storedAsOurs(channelId: string, epoch: number, deviceId: string, commit: string): Promise<boolean> {
+  try {
+    const res = await api.get<{ commits: { epoch: number; senderDeviceId: string; commit: string }[] }>(`/api/groups/${channelId}/commits?from=${epoch}`);
+    return res.commits.some((c) => c.epoch === epoch && c.senderDeviceId === deviceId && c.commit === commit);
+  } catch {
+    return false;
+  }
 }
 
 /** Send every history key we hold to devices that do not have them yet. Drops devices that left the server. */
@@ -675,8 +707,6 @@ export function handleMemberLeave(serverId: string, userId: string, servers: Ser
     const bundle = servers.find((b) => b.server.id === serverId);
     if (!bundle) return;
     const remaining = bundle.members.filter((m) => m.user.id !== userId);
-    // A retry must not sync with the removed user still listed, so it gets the same member list.
-    lastServers = servers.map((b) => (b.server.id === serverId ? { ...b, members: remaining } : b));
     let changed = false;
     let failed = false;
     // One channel failing must not stop the others. Its partial progress is still saved below.

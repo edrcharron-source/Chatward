@@ -15,6 +15,11 @@ const KEYPACKAGE_LOW_WATER = 5;
 // A device gets at most one keypackages.low frame a minute, so repeated claims cannot make its app resync in a loop.
 const LOW_NOTICE_GAP_MS = 60_000;
 const lowNoticeSentAt = new Map<string, number>();
+// An entry older than the gap no longer blocks a notice, so it is dropped. Otherwise a device that stops claiming keeps its entry.
+setInterval(() => {
+  const cutoff = Date.now() - LOW_NOTICE_GAP_MS;
+  for (const [deviceId, sentAt] of lowNoticeSentAt) if (sentAt < cutoff) lowNoticeSentAt.delete(deviceId);
+}, 10 * 60_000).unref();
 /** Identifies a stored KeyPackage without sending it back: SHA-256 of its wire string, base64. Clients compute the same. */
 const keyPackageId = (kp: string): string => crypto.createHash('sha256').update(kp).digest('base64');
 
@@ -155,7 +160,7 @@ export function register(app: Express, ctx: Ctx): void {
 
   // Claim one KeyPackage per device of a user who shares a server with us. Single-use packages are consumed;
   // a device with an empty pool falls back to its last-resort package, which is not consumed.
-  app.get('/api/users/:id/keypackages', ctx.requireAuth, perMember(60_000, 20), (req, res) => {
+  app.get('/api/users/:id/keypackages', ctx.requireAuth, perMember(60_000, 60), (req, res) => {
     const userId = (req as AuthedRequest).userId;
     const targetId = req.params.id;
     if (!sharesServer.get(userId, targetId)) return void res.status(404).json({ error: 'user not found' });

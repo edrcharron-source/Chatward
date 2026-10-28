@@ -285,6 +285,19 @@ async function main() {
     assert.equal((await api(bob2.token, 'GET', `/api/channels/${CHANNEL}/messages?after=${all[0].id}&before=${all[0].id}`)).status, 400, 'after and before cannot be combined');
     log('history paging with after walks forward oldest first');
 
+    // A resend with the same clientId returns the first copy and stores nothing new, even though its attachments are used up.
+    const clientId = 'resend-check-0001';
+    const first = await api(alice.token, 'POST', `/api/channels/${CHANNEL}/messages`, { ciphertext: b64(new Uint8Array([9])), keyVersion: 4, clientId });
+    const again = await api(alice.token, 'POST', `/api/channels/${CHANNEL}/messages`, { ciphertext: b64(new Uint8Array([9])), keyVersion: 4, clientId });
+    assert.equal(first.status, 201, 'first send accepted');
+    assert.equal(again.status, 200, 'resend answered with the stored copy');
+    assert.equal(again.json.message.id, first.json.message.id, 'resend returns the same message');
+    const countAfter = (await api(bob2.token, 'GET', `/api/channels/${CHANNEL}/messages`)).json.messages as { id: string }[];
+    assert.equal(countAfter.filter((m) => m.id === first.json.message.id).length, 1, 'the message is stored once');
+    assert.equal((await api(bob2.token, 'POST', `/api/channels/${CHANNEL}/messages`, { ciphertext: b64(new Uint8Array([9])), keyVersion: 4, clientId })).status, 201, 'another author may use the same clientId');
+    assert.equal((await api(alice.token, 'POST', `/api/channels/${CHANNEL}/messages`, { ciphertext: b64(new Uint8Array([9])), keyVersion: 4, clientId: 'bad id!' })).status, 400, 'malformed clientId refused');
+    log('resend with the same clientId is stored once');
+
     // 5. Kick carol: the server removes her membership, then a remaining device commits the Remove.
     const kick = await api(alice.token, 'DELETE', `/api/servers/${serverId}/members/${carol.user}`);
     assert.equal(kick.status, 200, 'owner kicks carol');

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { LIMITS, type Attachment, type Message, type MessagePayload } from '@chatward/shared';
-import { api } from '../api/http';
+import { ApiError, api } from '../api/http';
 import { onFrame, sendFrame } from '../api/ws';
 import { buildLinkPreviews, extractUrls, shrinkPreviewImage, uploadAttachment } from '../components/media';
 import { decryptMessage, encryptPayload, onKeysChanged } from '../crypto';
@@ -14,7 +14,12 @@ export interface ChannelChat {
   messages: Message[];
   loaded: boolean;
   hasMore: boolean;
+  /** A page load or catch-up is running. */
   loading: boolean;
+  /** Why the last load failed, shown in the channel until a load succeeds. */
+  error: string | null;
+  /** The running load is fetching older messages, so the list shows a hint. Catch-ups do not set it. */
+  loadingOlder: boolean;
 }
 
 interface ChatState {
@@ -28,7 +33,7 @@ interface ChatState {
   setDraft: (channelId: string, text: string) => void;
 }
 
-const EMPTY: ChannelChat = { messages: [], loaded: false, hasMore: false, loading: false };
+const EMPTY: ChannelChat = { messages: [], loaded: false, hasMore: false, loading: false, error: null, loadingOlder: false };
 const TYPING_SEND_MS = 3000;
 
 export const useChat = create<ChatState>(() => ({
@@ -100,20 +105,53 @@ function retryPending() {
 
 /** Channels whose catch-up was asked for while a page load or another catch-up was running. */
 const catchUpWanted = new Set<string>();
+/** Channels whose older page was asked for while another load was running. */
+const olderWanted = new Set<string>();
 
-/** Ends a load and, if a catch-up was asked for meanwhile, runs it now. */
+/** Edits and deletes seen while a catch-up runs. Applied after its merge, since the page it fetched may predate them. */
+interface Missed {
+  deleted: Set<string>;
+  edited: Map<string, Message>;
+}
+const missedDuringCatchUp = new Map<string, Missed>();
+
+function noteMissed(channelId: string, change: (missed: Missed) => void) {
+  const missed = missedDuringCatchUp.get(channelId);
+  if (missed) change(missed);
+}
+
+function applyMissed(channelId: string, missed: Missed) {
+  const held = new Set(channelOf(channelId).messages.map((m) => m.id));
+  const edits = [...missed.edited.values()].filter((m) => held.has(m.id) && !missed.deleted.has(m.id));
+  if (edits.length) {
+    mergeMessages(channelId, edits);
+    void decryptAll(channelId, edits);
+  }
+  removeMessages(channelId, [...missed.deleted]);
+}
+
+/** Ends a load and runs what was asked for meanwhile: a catch-up first, then an older page. */
 function endLoad(channelId: string, patch: Partial<ChannelChat> = {}) {
-  patchChannel(channelId, { loading: false, ...patch });
-  if (catchUpWanted.delete(channelId)) void catchUp(channelId).catch(() => {});
+  patchChannel(channelId, { loading: false, loadingOlder: false, ...patch });
+  // A catch-up's own end runs the older page that was waiting behind it.
+  if (catchUpWanted.delete(channelId)) {
+    void catchUp(channelId).catch(() => {});
+  } else if (olderWanted.delete(channelId)) {
+    void loadHistory(channelId, 'older').catch(() => {});
+  }
 }
 
 export async function loadHistory(channelId: string, mode: 'initial' | 'older' = 'initial') {
   const cur = channelOf(channelId);
-  if (cur.loading) return;
   if (mode === 'initial' && cur.loaded) return;
   if (mode === 'older' && (!cur.hasMore || cur.messages.length === 0)) return;
+  if (cur.loading) {
+    // A scroll-up during a catch-up or reconnect must not be lost, so ask again once the running load ends.
+    if (mode === 'older') olderWanted.add(channelId);
+    return;
+  }
 
-  patchChannel(channelId, { loading: true });
+  patchChannel(channelId, { loading: true, loadingOlder: mode === 'older', error: null });
   try {
     const before = mode === 'older' ? `&before=${cur.messages[0].id}` : '';
     const { messages } = await api.get<{ messages: Message[] }>(
@@ -123,7 +161,8 @@ export async function loadHistory(channelId: string, mode: 'initial' | 'older' =
     endLoad(channelId, { loaded: true, hasMore: messages.length >= LIMITS.HISTORY_PAGE });
     void decryptAll(channelId, messages);
   } catch (e) {
-    endLoad(channelId);
+    const fallback = mode === 'older' ? 'Could not load older messages' : 'Could not load messages';
+    endLoad(channelId, { error: e instanceof Error ? e.message : fallback });
     throw e;
   }
 }
@@ -145,6 +184,8 @@ export async function catchUp(channelId: string) {
   }
 
   patchChannel(channelId, { loading: true });
+  const missed: Missed = { deleted: new Set(), edited: new Map() };
+  missedDuringCatchUp.set(channelId, missed);
   try {
     // Snapshot first: messages that arrive over the socket during the catch-up are new, not deleted.
     const held = cur.messages.map((m) => m.id);
@@ -170,10 +211,11 @@ export async function catchUp(channelId: string) {
     const floor = latest.length < LIMITS.HISTORY_PAGE ? '' : latest.reduce((min, m) => (m.id < min ? m.id : min), latest[0].id);
     const present = new Set(latest.map((m) => m.id));
     removeMessages(channelId, held.filter((id) => id >= floor && !present.has(id)));
+  } finally {
+    // Stop recording first: a queued catch-up started by endLoad records its own changes.
+    missedDuringCatchUp.delete(channelId);
+    applyMissed(channelId, missed);
     endLoad(channelId);
-  } catch (e) {
-    endLoad(channelId);
-    throw e;
   }
 }
 
@@ -200,7 +242,24 @@ export async function sendMessage(channelId: string, input: { text: string; file
   const built = await buildPayload(input.text, attachments, input.gif);
   const { payload, ciphertext, keyVersion } = await encryptWithinLimit(channelId, me, built);
   const attachmentIds = attachments?.map((a) => a.uploadId) ?? [];
-  const { message } = await api.post<{ message: Message }>(`/api/channels/${channelId}/messages`, { ciphertext, keyVersion, attachmentIds });
+  // One id for every try of this send, so the server returns the first copy instead of storing a second.
+  const body = { ciphertext, keyVersion, attachmentIds, clientId: crypto.randomUUID() };
+  const path = `/api/channels/${channelId}/messages`;
+  let message: Message;
+  try {
+    ({ message } = await api.post<{ message: Message }>(path, body));
+  } catch (e) {
+    // A server error is final. Anything else (a timeout, a dropped connection) may still have stored the message.
+    if (e instanceof ApiError) throw e;
+    // Pull in what the server has first, so the channel shows the message if it went through, then send again.
+    await catchUp(channelId).catch(() => {});
+    try {
+      ({ message } = await api.post<{ message: Message }>(path, body));
+    } catch (again) {
+      if (again instanceof ApiError) throw again;
+      throw new Error('Not sure it sent. Check the channel before sending again.');
+    }
+  }
   mergeMessages(channelId, [message]);
   useChat.setState((s) => ({ payloads: { ...s.payloads, [message.id]: payload } }));
 }
@@ -261,6 +320,7 @@ onFrame((f) => {
       onIncoming(f.message);
       return;
     case 'message.edit': {
+      noteMissed(f.message.channelId, (missed) => missed.edited.set(f.message.id, f.message));
       // Only edits to messages we already hold. An edit to an unloaded message must not be merged in,
       // or it would become the oldest message in the cache and hide the gap from paging and catch-up.
       const held = useChat.getState().channels[f.message.channelId]?.messages.some((m) => m.id === f.message.id);
@@ -270,15 +330,22 @@ onFrame((f) => {
       return;
     }
     case 'message.delete':
+      noteMissed(f.channelId, (missed) => {
+        missed.edited.delete(f.messageId);
+        missed.deleted.add(f.messageId);
+      });
       removeMessage(f.channelId, f.messageId);
       return;
     case 'typing':
       noteTyping(f.channelId, f.userId);
       return;
     case 'ready':
-      // After a (re)connect, frames may have been missed: catch up every channel we already hold.
+      // After a (re)connect, frames may have been missed: catch up every channel we already hold. A channel whose
+      // first load failed (or never finished) is loaded again, and one still loading is caught up when it ends.
       for (const [id, c] of Object.entries(useChat.getState().channels)) {
         if (c.loaded) void catchUp(id).catch(() => {});
+        else if (c.loading) catchUpWanted.add(id);
+        else void loadHistory(id).catch(() => {});
       }
       void refreshUnread().catch(() => {});
       return;

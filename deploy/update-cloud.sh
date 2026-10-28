@@ -28,8 +28,6 @@ VERSION=${VERSION:-dev}
 STAMP=$(date -u +%Y%m%d-%H%M%S)
 mkdir -p backups updates
 
-trap 'echo "Update failed. The server is stopped; start the previous one with: docker compose start server" >&2' ERR
-
 # Backup names carry a UTC timestamp, so sorting by name sorts by age. Keep the newest $KEEP_BACKUPS.
 KEEP_BACKUPS=3
 prune_backups() {
@@ -62,6 +60,8 @@ if [ -n "$SERVER_ID" ]; then
   VOLUME=$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/data"}}{{.Name}}{{end}}{{end}}' "$SERVER_ID")
   check_backup_space
 
+  # Set only once the check has passed, so the server is stopped whenever this message is printed.
+  trap 'echo "Update failed. The server is stopped; start the previous one with: docker compose start server" >&2' ERR
   docker compose stop server
   echo "==> Backing up volume $VOLUME to backups/chatward-data-$STAMP.tar.gz"
   docker run --rm -v "$VOLUME":/data:ro -v "$PWD/backups":/backup alpine \

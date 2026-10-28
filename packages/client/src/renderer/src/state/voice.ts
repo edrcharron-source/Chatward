@@ -43,13 +43,18 @@ export interface VoiceState {
   setTheater: (key: string | null) => void;
 }
 
+// Waits before each retry of a rejoin that failed for a reason other than the server refusing the slot.
+const REJOIN_RETRY_MS = [3_000, 6_000, 12_000];
+let rejoinRetry: ReturnType<typeof setTimeout> | undefined;
+
 /**
  * Called when the websocket reconnects. If we are still in a call, the server may have lost our voice slot (it is
  * in memory, so a restart clears it). Put the slot back so others see us and kicks reach us. The media is untouched.
  * If the server refuses (we were removed, lost access, or the call moved to another device), hang up: the call is no
  * longer ours on the server.
  */
-export function resumeVoiceSlot(): void {
+export function resumeVoiceSlot(attempt = 0): void {
+  clearTimeout(rejoinRetry);
   const { channelId, room } = useVoice.getState();
   if (!channelId || !room || isDemo()) return;
   // The server clears mute and deafen state along with the slot. Send ours with the rejoin, or a muted person could play
@@ -58,7 +63,15 @@ export function resumeVoiceSlot(): void {
   void api.post('/api/voice/rejoin', { channelId, muted, deafened })
     .catch((e) => {
       console.warn('could not restore voice slot', e);
-      if (!(e instanceof ApiError) || ![403, 404, 409].includes(e.status)) return;
+      if (!(e instanceof ApiError) || ![403, 404, 409].includes(e.status)) {
+        // A timeout or network error says nothing about the slot, so try again a few times while the call goes on.
+        const delay = REJOIN_RETRY_MS[attempt];
+        if (delay === undefined) return;
+        rejoinRetry = setTimeout(() => {
+          if (useVoice.getState().room === room) resumeVoiceSlot(attempt + 1);
+        }, delay);
+        return;
+      }
       // Skip the leave call: the server has already refused this slot, so it would be refused again.
       const notice = e.status === 409 && e.message.includes('another device')
         ? 'The call moved to another device'

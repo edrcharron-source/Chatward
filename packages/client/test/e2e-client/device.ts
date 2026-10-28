@@ -66,6 +66,18 @@ const handlers: Record<string, (args: any) => Promise<unknown>> = {
     return {};
   },
 
+  /** The next Commit reaches the server, but this device never gets its reply, as if the network dropped it. */
+  async dropNextCommitReply() {
+    const realPost = api.post;
+    api.post = (async (path: string, body?: unknown, timeoutMs?: number) => {
+      if (!path.endsWith('/commits')) return realPost(path, body, timeoutMs);
+      api.post = realPost;
+      await realPost(path, body, timeoutMs);
+      throw new Error('reply lost');
+    }) as typeof api.post;
+    return {};
+  },
+
   /** The next KeyPackage upload reaches the server, but this device never gets its reply, as if the network dropped it. */
   async dropNextKeyPackageReply() {
     const realPost = api.post;

@@ -34,6 +34,8 @@ const ENVELOPE_FIELD_MAX = 2048;
 const SIGNATURE_MAX = 512;
 
 const ID = /^[0-9a-z]{1,40}$/;
+// Chosen by the client (a random UUID in practice), so it allows more characters than a server id.
+const CLIENT_ID = /^[0-9A-Za-z-]{8,64}$/;
 const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
 
 const toMessage = (r: MessageRow): Message => ({
@@ -80,7 +82,9 @@ export function register(app: Express, ctx: Ctx): void {
   const historyAfter = db.prepare(
     'SELECT * FROM messages WHERE channel_id=? AND id>? ORDER BY id ASC LIMIT ?');
   const insertMessage = db.prepare(
-    'INSERT INTO messages (id, channel_id, author_id, created_at, key_version, ciphertext) VALUES (?,?,?,?,?,?)');
+    'INSERT INTO messages (id, channel_id, author_id, created_at, key_version, ciphertext, client_id) VALUES (?,?,?,?,?,?,?)');
+  const messageByClientId = db.prepare(
+    'SELECT * FROM messages WHERE author_id=? AND client_id=?');
   // Only uploads the caller made for this purpose, and not already attached to another message.
   const attachableUpload = db.prepare(
     'SELECT 1 FROM uploads WHERE id=? AND owner_id=? AND tracked=1 AND message_id IS NULL');
@@ -201,11 +205,19 @@ export function register(app: Express, ctx: Ctx): void {
     const userId = (req as AuthedRequest).userId;
     const ch = textChannelFor(userId, req.params.id, res);
     if (!ch) return;
-    const { ciphertext, keyVersion, attachmentIds = [] } = (req.body ?? {}) as
-      { ciphertext?: unknown; keyVersion?: unknown; attachmentIds?: unknown };
+    const { ciphertext, keyVersion, attachmentIds = [], clientId } = (req.body ?? {}) as
+      { ciphertext?: unknown; keyVersion?: unknown; attachmentIds?: unknown; clientId?: unknown };
     if (tooLong(ciphertext)) return void res.status(413).json({ error: 'message too long' });
     if (!validCiphertext(ciphertext)) return void bad(res, 'invalid ciphertext');
     if (!validKeyVersion(keyVersion)) return void bad(res, 'invalid keyVersion');
+    if (clientId !== undefined && (typeof clientId !== 'string' || !CLIENT_ID.test(clientId))) return void bad(res, 'invalid clientId');
+    // A resend of a send that already went through. Checked before the attachments, which the first copy has used up.
+    const clientKey = typeof clientId === 'string' ? clientId : null;
+    const earlier = clientKey ? (messageByClientId.get(userId, clientKey) as MessageRow | undefined) : undefined;
+    if (earlier) {
+      if (earlier.channel_id !== ch.id) return void res.status(409).json({ error: 'clientId already used' });
+      return void res.status(200).json({ message: toMessage(earlier) });
+    }
     if (!Array.isArray(attachmentIds) || attachmentIds.length > MAX_ATTACHMENTS) return void bad(res, 'invalid attachmentIds');
     if (new Set(attachmentIds).size !== attachmentIds.length) return void bad(res, 'invalid attachmentIds');
     if (!attachmentIds.every((id) => typeof id === 'string' && ID.test(id) && attachableUpload.get(id, userId))) {
@@ -222,7 +234,7 @@ export function register(app: Express, ctx: Ctx): void {
       ciphertext,
     };
     db.transaction(() => {
-      insertMessage.run(row.id, row.channel_id, row.author_id, row.created_at, row.key_version, row.ciphertext);
+      insertMessage.run(row.id, row.channel_id, row.author_id, row.created_at, row.key_version, row.ciphertext, clientKey);
       for (const id of attachmentIds as string[]) attachUpload.run(row.id, id);
     })();
     const message = toMessage(row);

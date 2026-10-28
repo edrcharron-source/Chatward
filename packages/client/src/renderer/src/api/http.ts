@@ -40,7 +40,7 @@ export function postOnUnload(path: string, body: unknown): void {
 
 export const api = {
   get: <T>(path: string) => req<T>('GET', path),
-  post: <T>(path: string, body?: unknown) => req<T>('POST', path, body ?? {}),
+  post: <T>(path: string, body?: unknown, timeoutMs?: number) => req<T>('POST', path, body ?? {}, { timeoutMs }),
   patch: <T>(path: string, body: unknown) => req<T>('PATCH', path, body),
   del: <T>(path: string, body?: unknown) => req<T>('DELETE', path, body),
   /** raw-bytes upload (encrypted blobs, avatars, sounds) */

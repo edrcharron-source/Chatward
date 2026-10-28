@@ -180,6 +180,8 @@ function Shell() {
             const channelIds = st.servers.find((b) => b.server.id === f.serverId)?.channels.map((c) => c.id) ?? [];
             st.removeServer(f.serverId);
             void forgetChannels(channelIds).catch((e) => console.error(e));
+            // A sync still running or retrying for this server must not keep using its channels.
+            void syncChannelKeys(useSession.getState().servers).catch((e) => console.error(e));
             break;
           }
           case 'member.role': {
@@ -220,6 +222,7 @@ function Shell() {
               if (useVoice.getState().serverId === f.serverId) void useVoice.getState().leave();
               // Our channel groups stay: if nobody is online to commit the Remove, a rejoin must still find them
               st.removeServer(f.serverId);
+              void syncChannelKeys(useSession.getState().servers).catch((e) => console.error(e));
               break;
             }
             const b = st.servers.find((x) => x.server.id === f.serverId);

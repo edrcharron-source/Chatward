@@ -110,12 +110,25 @@ function kickFromChannelCall(ctx: Ctx, channelId: string, userId: string): void 
   evictFromRoom(ctx, channelId, userId);
 }
 
+function roomService(ctx: Ctx): RoomServiceClient {
+  return new RoomServiceClient(ctx.config.livekit.apiUrl, ctx.config.livekit.apiKey, ctx.config.livekit.apiSecret);
+}
+
 /** Ends the user's LiveKit session in a room. Fails if LiveKit no longer has them (already left or still connecting). */
 function removeFromRoom(ctx: Ctx, channelId: string, userId: string, quiet = false): void {
-  const rooms = new RoomServiceClient(ctx.config.livekit.apiUrl, ctx.config.livekit.apiKey, ctx.config.livekit.apiSecret);
-  rooms.removeParticipant(channelId, userId).catch((err: unknown) => {
+  roomService(ctx).removeParticipant(channelId, userId).catch((err: unknown) => {
     if (!quiet) console.warn('livekit removeParticipant failed', err);
   });
+}
+
+/** True if LiveKit has the user in this room right now. A failed lookup counts as not in it, so nothing is assumed. */
+async function inLiveKitRoom(ctx: Ctx, channelId: string, userId: string): Promise<boolean> {
+  try {
+    await roomService(ctx).getParticipant(channelId, userId);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -271,7 +284,7 @@ export function register(app: Express, ctx: Ctx): void {
   // The client calls this after its websocket reconnects while it is still in a call. A server restart clears the
   // occupancy above, but LiveKit keeps the media flowing, so the client puts its slot back. No new token is issued.
   // The client also reports its mute state here, since the server clears it along with the slot.
-  app.post('/api/voice/rejoin', ctx.requireAuth, (req, res) => {
+  app.post('/api/voice/rejoin', ctx.requireAuth, async (req, res) => {
     const userId = (req as AuthedRequest).userId;
     const body = (req.body ?? {}) as { channelId?: unknown; muted?: unknown; deafened?: unknown };
     const channelId = body.channelId;
@@ -286,10 +299,11 @@ export function register(app: Express, ctx: Ctx): void {
     // Removed from this call and the removal is still being enforced. Putting the slot back would show them in the call
     // until the next sweep, so refuse. The client then hangs up. A fresh join clears the removal.
     if (evictions.has(`${channelId}:${userId}`)) { res.status(409).json({ error: 'You were removed from this call.' }); return; }
-    // Only a user who got a token for this room recently can be in it. Without this, any member could show themselves
-    // in a voice channel they never joined. A slot that is already there is trusted as before.
-    const issued = lastToken.get(`${channelId}:${userId}`);
-    if (!isInVoiceChannel(channelId, userId) && (issued === undefined || Date.now() - issued >= TOKEN_TTL_MS)) {
+    // Without a slot here, the user must be in the LiveKit room. A token's age does not show that: LiveKit refreshes the
+    // token inside a call, so a call can outlive the join token. Only LiveKit can say whether the session is still there,
+    // and a room the user never joined has no session, so any member still cannot show themselves in it. A slot that is
+    // already there is trusted as before.
+    if (!isInVoiceChannel(channelId, userId) && !(await inLiveKitRoom(ctx, channelId, userId))) {
       res.status(409).json({ error: 'You are not in this call. Join it again.' });
       return;
     }
