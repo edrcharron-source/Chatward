@@ -12,7 +12,9 @@ import {
   bad,
   bodyOf,
   cleanText,
+  ISSUER_OWNS_SHARED_SERVER,
   peerIds,
+  pruneResetCodes,
   redeemInvite,
   removeMember,
   route,
@@ -205,6 +207,8 @@ export function register(app: Express, ctx: Ctx): void {
     ctx.db
       .prepare('UPDATE users SET password_hash=?, session_version=session_version+1 WHERE id=?')
       .run(passwordHash, uid);
+    // A reset code issued before this change would let someone overwrite the password just set.
+    ctx.db.prepare('DELETE FROM password_resets WHERE user_id=?').run(uid);
     res.json({ token: ctx.signToken(uid), user: mustUser(ctx, uid) });
     ctx.revokeSockets(uid);
   }));
@@ -243,7 +247,7 @@ export function register(app: Express, ctx: Ctx): void {
     const passwordHash = await hash(newPassword);
     const devicesChanged = ctx.db.transaction(() => {
       const used = user
-        ? ctx.db.prepare('DELETE FROM password_resets WHERE user_id=? AND code_hash=? AND expires_at>?')
+        ? ctx.db.prepare(`DELETE FROM password_resets WHERE user_id=? AND code_hash=? AND expires_at>? AND ${ISSUER_OWNS_SHARED_SERVER}`)
           .run(user.id, codeHash(code), Date.now())
         : { changes: 0 };
       if (!user || used.changes !== 1) throw new ApiError(403, 'reset code is invalid or expired');
@@ -344,6 +348,7 @@ export function register(app: Express, ctx: Ctx): void {
     ctx.db.transaction(() => {
       ctx.db.prepare('DELETE FROM mls_keypackages WHERE device_id IN (SELECT device_id FROM devices WHERE user_id=?)').run(uid);
       ctx.db.prepare('DELETE FROM devices WHERE user_id=?').run(uid);
+      ctx.db.prepare('DELETE FROM password_resets WHERE user_id=?').run(uid);
       ctx.db.prepare(`UPDATE users SET username=?, display_name='Deleted user', password_hash='', avatar_path=NULL,
           banner_path=NULL, bio='', pronouns='', accent_color=NULL, banner_color=NULL, deleted_at=? WHERE id=?`)
         .run(`deleted-${uid}`, Date.now(), uid);

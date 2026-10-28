@@ -277,6 +277,7 @@ export function register(app: Express, ctx: Ctx): void {
     ctx.broadcastToServer(serverId, gone);
     for (const { user_id } of members) kickFromCall(ctx, serverId, user_id);
     ctx.db.prepare('DELETE FROM servers WHERE id=?').run(serverId);
+    pruneResetCodes(ctx);
     // Sound rows cascade with the server, but their audio files live on disk and would be left behind.
     const soundsDir = soundsDirOf(ctx.config.dataDir);
     await Promise.all(soundIds.map(({ id }) =>
@@ -293,6 +294,7 @@ export function register(app: Express, ctx: Ctx): void {
     if (!role) throw new ApiError(404, 'server not found');
     if (role === 'owner') bad('the owner cannot leave; delete the server instead');
     ctx.db.prepare('DELETE FROM members WHERE server_id=? AND user_id=?').run(serverId, uid);
+    pruneResetCodes(ctx);
     // Sent after the delete, so the leaving user needs an explicit send.
     const leave: ServerFrame = { t: 'member.leave', serverId, userId: uid };
     ctx.broadcastToServer(serverId, leave);
@@ -334,6 +336,7 @@ export function register(app: Express, ctx: Ctx): void {
       ctx.db.prepare('UPDATE members SET role=? WHERE server_id=? AND user_id=?').run('admin', serverId, uid);
       ctx.db.prepare('UPDATE members SET role=? WHERE server_id=? AND user_id=?').run('owner', serverId, targetId);
       ctx.db.prepare('UPDATE servers SET owner_id=? WHERE id=?').run(targetId, serverId);
+      pruneResetCodes(ctx);
     })();
     ctx.broadcastToServer(serverId, { t: 'member.role', serverId, userId: uid, role: 'admin' });
     ctx.broadcastToServer(serverId, { t: 'member.role', serverId, userId: targetId, role: 'owner' });
@@ -478,9 +481,20 @@ function assertCanBan(ctx: Ctx, serverId: string, actorId: string, targetId: str
   if (!ctx.getUser(targetId)) throw new ApiError(404, 'user not found');
 }
 
+/** A reset code only works while its issuer still owns a server the member is in. */
+export const ISSUER_OWNS_SHARED_SERVER = `EXISTS (
+  SELECT 1 FROM members m JOIN servers s ON s.id = m.server_id
+  WHERE m.user_id = password_resets.user_id AND s.owner_id = password_resets.issued_by)`;
+
+/** Drops reset codes whose issuer no longer owns a server with the member. Run after any membership or ownership change. */
+export function pruneResetCodes(ctx: Ctx): void {
+  ctx.db.prepare(`DELETE FROM password_resets WHERE NOT ${ISSUER_OWNS_SHARED_SERVER}`).run();
+}
+
 /** Takes a user out of the server: membership, their live socket, and any voice call they are in. */
 export function removeMember(ctx: Ctx, serverId: string, targetId: string): void {
   ctx.db.prepare('DELETE FROM members WHERE server_id=? AND user_id=?').run(serverId, targetId);
+  pruneResetCodes(ctx);
   // Sent after the delete, so the kicked user needs an explicit send.
   const leave: ServerFrame = { t: 'member.leave', serverId, userId: targetId };
   ctx.broadcastToServer(serverId, leave);
