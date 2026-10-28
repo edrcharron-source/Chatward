@@ -208,6 +208,22 @@ async function main() {
     assert.ok(aliceSeesDave.includes('dave is here'), `alice reads dave: ${JSON.stringify(aliceSeesDave)}`);
     log('dave\'s KeyPackage upload loses its reply; he still joins from the Welcome and both sides read each other');
 
+    // 5e. Frank's device is added while alice's Commit reply is lost. The Commit did reach the server, so alice must
+    // recognise it as her own and move on to the new epoch instead of stalling behind it.
+    await bob.call('init', { serverUrl: BASE, username: 'frank' });
+    const frankInvite = await alice.call('invite', { serverId });
+    await bob.call('register', { username: 'frank', inviteCode: frankInvite.code });
+    await bob.call('sync');
+    await alice.call('dropNextCommitReply');
+    await alice.call('sync');
+    const aliceEpochAfterFrank = (await alice.call('status', { channelId })).epoch;
+    assert.equal(aliceEpochAfterFrank, aliceEpochAfterDave + 1, 'alice moves on after her Commit reply is lost');
+    await alice.call('send', { channelId, text: 'hello frank' });
+    await bob.call('sync');
+    const frankSees = (await bob.call('read', { channelId })).texts;
+    assert.ok(frankSees.includes('hello frank'), `frank reads after joining: ${JSON.stringify(frankSees)}`);
+    log('alice\'s Commit reply is lost; she recognises the stored Commit as hers and carries on');
+
     // Ten devices join a channel that already has a group. They are added four at a time, one Commit per batch, so no
     // Commit grows past the server's body limit. Alice's Commits (1 -> 4) go out in three batches.
     const big = await alice.call('createServer', { name: 'Big' });
