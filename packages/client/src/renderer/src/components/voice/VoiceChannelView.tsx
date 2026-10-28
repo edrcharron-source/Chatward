@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type RefObject } from 'react';
+import { Fragment, useEffect, useRef, useState, type RefObject } from 'react';
 import { Track, type Participant } from 'livekit-client';
 import type { Channel, User } from '@chatward/shared';
 import { fetchObjectUrl } from '../../api/http';
@@ -35,8 +35,19 @@ function liveEntry(p: Participant, local: boolean): Entry {
   };
 }
 
-export default function VoiceChannelView({ channel }: { channel: Channel }) {
+/** One tile as data, so the grid and the theater layout can place it differently. */
+interface Spec {
+  key: string;
+  props: TileProps;
+}
+
+/**
+ * Voice channel view. With `theaterOnly` it draws just the theater stage (no header), which the app puts above a text chat.
+ */
+export default function VoiceChannelView({ channel, theaterOnly = false }: { channel: Channel; theaterOnly?: boolean }) {
   const inCall = useVoice((s) => s.channelId === channel.id);
+  const theaterKey = useVoice((s) => s.theaterKey);
+  const setTheater = useVoice((s) => s.setTheater);
   const status = useVoice((s) => s.status);
   const error = useVoice((s) => s.error);
   const room = useVoice((s) => s.room);
@@ -66,6 +77,44 @@ export default function VoiceChannelView({ channel }: { channel: Channel }) {
       ]
       : occupants.map((id) => ({ id, joined: false, local: false, micOff: false }));
 
+  const specs: Spec[] = entries.flatMap((e) => {
+    const user = users.get(e.id);
+    const base = { user, joined: e.joined, local: e.local, micOff: e.micOff, speaking: speaking.includes(e.id) };
+    const screenKey = `${e.id}:screen`;
+    const tiles: Spec[] = [
+      { key: e.id, props: { ...base, video: e.camera, volume: userVolumes[e.id] ?? 1, onVolume: (v) => setUserVolume(e.id, v) } },
+    ];
+    if (e.screen) {
+      tiles.push({
+        key: screenKey,
+        props: { ...base, video: e.screen, screen: true, onTheater: () => setTheater(theaterKey === screenKey ? null : screenKey) },
+      });
+    }
+    return tiles;
+  });
+  // a featured share that stopped drops out, and the view falls back to the grid
+  const featured = specs.find((s) => s.key === theaterKey);
+  const renderTile = (s: Spec, extra?: Partial<TileProps>) => <Tile {...s.props} theater={s.key === theaterKey} {...extra} />;
+
+  const theaterLayout = featured && (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, height: '100%' }}>
+      <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>{renderTile(featured, { fill: true })}</div>
+      <div style={{ display: 'flex', gap: 12, overflowX: 'auto', flex: '0 0 auto' }}>
+        {specs.filter((s) => s !== featured).map((s) => (
+          <div key={s.key} style={{ width: 240, flex: '0 0 240px' }}>{renderTile(s)}</div>
+        ))}
+      </div>
+    </div>
+  );
+
+  if (theaterOnly) {
+    return (
+      <div style={{ height: '100%', minHeight: 0, padding: 12, boxSizing: 'border-box' }}>
+        {theaterLayout || <div className="muted" style={{ textAlign: 'center', paddingTop: 40 }}>Nobody is sharing a screen right now.</div>}
+      </div>
+    );
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
       <header style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
@@ -86,19 +135,9 @@ export default function VoiceChannelView({ channel }: { channel: Channel }) {
       <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: 16 }}>
         {entries.length === 0
           ? <div className="muted" style={{ margin: 'auto', textAlign: 'center', paddingTop: 40 }}>Nobody is in this voice channel yet.</div>
-          : (
+          : theaterLayout || (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 12 }}>
-              {entries.flatMap((e) => {
-                const user = users.get(e.id);
-                const base = { user, joined: e.joined, local: e.local, micOff: e.micOff, speaking: speaking.includes(e.id) };
-                const tiles = [
-                  <Tile key={e.id} {...base} video={e.camera} volume={userVolumes[e.id] ?? 1} onVolume={(v) => setUserVolume(e.id, v)} />,
-                ];
-                if (e.screen) {
-                  tiles.push(<Tile key={`${e.id}:screen`} {...base} video={e.screen} screen />);
-                }
-                return tiles;
-              })}
+              {specs.map((s) => <Fragment key={s.key}>{renderTile(s)}</Fragment>)}
             </div>
           )}
       </div>
@@ -106,7 +145,7 @@ export default function VoiceChannelView({ channel }: { channel: Channel }) {
   );
 }
 
-function Tile({ user, joined, local, micOff, speaking, screen, video, volume = 1, onVolume }: {
+interface TileProps {
   user?: User;
   joined: boolean;
   local: boolean;
@@ -116,22 +155,31 @@ function Tile({ user, joined, local, micOff, speaking, screen, video, volume = 1
   video?: Feed;
   volume?: number;
   onVolume?: (v: number) => void;
-}) {
+  /** this share is the one shown in theater mode */
+  theater?: boolean;
+  /** grow to fill the space it is given instead of keeping 16:9 */
+  fill?: boolean;
+  /** toggles theater mode for this share */
+  onTheater?: () => void;
+}
+
+function Tile({ user, joined, local, micOff, speaking, screen, video, volume = 1, onVolume, theater = false, fill = false, onTheater }: TileProps) {
   const name = user?.displayName ?? user?.username ?? 'Unknown';
   const pct = Math.round(volume * 100);
   const frame = useRef<HTMLDivElement>(null);
   const full = useFullscreen(frame);
+  const expanded = full || fill;
 
   return (
-    <div className="card" data-speaking={speaking || undefined} style={{ padding: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
+    <div className="card" data-speaking={speaking || undefined} style={{ padding: 8, display: 'flex', flexDirection: 'column', gap: 8, ...(fill ? { flex: 1, minHeight: 0, minWidth: 0 } : {}) }}>
       <div
         ref={frame}
         onDoubleClick={screen ? () => void toggleFullscreen(frame.current) : undefined}
         style={{
-          position: 'relative', aspectRatio: full ? undefined : '16 / 9', borderRadius: full ? 0 : 8, overflow: 'hidden',
+          position: 'relative', aspectRatio: expanded ? undefined : '16 / 9', borderRadius: full ? 0 : 8, overflow: 'hidden',
           background: 'var(--bg-0)', display: 'grid', placeItems: 'center',
-          boxShadow: speaking && !full ? '0 0 0 2px var(--ok)' : 'none', transition: 'box-shadow .12s',
-          ...(full ? { width: '100%', height: '100%' } : {}),
+          boxShadow: speaking && !expanded ? '0 0 0 2px var(--ok)' : 'none', transition: 'box-shadow .12s',
+          ...(full ? { width: '100%', height: '100%' } : fill ? { flex: 1, minHeight: 0 } : {}),
         }}
       >
         {video
@@ -151,6 +199,18 @@ function Tile({ user, joined, local, micOff, speaking, screen, video, volume = 1
             style={{ position: 'absolute', top: 6, right: 6, background: 'rgba(0,0,0,.55)', color: '#fff' }}
           >
             {full ? '⤡' : '⤢'}
+          </button>
+        )}
+        {onTheater && (
+          <button
+            className="icon"
+            aria-label={theater ? 'Exit theater mode' : 'Theater mode'}
+            aria-pressed={theater}
+            title={theater ? 'Exit theater mode (Esc)' : 'Theater mode'}
+            onClick={onTheater}
+            style={{ position: 'absolute', top: 6, right: 40, background: 'rgba(0,0,0,.55)', color: '#fff' }}
+          >
+            ▭
           </button>
         )}
       </div>

@@ -22,6 +22,8 @@ export interface VoiceState {
   demoLoopback: boolean;
   cameraOn: boolean;
   screenOn: boolean;
+  /** the screen share shown in theater mode, as `${userId}:screen`; null when theater mode is off */
+  theaterKey: string | null;
   /** userIds currently speaking */
   speaking: string[];
   /** bumps on any room change so views re-read participants and tracks */
@@ -34,6 +36,7 @@ export interface VoiceState {
   /** implemented in components/voice/media.ts and wired in below */
   setCamera: (on: boolean) => Promise<void>;
   setScreen: (on: boolean, sourceId?: string) => Promise<void>;
+  setTheater: (key: string | null) => void;
 }
 
 // Opus at 64 kbps; DTX stops sending packets while silent.
@@ -121,7 +124,7 @@ export const useVoice = create<VoiceState>((set, get) => {
 
   return {
     channelId: null, serverId: null, status: 'idle', error: null, room: null,
-    muted: false, deafened: false, demoLoopback: true, cameraOn: false, screenOn: false, speaking: [], version: 0,
+    muted: false, deafened: false, demoLoopback: true, cameraOn: false, screenOn: false, theaterKey: null, speaking: [], version: 0,
 
     join: async (serverId, channelId) => {
       const cur = get();
@@ -184,7 +187,7 @@ export const useVoice = create<VoiceState>((set, get) => {
       const { room, channelId } = get();
       if (!channelId) return;
       // clear state first so the Disconnected handler ignores this room
-      set({ room: null, channelId: null, serverId: null, status: 'idle', error: null, cameraOn: false, screenOn: false, speaking: [] });
+      set({ room: null, channelId: null, serverId: null, status: 'idle', error: null, cameraOn: false, screenOn: false, theaterKey: null, speaking: [] });
       endMeter();
       closeAudio();
       demoVoice.leave(); // no-op outside a demo call
@@ -205,6 +208,8 @@ export const useVoice = create<VoiceState>((set, get) => {
     },
 
     // deafen implies mute; undeafening unmutes, as Discord does
+    setTheater: (key) => set({ theaterKey: key }),
+
     toggleDeafen: () => {
       const deafened = !get().deafened;
       set({ deafened, muted: deafened });
