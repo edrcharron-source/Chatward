@@ -330,12 +330,31 @@ export function acceptContactKeys(userId: string): Promise<void> {
 }
 
 /**
+ * True if any package in our pool fails the check that it belongs to this device. Packages made by v0.1.9 clients do:
+ * they carry a plain device-id credential, and peers skip them, so they can never be added to anything.
+ */
+async function poolHasUnverified(me: DeviceKeys): Promise<boolean> {
+  for (const kp of Object.keys(vault.pool)) {
+    try {
+      if (await mls.verifyKeyPackage(mls.decodeKeyPackage(kp), me)) continue;
+    } catch {
+      // A package that does not even decode is unusable, so it counts as unverified.
+    }
+    return true;
+  }
+  return false;
+}
+
+/**
  * Keep a supply of single-use KeyPackages on the server, plus one last-resort package that the server agrees is current.
  * Peers can only claim what the server holds, so a local last-resort package the server no longer has is dropped.
+ * If any local package fails verification, the whole pool is dropped and the server's unclaimed packages are replaced.
  */
 async function ensureKeyPool(): Promise<boolean> {
   const me = getDevice();
   const count = await api.get<{ available: number; lastResort: string | null }>(`/api/devices/${encodeURIComponent(me.deviceId)}/keypackages/count`);
+  const replace = await poolHasUnverified(me);
+  if (replace) vault.pool = {};
   let pruned = false;
   let serverHasLastResort = false;
   for (const [kp, entry] of Object.entries(vault.pool)) {
@@ -348,8 +367,8 @@ async function ensureKeyPool(): Promise<boolean> {
     }
   }
   const needLastResort = !serverHasLastResort;
-  if (count.available >= KEYPACKAGE_LOW_WATER && !needLastResort) return pruned;
-  const size = count.available >= KEYPACKAGE_LOW_WATER ? 0 : KEYPACKAGE_BATCH;
+  if (!replace && count.available >= KEYPACKAGE_LOW_WATER && !needLastResort) return pruned;
+  const size = replace || count.available < KEYPACKAGE_LOW_WATER ? KEYPACKAGE_BATCH : 0;
   const made: { kp: string; keys: mls.MemberKeys; lastResort: boolean }[] = [];
   for (let i = 0; i < size; i++) made.push(await newKeyPackage(false));
   if (needLastResort) made.push(await newKeyPackage(true));
@@ -357,11 +376,11 @@ async function ensureKeyPool(): Promise<boolean> {
   // may still hold them, and a Welcome made for one of them must find its private part here.
   for (const m of made) vault.pool[m.kp] = mls.storeKeyPackage(m.keys, m.kp, m.lastResort);
   if (made.length > 0) await persistVault();
-  await api.post('/api/devices/keypackages', {
+  await api.post(replace ? '/api/devices/keypackages/replace' : '/api/devices/keypackages', {
     deviceId: me.deviceId,
     keyPackages: made.map((m) => ({ kp: m.kp, lastResort: m.lastResort })),
   });
-  return pruned || made.length > 0;
+  return replace || pruned || made.length > 0;
 }
 
 async function newKeyPackage(lastResort: boolean) {

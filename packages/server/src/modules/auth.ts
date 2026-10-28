@@ -8,7 +8,7 @@ import { LIMITS, type DeviceKeys } from '@chatward/shared';
 import type { AuthedRequest, Ctx } from '../ctx.js';
 import { clearSetupCode, setupCode } from '../config.js';
 import { newId } from '../db.js';
-import { endCallOnDevice } from './voice.js';
+import { endCallOnDevice, endCallOnOtherDevices } from './voice.js';
 import {
   ApiError,
   announceJoin,
@@ -156,9 +156,12 @@ const LOGIN_GUARD_PRUNE_AT = 5000;
 type LoginGuard = { fails: number; windowStart: number; lockedUntil: number };
 const loginGuards = new Map<string, LoginGuard>();
 
+// Usernames are case-insensitive in the database (COLLATE NOCASE), so "Ed", "eD" and "ED" must share one guard.
+const loginGuardKey = (username: string) => username.toLowerCase();
+
 /** Throws 429 while the username is locked. Runs before the password check, so a locked name costs no hashing. */
 function assertLoginAllowed(username: string): void {
-  const guard = loginGuards.get(username);
+  const guard = loginGuards.get(loginGuardKey(username));
   if (guard && guard.lockedUntil > Date.now()) {
     throw new ApiError(429, 'too many failed sign-ins for this account, try again in a few minutes');
   }
@@ -166,10 +169,11 @@ function assertLoginAllowed(username: string): void {
 
 function recordLoginFailure(username: string): void {
   const now = Date.now();
+  const key = loginGuardKey(username);
   if (loginGuards.size > LOGIN_GUARD_PRUNE_AT) {
     for (const [name, g] of loginGuards) if (g.lockedUntil <= now && now - g.windowStart > LOGIN_FAIL_WINDOW_MS) loginGuards.delete(name);
   }
-  const guard = loginGuards.get(username) ?? { fails: 0, windowStart: now, lockedUntil: 0 };
+  const guard = loginGuards.get(key) ?? { fails: 0, windowStart: now, lockedUntil: 0 };
   if (now - guard.windowStart > LOGIN_FAIL_WINDOW_MS) {
     guard.fails = 0;
     guard.windowStart = now;
@@ -179,7 +183,7 @@ function recordLoginFailure(username: string): void {
     const steps = guard.fails - LOGIN_FAILS_BEFORE_LOCK;
     guard.lockedUntil = now + Math.min(LOGIN_LOCK_BASE_MS * 2 ** steps, LOGIN_LOCK_MAX_MS);
   }
-  loginGuards.set(username, guard);
+  loginGuards.set(key, guard);
 }
 
 function mustUser(ctx: Ctx, userId: string) {
@@ -295,7 +299,7 @@ export function register(app: Express, ctx: Ctx): void {
       if (username) recordLoginFailure(username);
       throw new ApiError(401, 'invalid username or password');
     }
-    loginGuards.delete(username);
+    loginGuards.delete(loginGuardKey(username));
     const newDevice = isNewDevice(ctx, row.id, device.deviceId);
     if (ctx.db.transaction(() => upsertDevice(ctx, row.id, device))()) broadcastDevices(ctx, row.id);
     if (newDevice) announceNewDevice(ctx, row.id, device.deviceId);
@@ -321,6 +325,9 @@ export function register(app: Express, ctx: Ctx): void {
     // A reset code issued before this change would let someone overwrite the password just set.
     ctx.db.prepare('DELETE FROM password_resets WHERE user_id=?').run(uid);
     res.json({ token: ctx.signToken(uid, deviceId), user: mustUser(ctx, uid) });
+    // The other devices are signed out, so a call running on one of them must end too. Its socket closing alone would
+    // leave the LiveKit session running.
+    endCallOnOtherDevices(ctx, uid, deviceId);
     ctx.revokeSockets(uid);
   }));
 
@@ -371,6 +378,7 @@ export function register(app: Express, ctx: Ctx): void {
     if (devicesChanged) broadcastDevices(ctx, user!.id);
     if (newDevice) announceNewDevice(ctx, user!.id, device.deviceId);
     res.json({ token: ctx.signToken(user!.id, device.deviceId), user: mustUser(ctx, user!.id) });
+    endCallOnOtherDevices(ctx, user!.id, device.deviceId);
     ctx.revokeSockets(user!.id);
   }));
 

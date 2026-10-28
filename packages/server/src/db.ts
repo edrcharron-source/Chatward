@@ -227,5 +227,8 @@ export function openDb(): DB {
   for (const [col, def] of Object.entries(uploadColumns)) {
     if (!uploadCols.has(col)) db.exec(`ALTER TABLE uploads ADD COLUMN ${col} ${def}`);
   }
+  // When a device last had a socket open. Devices added after this are replayed to it on its next connect.
+  const deviceCols = new Set((db.pragma('table_info(devices)') as { name: string }[]).map((c) => c.name));
+  if (!deviceCols.has('last_seen')) db.exec('ALTER TABLE devices ADD COLUMN last_seen INTEGER');
   return db;
 }

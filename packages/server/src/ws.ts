@@ -36,6 +36,7 @@ export function attachWs(http: HttpServer, ctx: Ctx) {
       for (const cb of ctx.onConnect) cb(userId);
       send(ws, { t: 'ready', user: ctx.getUser(userId)!, presence: presenceFor(userId) });
       sendPresenceSnapshot(ws, userId);
+      replayNewDeviceAlerts(ws, userId, deviceId);
       announce(userId, 'online');
       ws.on('message', (raw) => {
         let f: ClientFrame;
@@ -48,6 +49,7 @@ export function attachWs(http: HttpServer, ctx: Ctx) {
         } else if (f.t === 'presence' && CLIENT_STATUSES.includes(f.status)) announce(userId, f.status);
       });
       ws.on('close', () => {
+        markDeviceSeen(deviceId);
         set!.delete(ws);
         if (set!.size === 0) { socketsByUser.delete(userId); statusByUser.delete(userId); announce(userId, 'offline'); for (const cb of ctx.onDisconnect) cb(userId); }
       });
@@ -96,6 +98,26 @@ export function attachWs(http: HttpServer, ctx: Ctx) {
       const status = statusByUser.get(other);
       if (status) send(ws, { t: 'presence', userId: other, status });
     }
+  }
+
+  /**
+   * A new-device alert only reaches open sockets, so a sign-in made while every device was offline would never be announced.
+   * Replays the alerts for devices added since this device last had a socket open.
+   */
+  function replayNewDeviceAlerts(ws: WebSocket, userId: string, deviceId: string | null) {
+    if (!deviceId) return;
+    const since = ctx.db.prepare('SELECT COALESCE(last_seen, created_at) AS since FROM devices WHERE device_id=? AND user_id=?')
+      .get(deviceId, userId) as { since: number } | undefined;
+    if (!since) return;
+    const added = ctx.db.prepare(
+      'SELECT device_id AS deviceId, created_at AS createdAt FROM devices WHERE user_id=? AND device_id<>? AND created_at>? ORDER BY created_at',
+    ).all(userId, deviceId, since.since) as { deviceId: string; createdAt: number }[];
+    for (const f of added) send(ws, { t: 'device.added', ...f });
+    markDeviceSeen(deviceId);
+  }
+  /** Records that this device has a socket open now, so only devices added after this moment are replayed next time. */
+  function markDeviceSeen(deviceId: string | null) {
+    if (deviceId) ctx.db.prepare('UPDATE devices SET last_seen=? WHERE device_id=?').run(Date.now(), deviceId);
   }
 
   ctx.sendToUser = (userId, frame) => {

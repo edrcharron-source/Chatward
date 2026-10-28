@@ -8,8 +8,9 @@ const voiceChannelOf = new Map<string, string>(); // userId -> channelId (a user
 const voiceDeviceOf = new Map<string, string>(); // userId -> the device that holds the voice slot
 const selfState = new Map<string, { muted: boolean; deafened: boolean }>(); // userId -> self mute/deafen, reported by the client
 
-// Only needed to join. An active call keeps its LiveKit session, so a short TTL does not cut calls off.
-const TOKEN_TTL = '10m';
+// Only needed to join. An active call keeps its LiveKit session, so a short TTL does not cut calls off. Kept short so a
+// token taken before a kick or ban stops working within a minute.
+const TOKEN_TTL = '1m';
 
 // A dropped websocket does not end a call: LiveKit keeps the media flowing. Hold the voice slot this long so a
 // quick reconnect keeps it. Kicks and explicit leaves ignore this and still act at once.
@@ -62,6 +63,20 @@ export function kickFromCall(ctx: Ctx, serverId: string, userId: string): void {
  */
 export function endCallOnDevice(ctx: Ctx, userId: string, deviceId: string): void {
   if (voiceDeviceOf.get(userId) !== deviceId) return;
+  endCall(ctx, userId);
+}
+
+/**
+ * For a password change or reset, which signs out every device except the one it was made from. If the call runs on
+ * any other device, it ends for the account. A call on the device that stays signed in is left alone.
+ */
+export function endCallOnOtherDevices(ctx: Ctx, userId: string, keepDeviceId: string): void {
+  if (!voiceChannelOf.has(userId) || voiceDeviceOf.get(userId) === keepDeviceId) return;
+  endCall(ctx, userId);
+}
+
+/** Drops the account's call and its LiveKit session, in one place for the device-based endings above. */
+function endCall(ctx: Ctx, userId: string): void {
   const channelId = voiceChannelOf.get(userId);
   leaveVoice(ctx, userId);
   if (channelId) removeFromRoom(ctx, channelId, userId);
@@ -195,9 +210,11 @@ export function register(app: Express, ctx: Ctx): void {
   });
 
   // A client that starts up with no call of its own calls this. After a restart or crash the old slot has no client left
-  // to end it, and the 409 above would lock the user out. Clears whichever voice channel the account holds.
+  // to end it, and the 409 above would lock the user out. Clears the voice slot only when this device holds it, so a
+  // second device starting up cannot end a call running on the first. The device comes from the signed token.
   app.post('/api/voice/clear', ctx.requireAuth, (req, res) => {
-    leaveVoice(ctx, (req as AuthedRequest).userId);
+    const { userId, deviceId } = req as AuthedRequest;
+    if (voiceDeviceOf.get(userId) === deviceId) leaveVoice(ctx, userId);
     res.json({ ok: true });
   });
 
