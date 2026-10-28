@@ -8,6 +8,7 @@ export interface World {
   server: Server;
   channels: Channel[];
   members: Member[];
+  bans: { user: User; bannedAt: number }[];
   messages: Record<string, Message[]>; // channelId -> oldest first
   sounds: SoundboardSound[];
   blobs: Map<string, { bytes: Uint8Array; mime: string }>; // uploads and sound files
@@ -58,7 +59,7 @@ export function createWorld(): World {
   }));
 
   const world: World = {
-    you, server, channels, members, messages: {}, sounds: [], blobs: new Map(), voice: {}, watch: {}, bots, nextId: 1,
+    you, server, channels, members, bans: [], messages: {}, sounds: [], blobs: new Map(), voice: {}, watch: {}, bots, nextId: 1,
   };
   seedMessages(world);
   seedSounds(world);

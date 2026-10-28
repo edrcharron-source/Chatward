@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { LIMITS, type Member } from '@chatward/shared';
 import { api } from '../../api/http';
+import { isDemo } from '../../demo';
 import { useSession } from '../../state/session';
 import Dialog from './Dialog';
 import { errorText } from './util';
@@ -112,14 +113,17 @@ export default function ServerSettingsDialog({ serverId, onClose, onReload }: { 
 
       {error && <p className="cw-error" role="alert">{error}</p>}
 
-      <div className="cw-dialog-actions">
-        {isOwner ? (
-          <button type="button" className="danger" onClick={() => void remove()} disabled={busy}>Delete server</button>
-        ) : (
-          <button type="button" className="danger" onClick={() => void leave()} disabled={busy}>Leave server</button>
-        )}
-      </div>
-      {isOwner && <p className="cw-hint">The owner cannot leave. Deleting the server is the only way to close it.</p>}
+      {/* The offline demo keeps its one server, so the owner gets no delete button there. */}
+      {!(isOwner && isDemo()) && (
+        <div className="cw-dialog-actions">
+          {isOwner ? (
+            <button type="button" className="danger" onClick={() => void remove()} disabled={busy}>Delete server</button>
+          ) : (
+            <button type="button" className="danger" onClick={() => void leave()} disabled={busy}>Leave server</button>
+          )}
+        </div>
+      )}
+      {isOwner && !isDemo() && <p className="cw-hint">The owner cannot leave. Deleting the server is the only way to close it.</p>}
     </Dialog>
   );
 }
