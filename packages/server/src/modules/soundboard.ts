@@ -53,6 +53,14 @@ export function register(app: Express, ctx: Ctx): void {
     durationMs: r.duration_ms,
   });
   const soundById = (id: string) => db.prepare('SELECT * FROM sounds WHERE id=?').get(id) as SoundRow | undefined;
+  // Count and insert in one transaction so two uploads at once cannot both pass the limit.
+  const insertSoundIfRoom = db.transaction((id: string, serverId: string, ownerId: string, name: string, emoji: string, mime: string, durationMs: number, createdAt: number): boolean => {
+    const { n } = db.prepare('SELECT COUNT(*) AS n FROM sounds WHERE server_id=?').get(serverId) as { n: number };
+    if (n >= SOUNDS_PER_SERVER) return false;
+    db.prepare('INSERT INTO sounds (id, server_id, owner_id, name, emoji, mime, duration_ms, created_at) VALUES (?,?,?,?,?,?,?,?)')
+      .run(id, serverId, ownerId, name, emoji, mime, durationMs, createdAt);
+    return true;
+  });
 
   const requireMember = (req: Request, res: Response, next: NextFunction) => {
     if (!ctx.roleIn(req.params.id, (req as AuthedRequest).userId)) { res.status(404).json({ error: 'server not found' }); return; }
@@ -72,48 +80,62 @@ export function register(app: Express, ctx: Ctx): void {
     res.json({ sounds: rows.map(toSound) });
   });
 
-  app.post('/api/servers/:id/sounds', ctx.requireAuth, requireMember, readAudio, async (req, res) => {
-    const userId = (req as AuthedRequest).userId;
-    const serverId = req.params.id;
-    const body: unknown = req.body;
-    if (!Buffer.isBuffer(body) || body.length === 0) { res.status(415).json({ error: 'expected an audio/* body' }); return; }
+  app.post('/api/servers/:id/sounds', ctx.requireAuth, requireMember, readAudio, async (req, res, next) => {
+    try {
+      const userId = (req as AuthedRequest).userId;
+      const serverId = req.params.id;
+      const body: unknown = req.body;
+      if (!Buffer.isBuffer(body) || body.length === 0) { res.status(415).json({ error: 'expected an audio/* body' }); return; }
 
-    const name = typeof req.query.name === 'string' ? req.query.name.trim() : '';
-    if (!name || name.length > NAME_MAX) { res.status(400).json({ error: `name must be 1-${NAME_MAX} characters` }); return; }
-    const emoji = typeof req.query.emoji === 'string' ? req.query.emoji : '';
-    if (!emoji || emoji.length > EMOJI_MAX) { res.status(400).json({ error: 'emoji required' }); return; }
-    // Declared by the client; the server cannot decode audio to measure it, so it is only range-checked.
-    const durationMs = Number(req.query.durationMs);
-    if (!Number.isInteger(durationMs) || durationMs < 1 || durationMs > LIMITS.SOUND_MAX_SECONDS * 1000) {
-      res.status(400).json({ error: `durationMs must be 1-${LIMITS.SOUND_MAX_SECONDS * 1000}` }); return;
+      const name = typeof req.query.name === 'string' ? req.query.name.trim() : '';
+      if (!name || name.length > NAME_MAX) { res.status(400).json({ error: `name must be 1-${NAME_MAX} characters` }); return; }
+      const emoji = typeof req.query.emoji === 'string' ? req.query.emoji : '';
+      if (!emoji || emoji.length > EMOJI_MAX) { res.status(400).json({ error: 'emoji required' }); return; }
+      // Declared by the client; the server cannot decode audio to measure it, so it is only range-checked.
+      const durationMs = Number(req.query.durationMs);
+      if (!Number.isInteger(durationMs) || durationMs < 1 || durationMs > LIMITS.SOUND_MAX_SECONDS * 1000) {
+        res.status(400).json({ error: `durationMs must be 1-${LIMITS.SOUND_MAX_SECONDS * 1000}` }); return;
+      }
+      const mime = sniffAudio(body);
+      if (!mime) { res.status(415).json({ error: 'unsupported audio format' }); return; }
+
+      // The row goes in before the file, so a failed write can be undone by deleting the row.
+      const id = newId();
+      if (!insertSoundIfRoom(id, serverId, userId, name, emoji, mime, durationMs, Date.now())) {
+        res.status(409).json({ error: 'soundboard is full' });
+        return;
+      }
+      try {
+        await fs.promises.writeFile(filePath(id), body, { mode: 0o600 });
+      } catch (err) {
+        db.prepare('DELETE FROM sounds WHERE id=?').run(id);
+        throw err;
+      }
+      const sound = toSound(soundById(id)!);
+      ctx.broadcastToServer(serverId, { t: 'sound.new', sound });
+      res.json({ sound });
+    } catch (err) {
+      next(err);
     }
-    const mime = sniffAudio(body);
-    if (!mime) { res.status(415).json({ error: 'unsupported audio format' }); return; }
-
-    const { n } = db.prepare('SELECT COUNT(*) AS n FROM sounds WHERE server_id=?').get(serverId) as { n: number };
-    if (n >= SOUNDS_PER_SERVER) { res.status(409).json({ error: 'soundboard is full' }); return; }
-
-    const id = newId();
-    await fs.promises.writeFile(filePath(id), body, { mode: 0o600 });
-    const createdAt = Date.now();
-    db.prepare('INSERT INTO sounds (id, server_id, owner_id, name, emoji, mime, duration_ms, created_at) VALUES (?,?,?,?,?,?,?,?)')
-      .run(id, serverId, userId, name, emoji, mime, durationMs, createdAt);
-    const sound = toSound(soundById(id)!);
-    ctx.broadcastToServer(serverId, { t: 'sound.new', sound });
-    res.json({ sound });
   });
 
-  app.delete('/api/sounds/:id', ctx.requireAuth, async (req, res) => {
-    const userId = (req as AuthedRequest).userId;
-    const row = soundById(req.params.id);
-    const role = row ? ctx.roleIn(row.server_id, userId) : null;
-    if (!row || !role) { res.status(404).json({ error: 'sound not found' }); return; }
-    if (row.owner_id !== userId && role !== 'owner' && role !== 'admin') { res.status(403).json({ error: 'forbidden' }); return; }
+  app.delete('/api/sounds/:id', ctx.requireAuth, async (req, res, next) => {
+    try {
+      const userId = (req as AuthedRequest).userId;
+      const row = soundById(req.params.id);
+      const role = row ? ctx.roleIn(row.server_id, userId) : null;
+      if (!row || !role) { res.status(404).json({ error: 'sound not found' }); return; }
+      if (row.owner_id !== userId && role !== 'owner' && role !== 'admin') { res.status(403).json({ error: 'forbidden' }); return; }
 
-    db.prepare('DELETE FROM sounds WHERE id=?').run(row.id);
-    await fs.promises.rm(filePath(row.id), { force: true });
-    ctx.broadcastToServer(row.server_id, { t: 'sound.delete', serverId: row.server_id, soundId: row.id });
-    res.json({ ok: true });
+      db.prepare('DELETE FROM sounds WHERE id=?').run(row.id);
+      // The row is already gone, so a failed file removal is logged instead of failing the request.
+      await fs.promises.rm(filePath(row.id), { force: true })
+        .catch((err) => console.error(`sound ${row.id} cleanup failed`, err));
+      ctx.broadcastToServer(row.server_id, { t: 'sound.delete', serverId: row.server_id, soundId: row.id });
+      res.json({ ok: true });
+    } catch (err) {
+      next(err);
+    }
   });
 
   app.get('/api/sounds/:id/file', ctx.requireAuth, async (req, res) => {
