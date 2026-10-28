@@ -1,6 +1,7 @@
 // Voice call state (voice-core). Joins a LiveKit room; media is E2EE with a key derived from the channel key.
 import { create } from 'zustand';
 import { ExternalE2EEKeyProvider, Room, RoomEvent, Track, type Participant } from 'livekit-client';
+import { DEFAULT_VOICE_BITRATE_KBPS, VOICE_BITRATES_KBPS, type Channel } from '@chatward/shared';
 import { api } from '../api/http';
 import { voiceKey } from '../crypto';
 import { startCamera, stopCamera, startScreen, stopScreen } from '../components/voice/media';
@@ -39,8 +40,24 @@ export interface VoiceState {
   setTheater: (key: string | null) => void;
 }
 
-// Opus at 64 kbps; DTX stops sending packets while silent.
-const MIC_PUBLISH = { dtx: true, red: false, audioPreset: { maxBitrate: 64_000 } };
+/** The channel's bitrate, or the default when unset or not one of the allowed values. */
+export function channelBitrate(channel: Channel | undefined): number {
+  const kbps = channel?.bitrateKbps;
+  return kbps !== undefined && (VOICE_BITRATES_KBPS as readonly number[]).includes(kbps) ? kbps : DEFAULT_VOICE_BITRATE_KBPS;
+}
+
+// DTX stops sending packets while silent.
+const micPublish = (kbps: number) => ({ dtx: true, red: false, audioPreset: { maxBitrate: kbps * 1000 } });
+
+/** Changes the live mic sender's ceiling without republishing the track. */
+async function applyBitrate(room: Room, kbps: number): Promise<void> {
+  const sender = room.localParticipant.getTrackPublication(Track.Source.Microphone)?.track?.sender;
+  if (!sender) return;
+  const params = sender.getParameters();
+  if (!params.encodings.length) return;
+  params.encodings[0].maxBitrate = kbps * 1000;
+  await sender.setParameters(params);
+}
 
 const bump = () => useVoice.setState((s) => ({ version: s.version + 1 }));
 
@@ -169,7 +186,8 @@ export const useVoice = create<VoiceState>((set, get) => {
         await room.setE2EEEnabled(true);
 
         const mic = await openMic();
-        await room.localParticipant.publishTrack(mic, { source: Track.Source.Microphone, ...MIC_PUBLISH });
+        const bitrate = channelBitrate(useSession.getState().servers.flatMap((b) => b.channels).find((c) => c.id === channelId));
+        await room.localParticipant.publishTrack(mic, { source: Track.Source.Microphone, ...micPublish(bitrate) });
         set({ status: 'connected' });
         syncMic();
         startMeter();
@@ -256,4 +274,14 @@ export const useVoice = create<VoiceState>((set, get) => {
 // Leave the call when the user logs out (or is signed out by a 401).
 useSession.subscribe((s, prev) => {
   if (prev.token && !s.token) void useVoice.getState().leave();
+});
+
+// An admin changed this channel's bitrate: apply it to the live call.
+useSession.subscribe((s, prev) => {
+  const { channelId, room } = useVoice.getState();
+  if (!channelId || !room) return;
+  const find = (st: typeof s) => st.servers.flatMap((b) => b.channels).find((c) => c.id === channelId);
+  const next = channelBitrate(find(s));
+  if (next === channelBitrate(find(prev))) return;
+  applyBitrate(room, next).catch((e) => console.warn('bitrate change failed', e));
 });
