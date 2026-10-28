@@ -1,6 +1,6 @@
 # Chatward contract (read before touching code)
 
-Auth: `Authorization: Bearer <jwt>` on every REST call except register/login. WS: `ws://host/ws?token=<jwt>`.
+Auth: `Authorization: Bearer <jwt>` on every REST call except register/login. WS: `ws://host/ws?token=<jwt>`. A token is tied to the device it was issued to: removing that device (`DELETE /api/me/devices/:id`, needs the password) or changing the password ends it at once and closes its sockets. A password change or reset also ends every other device's token.
 All JSON. Errors: `{ "error": "message" }` with 4xx. Types live in `@chatward/shared`.
 
 ## REST (server owns; client `api/` wraps)

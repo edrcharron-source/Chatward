@@ -20,7 +20,7 @@ import { register as watchparty } from './modules/watchparty.js';
 import { register as updates } from './modules/updates.js';
 
 const db = openDb();
-const { signToken, verifyToken, requireAuth } = makeAuth(db);
+const { signToken, verifySession, requireAuth } = makeAuth(db);
 
 type UserRow = {
   id: string; username: string; display_name: string; avatar_path: string | null; created_at: number;
@@ -41,7 +41,7 @@ const toUser = (r: UserRow): User => ({
 });
 
 const ctx: Ctx = {
-  db, config, requireAuth, signToken, verifyToken,
+  db, config, requireAuth, signToken, verifySession,
   broadcastToServer: () => {},
   sendToUser: () => {},
   revokeSockets: () => {},

@@ -411,12 +411,14 @@ async function main() {
     // Bob can list and remove his own devices. Another user's device is not his to remove.
     const bobDevices = await api(bob.token, 'GET', '/api/me/devices');
     assert.ok(bobDevices.json.devices.some((d: { deviceId: string }) => d.deviceId === bob2.id), 'bob lists his second device');
-    assert.equal((await api(alice.token, 'DELETE', `/api/me/devices/${bob2.id}`)).status, 404, 'alice cannot remove bob\'s device');
-    assert.equal((await api(bob.token, 'DELETE', `/api/me/devices/${bob2.id}`)).status, 204, 'bob removes his second device');
+    assert.equal((await api(alice.token, 'DELETE', `/api/me/devices/${bob2.id}`, { password: PASSWORD })).status, 404, 'alice cannot remove bob\'s device');
+    assert.equal((await api(bob.token, 'DELETE', `/api/me/devices/${bob2.id}`, {})).status, 403, 'removing a device needs the password');
+    assert.equal((await api(bob.token, 'DELETE', `/api/me/devices/${bob2.id}`, { password: PASSWORD })).status, 204, 'bob removes his second device');
     const afterRemove = await api(bob.token, 'GET', '/api/me/devices');
     assert.ok(!afterRemove.json.devices.some((d: { deviceId: string }) => d.deviceId === bob2.id), 'removed device is no longer listed');
+    assert.equal((await api(bob.token, 'GET', '/api/me')).status, 200, 'bob\'s other device stays signed in');
     const removedCount = await api(bob2.token, 'GET', `/api/devices/${bob2.id}/keypackages/count`);
-    assert.equal(removedCount.status, 403, 'removed device can no longer use its account keys');
+    assert.equal(removedCount.status, 401, 'removed device\'s token is refused, so it can no longer use its account keys');
     const claimAfter = await claim(alice, bob.user);
     assert.ok(!claimAfter.some((k) => k.deviceId === bob2.id), 'removed device is no longer offered for new groups');
     log('a device can be listed and removed, and is then cut off from new keys');

@@ -6,19 +6,30 @@ import type { DB } from './db.js';
 
 export interface AuthedRequest extends Request {
   userId: string;
+  /** The device the caller's token was issued to. Undefined for tokens from before per-device sessions. */
+  deviceId?: string;
+}
+
+export interface Session {
+  userId: string;
+  /** Null for tokens from before per-device sessions. */
+  deviceId: string | null;
 }
 
 export interface Ctx {
   db: DB;
   config: typeof config;
-  /** Express middleware: 401s unless a valid Bearer token; sets req.userId */
+  /** Express middleware: 401s unless a valid Bearer token; sets req.userId and req.deviceId */
   requireAuth: (req: Request, res: Response, next: NextFunction) => void;
-  signToken: (userId: string) => string;
-  verifyToken: (token: string) => string | null;
+  /** Token for a device that is already registered to the user. */
+  signToken: (userId: string, deviceId: string) => string;
+  verifySession: (token: string) => Session | null;
   broadcastToServer: (serverId: string, frame: ServerFrame) => void;
   sendToUser: (userId: string, frame: ServerFrame) => void;
-  /** Closes every open socket of a user, so a session that was just revoked stops receiving frames. */
-  revokeSockets: (userId: string) => void;
+  /**
+   * Closes a user's open sockets so revoked sessions stop receiving frames. With a deviceId, only that device's sockets close.
+   */
+  revokeSockets: (userId: string, deviceId?: string) => void;
   /** callbacks fired when a user's last socket closes (e.g. voice cleanup) */
   onDisconnect: ((userId: string) => void)[];
   /** callbacks fired when a user opens a socket, including a reconnect */
@@ -37,26 +48,39 @@ export function makeAuth(db: DB) {
   const sessionVersion = (userId: string): number | null =>
     (db.prepare('SELECT session_version FROM users WHERE id=?').get(userId) as { session_version: number } | undefined)
       ?.session_version ?? null;
-  const signToken = (userId: string) =>
-    jwt.sign({ sub: userId, v: sessionVersion(userId) ?? 0 }, config.jwtSecret, { expiresIn: '30d' });
-  const verifyToken = (token: string): string | null => {
+  /** Creation time of a device row. Removing a device and registering it again makes a new row with a new time. */
+  const deviceCreatedAt = (deviceId: string, userId: string): number | null =>
+    (db.prepare('SELECT created_at FROM devices WHERE device_id=? AND user_id=?').get(deviceId, userId) as
+      { created_at: number } | undefined)?.created_at ?? null;
+  // Tokens name their device and the time that device row was created. Removing the device deletes the row,
+  // so its token stops matching, and signing in again on that device creates a new row, which old tokens don't match.
+  const signToken = (userId: string, deviceId: string) => {
+    const createdAt = deviceCreatedAt(deviceId, userId);
+    if (createdAt === null) throw new Error('signToken: device is not registered to this user');
+    return jwt.sign({ sub: userId, v: sessionVersion(userId) ?? 0, d: deviceId, dc: createdAt }, config.jwtSecret, { expiresIn: '30d' });
+  };
+  const verifySession = (token: string): Session | null => {
     try {
       const p = jwt.verify(token, config.jwtSecret) as jwt.JwtPayload;
-      const id = typeof p.sub === 'string' ? p.sub : null;
-      if (!id) return null;
-      if (!db.prepare('SELECT 1 FROM users WHERE id=? AND deleted_at IS NULL').get(id)) return null;
+      const userId = typeof p.sub === 'string' ? p.sub : null;
+      if (!userId) return null;
+      if (!db.prepare('SELECT 1 FROM users WHERE id=? AND deleted_at IS NULL').get(userId)) return null;
+      // A password change or reset bumps the version, which signs out every token issued before it.
       // Tokens from before session versions existed carry no `v`, and their account is still at version 0.
-      return sessionVersion(id) === (p.v ?? 0) ? id : null;
+      if (sessionVersion(userId) !== (p.v ?? 0)) return null;
+      if (typeof p.d !== 'string') return { userId, deviceId: null };
+      return deviceCreatedAt(p.d, userId) === p.dc ? { userId, deviceId: p.d } : null;
     } catch {
       return null;
     }
   };
   const requireAuth = (req: Request, res: Response, next: NextFunction) => {
     const h = req.headers.authorization ?? '';
-    const id = h.startsWith('Bearer ') ? verifyToken(h.slice(7)) : null;
-    if (!id) { res.status(401).json({ error: 'unauthorized' }); return; }
-    (req as AuthedRequest).userId = id;
+    const session = h.startsWith('Bearer ') ? verifySession(h.slice(7)) : null;
+    if (!session) { res.status(401).json({ error: 'unauthorized' }); return; }
+    (req as AuthedRequest).userId = session.userId;
+    if (session.deviceId) (req as AuthedRequest).deviceId = session.deviceId;
     next();
   };
-  return { signToken, verifyToken, requireAuth };
+  return { signToken, verifySession, requireAuth };
 }

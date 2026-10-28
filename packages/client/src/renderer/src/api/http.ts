@@ -35,7 +35,7 @@ export const api = {
   get: <T>(path: string) => req<T>('GET', path),
   post: <T>(path: string, body?: unknown) => req<T>('POST', path, body ?? {}),
   patch: <T>(path: string, body: unknown) => req<T>('PATCH', path, body),
-  del: <T>(path: string) => req<T>('DELETE', path),
+  del: <T>(path: string, body?: unknown) => req<T>('DELETE', path, body),
   /** raw-bytes upload (encrypted blobs, avatars, sounds) */
   putRaw: <T>(method: 'POST' | 'PUT', path: string, bytes: BodyInit, contentType: string) =>
     req<T>(method, path, undefined, { raw: bytes, contentType }),
