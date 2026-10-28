@@ -29,6 +29,10 @@ const api = {
     gifs: (kind: 'search' | 'trending', q: string, pos?: string): Promise<{ status: number; body: unknown } | null> =>
       ipcRenderer.invoke('demo:gifs', kind, q, pos),
   },
+  // Tells the main process which server the page may connect to. Resolves true when the page must reload first.
+  server: {
+    allow: (url: string): Promise<boolean> => ipcRenderer.invoke('server:allow', url),
+  },
 };
 contextBridge.exposeInMainWorld('chatward', api);
 export type ChatwardApi = typeof api;
