@@ -335,6 +335,19 @@ async function main() {
     assert.equal(new TextDecoder().decode((await mls.receive(bob.state.get(CHANNEL)!, healed.ciphertext)).plaintext!), 'back in sync');
     log('junk Commit at epoch 4 cannot be applied; reset refused for outsiders and future epochs; after reset a valid Commit moves the group on');
 
+    // Deleting a server removes its soundboard audio from disk, not just the database rows.
+    const doomedId = (await api(alice.token, 'POST', '/api/servers', { name: 'Doomed' })).json.server.id as string;
+    const oggFile = Buffer.concat([Buffer.from('OggS'), Buffer.alloc(16)]);
+    const upload = await fetch(`${BASE}/api/servers/${doomedId}/sounds?name=boop&emoji=x&durationMs=500`, {
+      method: 'POST', headers: { authorization: `Bearer ${alice.token}`, 'content-type': 'audio/ogg' }, body: oggFile,
+    });
+    const soundId = (await upload.json()).sound.id as string;
+    const soundFile = path.join(dataDir, 'sounds', soundId);
+    assert.ok(fs.existsSync(soundFile), 'sound file written for the doomed server');
+    assert.equal((await api(alice.token, 'DELETE', `/api/servers/${doomedId}`)).status, 200);
+    assert.ok(!fs.existsSync(soundFile), 'sound file removed when its server is deleted');
+    log('deleting a server removes its soundboard files from disk');
+
     console.log('\nE2E MLS: all checks passed');
   } catch (err) {
     failed = true;
