@@ -195,9 +195,11 @@ export function register(app: Express, ctx: Ctx): void {
   });
 
   // A client that starts up with no call of its own calls this. After a restart or crash the old slot has no client left
-  // to end it, and the 409 above would lock the user out. Clears whichever voice channel the account holds.
+  // to end it, and the 409 above would lock the user out. Clears the voice slot only when this device holds it, so a
+  // second device starting up cannot end a call running on the first. The device comes from the signed token.
   app.post('/api/voice/clear', ctx.requireAuth, (req, res) => {
-    leaveVoice(ctx, (req as AuthedRequest).userId);
+    const { userId, deviceId } = req as AuthedRequest;
+    if (voiceDeviceOf.get(userId) === deviceId) leaveVoice(ctx, userId);
     res.json({ ok: true });
   });
 
