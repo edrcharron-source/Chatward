@@ -59,12 +59,18 @@ function Shell() {
   const watchChannelId = channel?.kind === 'voice' ? bundle?.channels.find((c) => c.kind === 'text')?.id : channel?.id;
   const theaterKey = useVoice((s) => s.theaterKey);
   const setTheater = useVoice((s) => s.setTheater);
-  // theater mode keeps the call's share on top and a text chat below, so the chat stays usable while a share is featured
-  const callChannel = bundle?.channels.find((c) => c.id === voiceChannelId);
-  const theaterWithChat = theaterKey !== null && callChannel !== undefined && channel?.kind === 'text';
-
+  // the text chat shown below the share in theater mode; follows the last text channel opened
+  const [chatChannelId, setChatChannelId] = useState<string | null>(null);
+  const [sidebarsCollapsed, setSidebarsCollapsed] = useState(false);
+  const openTextId = channel?.kind === 'text' ? channel.id : undefined;
   useEffect(() => {
-    if (!theaterKey) return;
+    if (openTextId) setChatChannelId(openTextId);
+  }, [openTextId]);
+  useEffect(() => {
+    if (!theaterKey) {
+      setSidebarsCollapsed(false);
+      return;
+    }
     // Esc leaves theater mode unless the browser is handling it as a fullscreen exit
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && !document.fullscreenElement) setTheater(null);
@@ -72,6 +78,13 @@ function Shell() {
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, [theaterKey, setTheater]);
+
+  // theater mode keeps the call's share on top and a text chat below, so the chat stays usable while a share is featured
+  const callChannel = bundle?.channels.find((c) => c.id === voiceChannelId);
+  const textChannels = bundle?.channels.filter((c) => c.kind === 'text') ?? [];
+  const chatChannel = channel?.kind === 'text' ? channel : textChannels.find((c) => c.id === chatChannelId) ?? textChannels[0];
+  const theaterWithChat = theaterKey !== null && callChannel !== undefined && chatChannel !== undefined;
+  const hideSidebars = theaterKey !== null && sidebarsCollapsed;
 
   useEffect(() => {
     let off: (() => void) | undefined;
@@ -143,10 +156,15 @@ function Shell() {
   return (
     <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
       <ServerSidebar onReload={loadServers} />
-      <ChannelList onOpenSettings={() => setSettingsOpen(true)} onReload={loadServers} />
+      {!hideSidebars && <ChannelList onOpenSettings={() => setSettingsOpen(true)} onReload={loadServers} />}
       <main style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
         {channel && (
-          <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '4px 12px', background: 'var(--bg-2)' }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '4px 12px', background: 'var(--bg-2)' }}>
+            {theaterKey !== null && (
+              <button className="icon" onClick={() => setSidebarsCollapsed((c) => !c)} aria-pressed={sidebarsCollapsed}>
+                {sidebarsCollapsed ? 'Show sidebars' : 'Hide sidebars'}
+              </button>
+            )}
             <button className="icon" onClick={() => setWatchOpen((o) => !o)} aria-pressed={watchOpen} title="Watch YouTube together">
               🎬 {watchOpen ? 'Close watch party' : 'Watch together'}
             </button>
@@ -154,11 +172,25 @@ function Shell() {
         )}
         {/* Voice channels have no message key of their own, so their watch party rides the server's first text channel. */}
         {watchChannelId && watchOpen && <WatchPartyPanel key={watchChannelId} channelId={watchChannelId} />}
-        {theaterWithChat && callChannel && channel
+        {theaterWithChat && callChannel && chatChannel
           ? (
             <TheaterSplit
               top={<VoiceChannelView key={callChannel.id} channel={callChannel} theaterOnly />}
-              bottom={<ChatView key={channel.id} channel={channel} />}
+              bottom={(
+                <>
+                  {channel?.kind === 'voice' && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 12px', background: 'var(--bg-2)' }}>
+                      <span className="muted" style={{ fontSize: 12 }}>Chat</span>
+                      <select value={chatChannel.id} onChange={(e) => setChatChannelId(e.target.value)} aria-label="Text channel for chat">
+                        {textChannels.map((c) => <option key={c.id} value={c.id}>#{c.name}</option>)}
+                      </select>
+                    </div>
+                  )}
+                  <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+                    <ChatView key={chatChannel.id} channel={chatChannel} />
+                  </div>
+                </>
+              )}
             />
           )
           : channel?.kind === 'voice'
@@ -167,7 +199,7 @@ function Shell() {
               ? <ChatView key={channel.id} channel={channel} />
               : <div style={{ margin: 'auto' }} className="muted">{bundle ? 'Select a channel' : 'Create or join a server to get started'}</div>}
       </main>
-      {bundle && <MemberList members={bundle.members as Member[]} />}
+      {bundle && !hideSidebars && <MemberList members={bundle.members as Member[]} />}
       {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
       {/* keep voice room mounted even when browsing text channels */}
       {voiceChannelId && null}
