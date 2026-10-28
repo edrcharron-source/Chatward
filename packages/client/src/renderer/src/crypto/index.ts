@@ -13,7 +13,7 @@ import * as mls from './mls';
 import {
   aesDecryptWith, aesEncryptWith, aesOpen, aesSeal, Bytes, exportJwk, exportRawPublic, fromB64, generateAesKeyBytes,
   generateEcdh, generateSigning, importAesKey, importEcdhPrivate, importSignPrivate, importSignPublic, IV_BYTES, randomBytes,
-  toB64, utf8,
+  sha256, toB64, utf8,
 } from './primitives';
 
 export { safetyNumber } from './safety';
@@ -270,12 +270,31 @@ async function reportEpoch(channelId: string): Promise<void> {
   }
 }
 
-/** Keep a supply of single-use KeyPackages on the server, plus one last-resort package. */
+/** Same id the server reports for a KeyPackage: base64 SHA-256 of its wire string. */
+async function keyPackageId(kp: string): Promise<string> {
+  return toB64(await sha256(utf8(kp)));
+}
+
+/**
+ * Keep a supply of single-use KeyPackages on the server, plus one last-resort package that the server agrees is current.
+ * Peers can only claim what the server holds, so a local last-resort package the server no longer has is dropped.
+ */
 async function ensureKeyPool(): Promise<boolean> {
   const me = getDevice();
-  const count = await api.get<{ available: number }>(`/api/devices/${encodeURIComponent(me.deviceId)}/keypackages/count`);
-  const needLastResort = !Object.values(vault.pool).some((entry) => entry.lastResort);
-  if (count.available >= KEYPACKAGE_LOW_WATER && !needLastResort) return false;
+  const count = await api.get<{ available: number; lastResort: string | null }>(`/api/devices/${encodeURIComponent(me.deviceId)}/keypackages/count`);
+  let pruned = false;
+  let serverHasLastResort = false;
+  for (const [kp, entry] of Object.entries(vault.pool)) {
+    if (!entry.lastResort) continue;
+    if ((await keyPackageId(kp)) === count.lastResort) {
+      serverHasLastResort = true;
+    } else {
+      delete vault.pool[kp];
+      pruned = true;
+    }
+  }
+  const needLastResort = !serverHasLastResort;
+  if (count.available >= KEYPACKAGE_LOW_WATER && !needLastResort) return pruned;
   const size = count.available >= KEYPACKAGE_LOW_WATER ? 0 : KEYPACKAGE_BATCH;
   const made: { kp: string; keys: mls.MemberKeys; lastResort: boolean }[] = [];
   for (let i = 0; i < size; i++) made.push(await newKeyPackage(false));
@@ -285,7 +304,7 @@ async function ensureKeyPool(): Promise<boolean> {
     keyPackages: made.map((m) => ({ kp: m.kp, lastResort: m.lastResort })),
   });
   for (const m of made) vault.pool[m.kp] = mls.storeKeyPackage(m.keys, m.kp, m.lastResort);
-  return made.length > 0;
+  return pruned || made.length > 0;
 }
 
 async function newKeyPackage(lastResort: boolean) {
@@ -517,26 +536,6 @@ export function handleEnvelope(env: KeyEnvelope): Promise<void> {
   return serial(async () => {
     if (isDemo()) return;
     if (await acceptEnvelope(env)) {
-      await persistVault();
-      notify();
-    }
-  });
-}
-
-/**
- * Call when this account leaves or is kicked from a server. Its groups there are no longer ours to follow, so they are
- * forgotten. History keys already held are kept, and a later invite rejoins from a Welcome.
- */
-export function forgetChannelGroups(channelIds: string[]): Promise<void> {
-  return serial(async () => {
-    if (isDemo() || !device) return;
-    let changed = false;
-    for (const id of channelIds) {
-      if (!vault.groups[id]) continue;
-      forgetGroup(id);
-      changed = true;
-    }
-    if (changed) {
       await persistVault();
       notify();
     }
