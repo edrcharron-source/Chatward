@@ -524,26 +524,6 @@ export function handleEnvelope(env: KeyEnvelope): Promise<void> {
 }
 
 /**
- * Call when this account leaves or is kicked from a server. Its groups there are no longer ours to follow, so they are
- * forgotten. History keys already held are kept, and a later invite rejoins from a Welcome.
- */
-export function forgetChannelGroups(channelIds: string[]): Promise<void> {
-  return serial(async () => {
-    if (isDemo() || !device) return;
-    let changed = false;
-    for (const id of channelIds) {
-      if (!vault.groups[id]) continue;
-      forgetGroup(id);
-      changed = true;
-    }
-    if (changed) {
-      await persistVault();
-      notify();
-    }
-  });
-}
-
-/**
  * Call on member.leave (after a kick). Runs the channel sync for the server without the removed user, so the
  * remaining members commit the Remove. Keys the removed user already held are not erased.
  */

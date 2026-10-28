@@ -6,7 +6,7 @@ import { keepTokenFresh } from './api/token';
 import { refreshUnread, signOut, useSession, type ServerBundle } from './state/session';
 import { useSettings, applyTheme } from './state/settings';
 import { useVoice, rekeyActiveCall, resumeVoiceSlot, clearLeftoverVoiceSlot, leaveCallOnExit } from './state/voice';
-import { accountKey, adoptLegacyIfOwned, initDevice, syncChannelKeys, handleEnvelope, handleMemberLeave, forgetChannelGroups } from './crypto';
+import { accountKey, adoptLegacyIfOwned, initDevice, syncChannelKeys, handleEnvelope, handleMemberLeave } from './crypto';
 import { installNotifications } from './notify/notify';
 import AuthScreen from './components/auth/AuthScreen';
 import ServerSidebar from './components/servers/ServerSidebar';
@@ -201,12 +201,8 @@ function Shell() {
             if (f.userId === st.user?.id) {
               // we left (or were kicked), so end any call we had in this server
               if (useVoice.getState().serverId === f.serverId) void useVoice.getState().leave();
-              const left = st.servers.find((x) => x.server.id === f.serverId);
+              // Our channel groups stay: if nobody is online to commit the Remove, a rejoin must still find them
               st.removeServer(f.serverId);
-              if (left) {
-                void forgetChannelGroups(left.channels.filter((c) => c.kind === 'text').map((c) => c.id))
-                  .catch((e) => console.error(e));
-              }
               break;
             }
             const b = st.servers.find((x) => x.server.id === f.serverId);

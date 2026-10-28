@@ -145,6 +145,25 @@ async function main() {
     assert.ok(aliceBack.includes('bob is back'), `alice reads bob after he rejoins: ${JSON.stringify(aliceBack)}`);
     log('bob is re-invited after a kick; he rejoins from the Welcome and both sides read each other again');
 
+    // 5c. Bob leaves and rejoins while alice is offline, so no Remove is ever committed. Bob's device keeps its group
+    // state across the leave. Rejoining from the new Welcome must still work, or bob is locked out of the channel.
+    await alice.call('kick', { serverId, userId: bobId });
+    const leaveReinvite = await alice.call('invite', { serverId });
+    await bob.call('joinInvite', { code: leaveReinvite.code });
+    await alice.call('sync'); // alice commits the add for bob's device
+    await bob.call('sync'); // bob joins from the Welcome, or applies the Commits he has not seen
+    const aliceEpochAfterLeave = (await alice.call('status', { channelId })).epoch;
+    assert.equal((await bob.call('status', { channelId })).epoch, aliceEpochAfterLeave, 'bob rejoins at alice\'s epoch after leaving while alice was offline');
+    await alice.call('send', { channelId, text: 'after the leave and rejoin' });
+    await bob.call('sync');
+    const bobAfterLeave = (await bob.call('read', { channelId })).texts;
+    assert.ok(bobAfterLeave.includes('after the leave and rejoin'), `bob reads after leaving and rejoining: ${JSON.stringify(bobAfterLeave)}`);
+    await bob.call('send', { channelId, text: 'bob can talk again' });
+    await alice.call('sync');
+    const aliceAfterLeave = (await alice.call('read', { channelId })).texts;
+    assert.ok(aliceAfterLeave.includes('bob can talk again'), `alice reads bob after he leaves and rejoins: ${JSON.stringify(aliceAfterLeave)}`);
+    log('bob leaves and rejoins while alice is offline; he reads and sends again without being locked out');
+
     // A second account on the same PC gets its own device, and alice's group state is still there when she switches back.
     const epochOnPc = (await alice.call('status', { channelId })).epoch;
     await alice.call('init', { serverUrl: BASE, username: 'carol' });
