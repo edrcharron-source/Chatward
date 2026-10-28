@@ -134,6 +134,44 @@ const sensitiveLimit = rateLimit({
   message: { error: 'too many attempts, try again later' },
 });
 
+// Per-username sign-in guard. The per-IP limit alone lets one account be guessed from many addresses, so this counts
+// failures per username. A lock is short and grows with each failure past the threshold, and it always expires,
+// so a stranger who guesses a name can delay its owner for minutes at most.
+const LOGIN_FAILS_BEFORE_LOCK = 10;
+const LOGIN_FAIL_WINDOW_MS = 15 * 60_000;
+const LOGIN_LOCK_BASE_MS = 30_000;
+const LOGIN_LOCK_MAX_MS = 15 * 60_000;
+const LOGIN_GUARD_PRUNE_AT = 5000;
+
+type LoginGuard = { fails: number; windowStart: number; lockedUntil: number };
+const loginGuards = new Map<string, LoginGuard>();
+
+/** Throws 429 while the username is locked. Runs before the password check, so a locked name costs no hashing. */
+function assertLoginAllowed(username: string): void {
+  const guard = loginGuards.get(username);
+  if (guard && guard.lockedUntil > Date.now()) {
+    throw new ApiError(429, 'too many failed sign-ins for this account, try again in a few minutes');
+  }
+}
+
+function recordLoginFailure(username: string): void {
+  const now = Date.now();
+  if (loginGuards.size > LOGIN_GUARD_PRUNE_AT) {
+    for (const [name, g] of loginGuards) if (g.lockedUntil <= now && now - g.windowStart > LOGIN_FAIL_WINDOW_MS) loginGuards.delete(name);
+  }
+  const guard = loginGuards.get(username) ?? { fails: 0, windowStart: now, lockedUntil: 0 };
+  if (now - guard.windowStart > LOGIN_FAIL_WINDOW_MS) {
+    guard.fails = 0;
+    guard.windowStart = now;
+  }
+  guard.fails += 1;
+  if (guard.fails >= LOGIN_FAILS_BEFORE_LOCK) {
+    const steps = guard.fails - LOGIN_FAILS_BEFORE_LOCK;
+    guard.lockedUntil = now + Math.min(LOGIN_LOCK_BASE_MS * 2 ** steps, LOGIN_LOCK_MAX_MS);
+  }
+  loginGuards.set(username, guard);
+}
+
 function mustUser(ctx: Ctx, userId: string) {
   const user = ctx.getUser(userId);
   if (!user) throw new ApiError(401, 'unauthorized');
@@ -230,12 +268,17 @@ export function register(app: Express, ctx: Ctx): void {
     const username = typeof body.username === 'string' ? body.username : '';
     const password = typeof body.password === 'string' && body.password.length <= PASSWORD_MAX ? body.password : '';
     const device = parseDevice(body.device);
+    if (username) assertLoginAllowed(username);
     const row = username
       ? (ctx.db.prepare('SELECT id, password_hash FROM users WHERE username=? AND deleted_at IS NULL').get(username) as
           { id: string; password_hash: string } | undefined)
       : undefined;
     const ok = password !== '' && (await verify(row?.password_hash ?? (await dummyHash), password));
-    if (!row || !ok) throw new ApiError(401, 'invalid username or password');
+    if (!row || !ok) {
+      if (username) recordLoginFailure(username);
+      throw new ApiError(401, 'invalid username or password');
+    }
+    loginGuards.delete(username);
     const newDevice = isNewDevice(ctx, row.id, device.deviceId);
     if (ctx.db.transaction(() => upsertDevice(ctx, row.id, device))()) broadcastDevices(ctx, row.id);
     if (newDevice) announceNewDevice(ctx, row.id, device.deviceId);
