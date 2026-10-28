@@ -1,0 +1,83 @@
+.watch-party {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+}
+.watch-party-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+.watch-party-frame {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: #000;
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.watch-party-frame iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+.watch-party-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.watch-party-hint,
+.watch-party-empty {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.watch-party-form {
+  display: flex;
+  gap: 8px;
+}
+.watch-party-form input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  background: var(--bg-3);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.watch-party button {
+  padding: 8px 12px;
+  background: var(--accent-hover);
+  color: var(--accent-text);
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.watch-party button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.watch-party button:focus-visible,
+.watch-party input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.watch-party-stop {
+  background: var(--bg-3) !important;
+  color: var(--text) !important;
+}
+.watch-party-error {
+  margin: 0;
+  color: var(--danger);
+  font-size: 13px;
+}
