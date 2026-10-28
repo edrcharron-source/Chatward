@@ -458,6 +458,9 @@ async function ensureGroup(channelId: string, members: Member[]): Promise<boolea
     const state = await joinFromPool(latest.welcome);
     if (!state) return changed;
     await setGroup(channelId, state, latest.epoch);
+    // The group moved past any create step we kept, so those steps can no longer land. Settle them now, since catch-up
+    // may not run again for a while and would otherwise keep their secrets in memory.
+    keepPending(channelId, (p) => p.epoch >= latest.epoch);
     return true;
   }
   // No Welcome for us. Create the group only if nobody has committed yet; otherwise an existing member adds us.
@@ -465,7 +468,11 @@ async function ensureGroup(channelId: string, members: Member[]): Promise<boolea
   // Check our earlier create Commits before building another solo group, since one of them may have landed late.
   if (await adoptLateCreate(channelId)) return true;
   if (info.epoch !== 0) return changed;
-  return (await createGroup(channelId, members)) || changed;
+  if (await createGroup(channelId, members)) return true;
+  // Another device created the group first, or one of our earlier creates landed in the gap before this POST. Check again.
+  if (await adoptLateCreate(channelId)) return true;
+  // Still no group and no Welcome. Fail this sync so the retry timer runs and picks up the Welcome when it arrives.
+  throw new Error(`Channel ${channelId} was created by another device, and its Welcome has not arrived yet`);
 }
 
 /**
