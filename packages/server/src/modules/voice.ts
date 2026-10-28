@@ -208,7 +208,7 @@ export function register(app: Express, ctx: Ctx): void {
     if (pending && (pending.deviceId === null || pending.deviceId === deviceId)) cancelGrace(userId);
   });
 
-  app.post('/api/voice/token', ctx.requireAuth, async (req, res) => {
+  app.post('/api/voice/token', ctx.requireAuth, async (req, res, next) => {
     const userId = (req as AuthedRequest).userId;
     const channelId = (req.body as { channelId?: unknown } | undefined)?.channelId;
     if (typeof channelId !== 'string') { res.status(400).json({ error: 'channelId required' }); return; }
@@ -248,7 +248,11 @@ export function register(app: Express, ctx: Ctx): void {
       ttl: TOKEN_TTL,
     });
     at.addGrant({ roomJoin: true, room: channelId, canPublish: true, canSubscribe: true });
-    res.json({ url: ctx.config.livekit.url, token: await at.toJwt() });
+    try {
+      res.json({ url: ctx.config.livekit.url, token: await at.toJwt() });
+    } catch (err) {
+      next(err);
+    }
   });
 
   // The client calls this after its websocket reconnects while it is still in a call. A server restart clears the
