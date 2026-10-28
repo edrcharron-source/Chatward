@@ -1,0 +1,13 @@
+{$DOMAIN} {
+	encode zstd gzip
+
+	# LiveKit (voice and video) connects under /rtc
+	handle /rtc* {
+		reverse_proxy livekit:7880
+	}
+
+	# Everything else: the Chatward API and the /ws chat socket
+	handle {
+		reverse_proxy server:3000
+	}
+}
