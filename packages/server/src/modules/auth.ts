@@ -261,6 +261,11 @@ export function register(app: Express, ctx: Ctx): void {
     res.json({ user: mustUser(ctx, userIdOf(req)) });
   }));
 
+  // Swaps a still-valid token for a new 30-day one. requireAuth rejects a revoked session, so it cannot renew.
+  app.post('/api/auth/refresh', ctx.requireAuth, route((req, res) => {
+    res.json({ token: ctx.signToken(userIdOf(req)) });
+  }));
+
   // Whether a device id is registered to the caller. Lets a PC confirm an old device before using it.
   app.get('/api/me/devices/:deviceId', ctx.requireAuth, route((req, res) => {
     const row = ctx.db.prepare('SELECT user_id FROM devices WHERE device_id=?').get(String(req.params.deviceId)) as

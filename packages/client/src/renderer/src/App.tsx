@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { Channel, Member } from '@chatward/shared';
 import { api, ApiError } from './api/http';
 import { connectWs, disconnectWs, onFrame, sendFrame } from './api/ws';
+import { keepTokenFresh } from './api/token';
 import { refreshUnread, signOut, useSession, type ServerBundle } from './state/session';
 import { useSettings, applyTheme } from './state/settings';
 import { useVoice, rekeyActiveCall, resumeVoiceSlot, clearLeftoverVoiceSlot, leaveCallOnExit } from './state/voice';
@@ -90,6 +91,7 @@ function Shell() {
   useEffect(() => {
     let off: (() => void) | undefined;
     let stopNotify: (() => void) | undefined;
+    let stopTokenCheck: (() => void) | undefined;
     let seenReady = false;
     let active = true;
     (async () => {
@@ -99,6 +101,7 @@ function Shell() {
       await loadServersUntilReachable(() => active);
       if (!active) return;
       connectWs();
+      stopTokenCheck = keepTokenFresh();
       stopNotify = installNotifications();
       off = onFrame((f) => {
         const st = useSession.getState();
@@ -214,7 +217,7 @@ function Shell() {
       setReady(true);
     })().catch((e) => console.error(e));
     window.addEventListener('pagehide', leaveCallOnExit);
-    return () => { active = false; off?.(); stopNotify?.(); disconnectWs(); window.removeEventListener('pagehide', leaveCallOnExit); };
+    return () => { active = false; off?.(); stopNotify?.(); stopTokenCheck?.(); disconnectWs(); window.removeEventListener('pagehide', leaveCallOnExit); };
   }, []);
 
   async function loadServers() {
