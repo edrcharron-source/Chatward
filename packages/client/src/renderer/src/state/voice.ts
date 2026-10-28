@@ -1,6 +1,12 @@
-// Voice store contract. OWNER of bodies: voice-core agent. Other agents only read state / call actions.
+// Voice call state (voice-core). Joins a LiveKit room; media is E2EE with a key derived from the channel key.
 import { create } from 'zustand';
-import type { Room } from 'livekit-client';
+import { ExternalE2EEKeyProvider, Room, RoomEvent, Track, type Participant } from 'livekit-client';
+import { api } from '../api/http';
+import { voiceKey } from '../crypto';
+import { startCamera, stopCamera, startScreen, stopScreen } from '../components/voice/media';
+import { attachRemote, closeAudio, detachRemote, openMic, setDeafened, setTransmitting, startPlayback } from './voiceAudio';
+import { useSession } from './session';
+import { useSettings } from './settings';
 
 export interface VoiceState {
   channelId: string | null;
@@ -14,6 +20,8 @@ export interface VoiceState {
   screenOn: boolean;
   /** userIds currently speaking */
   speaking: string[];
+  /** bumps on any room change so views re-read participants and tracks */
+  version: number;
   join: (serverId: string, channelId: string) => Promise<void>;
   leave: () => Promise<void>;
   toggleMute: () => void;
@@ -23,11 +31,144 @@ export interface VoiceState {
   setScreen: (on: boolean, sourceId?: string) => Promise<void>;
 }
 
-export const useVoice = create<VoiceState>(() => ({
-  channelId: null, serverId: null, status: 'idle', error: null, room: null,
-  muted: false, deafened: false, cameraOn: false, screenOn: false, speaking: [],
-  join: async () => { throw new Error('voice-core not installed'); },
-  leave: async () => {},
-  toggleMute: () => {}, toggleDeafen: () => {},
-  setCamera: async () => {}, setScreen: async () => {},
-}));
+// Opus at 64 kbps; DTX stops sending packets while silent.
+const MIC_PUBLISH = { dtx: true, red: false, audioPreset: { maxBitrate: 64_000 } };
+
+const bump = () => useVoice.setState((s) => ({ version: s.version + 1 }));
+
+export const useVoice = create<VoiceState>((set, get) => {
+  /** muted and deafened both close the mic path; deafening also silences playback */
+  function syncMic(): void {
+    const { muted, deafened, room } = get();
+    const open = !muted && !deafened;
+    setDeafened(deafened);
+    setTransmitting(open);
+    const track = room?.localParticipant.getTrackPublication(Track.Source.Microphone)?.track;
+    if (track) void (open ? track.unmute() : track.mute()).catch(() => {});
+  }
+
+  function wire(room: Room): void {
+    const current = () => get().room === room;
+    room
+      .on(RoomEvent.ParticipantConnected, bump)
+      .on(RoomEvent.ParticipantDisconnected, bump)
+      .on(RoomEvent.TrackPublished, bump)
+      .on(RoomEvent.TrackUnpublished, bump)
+      .on(RoomEvent.LocalTrackPublished, bump)
+      .on(RoomEvent.LocalTrackUnpublished, bump)
+      .on(RoomEvent.TrackMuted, bump)
+      .on(RoomEvent.TrackUnmuted, bump)
+      .on(RoomEvent.TrackSubscribed, (track, pub, p) => {
+        if (current() && track.kind === Track.Kind.Audio) attachRemote(pub.trackSid, p.identity, track.mediaStreamTrack);
+        bump();
+      })
+      .on(RoomEvent.TrackUnsubscribed, (_track, pub) => {
+        detachRemote(pub.trackSid);
+        bump();
+      })
+      .on(RoomEvent.ActiveSpeakersChanged, (speakers: Participant[]) => {
+        if (current()) set({ speaking: speakers.map((p) => p.identity) });
+      })
+      .on(RoomEvent.Reconnecting, () => { if (current()) set({ status: 'connecting' }); })
+      .on(RoomEvent.Reconnected, () => { if (current()) set({ status: 'connected' }); })
+      .on(RoomEvent.Disconnected, () => {
+        if (!current()) return; // our own leave() already cleaned up
+        closeAudio();
+        set({ room: null, status: 'error', error: 'Voice connection lost', speaking: [], cameraOn: false, screenOn: false });
+        const channelId = get().channelId;
+        if (channelId) void api.post('/api/voice/leave', { channelId }).catch(() => {});
+      });
+  }
+
+  return {
+    channelId: null, serverId: null, status: 'idle', error: null, room: null,
+    muted: false, deafened: false, cameraOn: false, screenOn: false, speaking: [], version: 0,
+
+    join: async (serverId, channelId) => {
+      const cur = get();
+      if (cur.channelId === channelId && cur.status !== 'error') return;
+      if (cur.channelId) await get().leave();
+      set({ serverId, channelId, status: 'connecting', error: null, cameraOn: false, screenOn: false, speaking: [] });
+
+      let room: Room | null = null;
+      try {
+        // Fail closed: never join a call without the channel key.
+        const key = await voiceKey(channelId);
+        if (!key) throw new Error('Channel encryption key is not available yet');
+        const { url, token } = await api.post<{ url: string; token: string }>('/api/voice/token', { channelId });
+
+        const keyProvider = new ExternalE2EEKeyProvider();
+        await keyProvider.setKey(key.buffer.slice(key.byteOffset, key.byteOffset + key.byteLength) as ArrayBuffer);
+        const worker = new Worker(new URL('livekit-client/e2ee-worker', import.meta.url), { type: 'module' });
+        room = new Room({ adaptiveStream: true, dynacast: true, e2ee: { keyProvider, worker } });
+        wire(room);
+        // the store must know the room before connect, or the event guards drop early tracks
+        set({ room });
+
+        // Playback starts before connect so remote tracks that arrive during connect are heard.
+        await startPlayback();
+        await room.connect(url, token);
+        await room.setE2EEEnabled(true);
+
+        const mic = await openMic();
+        await room.localParticipant.publishTrack(mic, { source: Track.Source.Microphone, ...MIC_PUBLISH });
+        set({ status: 'connected' });
+        syncMic();
+      } catch (e) {
+        closeAudio();
+        void room?.disconnect();
+        set({ room: null, status: 'error', error: e instanceof Error ? e.message : String(e), speaking: [] });
+        // the server may already count us in this channel
+        void api.post('/api/voice/leave', { channelId }).catch(() => {});
+      }
+    },
+
+    leave: async () => {
+      const { room, channelId } = get();
+      if (!channelId) return;
+      // clear state first so the Disconnected handler ignores this room
+      set({ room: null, channelId: null, serverId: null, status: 'idle', error: null, cameraOn: false, screenOn: false, speaking: [] });
+      closeAudio();
+      if (room) await room.disconnect();
+      await api.post('/api/voice/leave', { channelId }).catch(() => {});
+    },
+
+    toggleMute: () => {
+      if (get().deafened) return; // can't unmute while deafened
+      set({ muted: !get().muted });
+      syncMic();
+    },
+
+    // deafen implies mute; undeafening unmutes, as Discord does
+    toggleDeafen: () => {
+      const deafened = !get().deafened;
+      set({ deafened, muted: deafened });
+      syncMic();
+    },
+
+    setCamera: async (on) => {
+      const room = get().room;
+      if (!room) return;
+      if (on) await startCamera(room, useSettings.getState().cameraDeviceId || undefined);
+      else await stopCamera(room);
+      set({ cameraOn: on });
+    },
+
+    setScreen: async (on, sourceId) => {
+      const room = get().room;
+      if (!room) return;
+      if (on) {
+        if (!sourceId) throw new Error('No screen or window selected');
+        await startScreen(room, sourceId);
+      } else {
+        await stopScreen(room);
+      }
+      set({ screenOn: on });
+    },
+  };
+});
+
+// Leave the call when the user logs out (or is signed out by a 401).
+useSession.subscribe((s, prev) => {
+  if (prev.token && !s.token) void useVoice.getState().leave();
+});
