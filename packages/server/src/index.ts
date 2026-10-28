@@ -1,4 +1,6 @@
 import http from 'node:http';
+import fs from 'node:fs';
+import path from 'node:path';
 import express from 'express';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
@@ -27,15 +29,24 @@ type UserRow = {
   bio: string; pronouns: string; accent_color: string | null; banner_color: string | null; banner_path: string | null;
 };
 const USER_COLUMNS = `id, username, display_name, avatar_path, created_at, bio, pronouns, accent_color, banner_color, banner_path`;
+const avatarDir = path.join(config.dataDir, 'avatars');
+const bannerDir = path.join(config.dataDir, 'banners');
+// The stored file name stays the same when a picture is replaced, so browsers would keep showing
+// the old image from cache. Adding the file's modified time to the URL makes a new upload load right away.
+const imageVersion = (dir: string, file: string | null) => {
+  if (!file) return '';
+  try { return `?v=${Math.floor(fs.statSync(path.join(dir, path.basename(file))).mtimeMs)}`; }
+  catch { return ''; }
+};
 const toUser = (r: UserRow): User => ({
   id: r.id, username: r.username, displayName: r.display_name,
-  avatarUrl: r.avatar_path ? `/api/avatars/${r.id}` : null,
+  avatarUrl: r.avatar_path ? `/api/avatars/${r.id}${imageVersion(avatarDir, r.avatar_path)}` : null,
   profile: {
     bio: r.bio,
     pronouns: r.pronouns,
     accentColor: r.accent_color,
     bannerColor: r.banner_color,
-    bannerUrl: r.banner_path ? `/api/banners/${r.id}` : null,
+    bannerUrl: r.banner_path ? `/api/banners/${r.id}${imageVersion(bannerDir, r.banner_path)}` : null,
     createdAt: r.created_at,
   },
 });
