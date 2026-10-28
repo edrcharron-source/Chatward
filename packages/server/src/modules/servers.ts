@@ -1,8 +1,9 @@
 import crypto from 'node:crypto';
 import type { Express, NextFunction, Request, Response } from 'express';
-import type { Channel, Member, Server } from '@chatward/shared';
+import type { Channel, Member, Server, ServerFrame } from '@chatward/shared';
 import type { AuthedRequest, Ctx } from '../ctx.js';
 import { newId } from '../db.js';
+import { leaveVoice } from './voice.js';
 
 const SERVER_NAME_MAX = 64;
 const CHANNEL_NAME_MAX = 32;
@@ -195,6 +196,11 @@ export function register(app: Express, ctx: Ctx): void {
       throw new ApiError(403, 'you cannot remove this member');
     }
     ctx.db.prepare('DELETE FROM members WHERE server_id=? AND user_id=?').run(serverId, targetId);
+    // Sent after the delete, so the kicked user needs an explicit send.
+    const leave: ServerFrame = { t: 'member.leave', serverId, userId: targetId };
+    ctx.broadcastToServer(serverId, leave);
+    ctx.sendToUser(targetId, leave);
+    leaveVoice(ctx, targetId);
     res.json({ ok: true });
   }));
 }
