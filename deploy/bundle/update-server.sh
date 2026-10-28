@@ -10,6 +10,14 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
+# The server refuses to start with the public LiveKit defaults, so check .env before touching the running server.
+LIVEKIT_KEY=$(grep -E '^LIVEKIT_API_KEY=' .env 2>/dev/null | cut -d= -f2- || true)
+LIVEKIT_SECRET=$(grep -E '^LIVEKIT_API_SECRET=' .env 2>/dev/null | cut -d= -f2- || true)
+if [ -z "$LIVEKIT_KEY" ] || [ -z "$LIVEKIT_SECRET" ] || [ "$LIVEKIT_KEY" = devkey ] || [ "$LIVEKIT_SECRET" = secret ] || [ "${#LIVEKIT_SECRET}" -lt 32 ]; then
+  echo "Set LIVEKIT_API_KEY and LIVEKIT_API_SECRET in .env first (secret: 32+ random characters). See docs/UPDATES.md." >&2
+  exit 1
+fi
+
 VERSION=$(cat VERSION 2>/dev/null || echo dev)
 PORT=$(grep -E '^PORT=' .env 2>/dev/null | cut -d= -f2 || true)
 PORT=${PORT:-3000}
