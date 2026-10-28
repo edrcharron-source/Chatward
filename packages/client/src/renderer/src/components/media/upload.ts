@@ -55,7 +55,7 @@ export async function uploadAttachment(file: File): Promise<Attachment> {
   const prepared = await prepare(file);
   const { blob, key, iv } = await encryptBlob(prepared.bytes);
   // Crypto always allocates a plain ArrayBuffer; the narrower type is what fetch/Blob require.
-  const { uploadId } = await api.putRaw<{ uploadId: string }>('POST', '/api/uploads', blob as Uint8Array<ArrayBuffer>, 'application/octet-stream');
+  const { uploadId } = await api.putRaw<{ uploadId: string }>('POST', '/api/uploads?tracked=1', blob as Uint8Array<ArrayBuffer>, 'application/octet-stream');
   return {
     uploadId,
     name: file.name.slice(0, 255),

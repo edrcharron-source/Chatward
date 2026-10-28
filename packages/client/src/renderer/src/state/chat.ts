@@ -137,7 +137,8 @@ export async function sendMessage(channelId: string, input: { text: string; file
   const attachments = input.files.length ? await Promise.all(input.files.map((f) => uploadAttachment(f))) : undefined;
   const payload = await buildPayload(input.text, attachments, input.gif);
   const { ciphertext, keyVersion } = await encryptPayload(channelId, me, payload);
-  const { message } = await api.post<{ message: Message }>(`/api/channels/${channelId}/messages`, { ciphertext, keyVersion });
+  const attachmentIds = attachments?.map((a) => a.uploadId) ?? [];
+  const { message } = await api.post<{ message: Message }>(`/api/channels/${channelId}/messages`, { ciphertext, keyVersion, attachmentIds });
   mergeMessages(channelId, [message]);
   useChat.setState((s) => ({ payloads: { ...s.payloads, [message.id]: payload } }));
 }
