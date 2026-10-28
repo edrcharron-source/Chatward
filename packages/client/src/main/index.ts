@@ -1,13 +1,33 @@
 import { app, BrowserWindow, ipcMain, safeStorage, desktopCapturer, session, shell } from 'electron';
 import { join } from 'node:path';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
+import { fetchLinkPreview } from './linkPreview';
+import { searchGifs } from './klipy';
+
+const KLIPY_KEY_STORE = 'klipyApiKey';
 
 const storeFile = () => join(app.getPath('userData'), 'secure-store.json');
 function readStore(): Record<string, string> {
   try { return existsSync(storeFile()) ? JSON.parse(readFileSync(storeFile(), 'utf8')) : {}; } catch { return {}; }
 }
 
+const readSecret = (key: string): string | null => {
+  const v = readStore()[key];
+  if (!v) return null;
+  return safeStorage.isEncryptionAvailable() ? safeStorage.decryptString(Buffer.from(v, 'base64')) : Buffer.from(v, 'base64').toString('utf8');
+};
+
 let pendingSourceId: string | null = null;
+
+// YouTube answers embeds that arrive without a Referer with error 153. The renderer is a file:// page, which sends none,
+// so give the YouTube embed requests a Referer that names the app.
+const APP_REFERRER = 'https://app.chatward.local/';
+function sendReferrerForYouTube() {
+  const urls = ['https://www.youtube-nocookie.com/*', 'https://*.youtube-nocookie.com/*', 'https://www.youtube.com/*', 'https://*.youtube.com/*', 'https://youtube.com/*'];
+  session.defaultSession.webRequest.onBeforeSendHeaders({ urls }, (details, callback) => {
+    callback({ requestHeaders: { ...details.requestHeaders, Referer: APP_REFERRER } });
+  });
+}
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -45,11 +65,13 @@ app.whenReady().then(() => {
     else cb({});
   });
 
-  ipcMain.handle('secure:get', (_e, key: string) => {
-    const v = readStore()[key];
-    if (!v) return null;
-    return safeStorage.isEncryptionAvailable() ? safeStorage.decryptString(Buffer.from(v, 'base64')) : Buffer.from(v, 'base64').toString('utf8');
-  });
+  sendReferrerForYouTube();
+
+  ipcMain.handle('secure:get', (_e, key: string) => readSecret(key));
+  // Demo-only internet access. Both run here so the renderer's CSP and CORS never apply.
+  ipcMain.handle('demo:linkpreview', (_e, url: string) => fetchLinkPreview(String(url)));
+  ipcMain.handle('demo:gifs', (_e, kind: 'search' | 'trending', q: string, pos?: string) =>
+    searchGifs(readSecret(KLIPY_KEY_STORE)?.trim() || null, kind === 'search' ? 'search' : 'trending', String(q ?? ''), pos));
   ipcMain.handle('secure:set', (_e, key: string, value: string) => {
     const s = readStore();
     s[key] = (safeStorage.isEncryptionAvailable() ? safeStorage.encryptString(value) : Buffer.from(value, 'utf8')).toString('base64');

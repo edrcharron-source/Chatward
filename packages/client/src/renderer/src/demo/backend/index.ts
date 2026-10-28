@@ -290,10 +290,17 @@ on('POST', /^\/api\/channels\/([^/]+)\/sound-play$/, (r) => {
   return json({ ok: true });
 });
 
-on('GET', /^\/api\/gifs\/(search|trending)$/, (r) => {
-  const q = (r.url.searchParams.get('q') ?? '').trim().toLowerCase();
+on('GET', /^\/api\/gifs\/(search|trending)$/, async (r) => {
+  const kind = r.match[1] as 'search' | 'trending';
+  const q = (r.url.searchParams.get('q') ?? '').trim();
+  if (q.length > 100) throw new HttpError(400, 'q must be at most 100 characters');
+  if (kind === 'search' && !q) return json({ results: [] });
+  // Live KLIPY results when a key is saved in demo settings. Otherwise the bundled placeholder tiles below.
+  const live = await window.chatward.demo.gifs(kind, q, r.url.searchParams.get('pos') ?? undefined);
+  if (live) return json(live.body, live.status);
+  const needle = q.toLowerCase();
   const all = [['HELLO', 200], ['LOL', 40], ['GG', 110], ['WAVE', 290], ['NOPE', 0], ['YAY', 150]] as const;
-  const picks = all.filter(([label]) => !q || label.toLowerCase().includes(q));
+  const picks = all.filter(([label]) => !needle || label.toLowerCase().includes(needle));
   const results = (picks.length ? picks : all).map(([label, hue], i) => {
     const url = gifDataUrl(label, hue);
     return { id: `gif-${label}-${i}`, url, previewUrl: url, title: label.toLowerCase(), width: 320, height: 200 };
@@ -301,11 +308,10 @@ on('GET', /^\/api\/gifs\/(search|trending)$/, (r) => {
   return json({ results });
 });
 
-on('GET', /^\/api\/linkpreview$/, (r) => {
-  const target = r.url.searchParams.get('url') ?? '';
-  let host = 'link';
-  try { host = new URL(target).hostname; } catch { throw new HttpError(400, 'invalid url'); }
-  return json({ url: target, title: `Preview of ${host}`, description: 'Offline demo: link previews use canned data.', siteName: host });
+// Real link previews, fetched by the main process with the same SSRF guards as the server.
+on('GET', /^\/api\/linkpreview$/, async (r) => {
+  const live = await window.chatward.demo.linkPreview(r.url.searchParams.get('url') ?? '');
+  return json(live.body, live.status);
 });
 
 on('POST', /^\/api\/voice\/leave$/, () => json({ ok: true }));
