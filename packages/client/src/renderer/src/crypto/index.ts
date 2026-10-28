@@ -185,6 +185,38 @@ export function handleEnvelope(env: KeyEnvelope): Promise<void> {
   });
 }
 
+/**
+ * Call on member.leave (after a kick). Rotates every channel of that server whose latest key we hold,
+ * wrapping the new version only for the devices of members who remain. Does not depend on the caller's
+ * member list being refreshed yet: the removed user's devices are filtered out here.
+ */
+export function handleMemberLeave(serverId: string, userId: string, servers: ServerBundle[]): Promise<void> {
+  return serial(async () => {
+    if (!device || !privates) return;
+    const bundle = servers.find((b) => b.server.id === serverId);
+    if (!bundle) return;
+    const remaining = bundle.members.filter((m) => m.user.id !== userId).flatMap((m) => m.devices);
+    let changed = false;
+    for (const channel of bundle.channels) {
+      changed = (await rotateIfHeld(channel.id, remaining)) || changed;
+    }
+    if (changed) {
+      await persistVault();
+      notify();
+    }
+  });
+}
+
+async function rotateIfHeld(channelId: string, devices: DeviceKeys[]): Promise<boolean> {
+  const status = await api.get<{ latestVersion: number }>(`/api/channels/${channelId}/key-status`);
+  if (status.latestVersion === 0 || !localKey(channelId, status.latestVersion)) return false;
+  const next = status.latestVersion + 1;
+  const fresh = generateAesKeyBytes();
+  putKey(channelId, next, fresh);
+  await publishKey(channelId, next, fresh, devices);
+  return true;
+}
+
 /** Verifies the sender against the member directory, then unwraps into the vault. Caller persists. */
 async function acceptEnvelope(env: KeyEnvelope): Promise<boolean> {
   const me = getDevice();

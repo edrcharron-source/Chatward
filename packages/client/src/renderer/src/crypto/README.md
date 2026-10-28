@@ -16,7 +16,7 @@ Everything here is WebCrypto (`crypto.subtle`). No hand-rolled primitives.
 ## Key lifecycle
 1. The first device to sync a channel with no server key creates version 1 and wraps it for every member device.
 2. Any device that holds the latest version wraps it (and older versions) for member devices the server reports as missing it. A new device therefore gets full history from any online member.
-3. When a device leaves the server, the next sync by a device that holds the latest version rotates the channel to version N+1 and wraps it only for remaining devices. Removed devices keep the old keys they already had.
+3. When a member is removed (`member.leave`), call `handleMemberLeave(serverId, userId, servers)`. Every device that holds the latest version rotates each channel of that server to version N+1 and wraps it only for the remaining members. A regular sync also rotates if a device we recorded as a recipient has since left. Removed devices keep the old keys they already had.
 
 ## Threat model (v1, honest)
 Protects message and attachment contents, and voice media, from the server and from anyone without a member device's keys. The server still sees metadata: channel ids, author ids, timestamps, message sizes, who is in which voice channel.
