@@ -89,7 +89,10 @@ app.disable('x-powered-by');
 // Behind Caddy (TRUST_PROXY=1 in deploy/docker-compose.yml), trust its X-Forwarded-For so the login rate limit sees real client IPs.
 if (config.trustProxy) app.set('trust proxy', 1);
 app.use(helmet());
-app.use('/api/auth', rateLimit({ windowMs: 15 * 60_000, limit: 40, standardHeaders: true }));
+// Sign-in, register and reset share one per-IP limit. Refresh runs on its own, so a household that signs in and
+// renews together does not use up the sign-in allowance.
+app.use('/api/auth', rateLimit({ windowMs: 15 * 60_000, limit: 40, standardHeaders: true, skip: (req) => req.path === '/refresh' }));
+app.use('/api/auth/refresh', rateLimit({ windowMs: 15 * 60_000, limit: 120, standardHeaders: true }));
 // A Commit lists a batch of Welcomes, so it needs more room than the default limit. Only that route gets it.
 app.post('/api/groups/:id/commits', express.json({ limit: '512kb' }));
 app.use(express.json({ limit: '64kb' }));

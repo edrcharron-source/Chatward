@@ -6,7 +6,18 @@ import { fetchObjectUrl } from '../../api/http';
 const TTL_MS = 10 * 60_000;
 const cache = new Map<string, { at: number; src: Promise<string> }>();
 
+// Frees the object URLs of entries past their TTL. An Avatar already on screen keeps its own copy of the URL.
+function evictExpired() {
+  const now = Date.now();
+  for (const [path, hit] of cache) {
+    if (now - hit.at < TTL_MS) continue;
+    cache.delete(path);
+    void hit.src.then((url) => URL.revokeObjectURL(url), () => undefined);
+  }
+}
+
 function avatarSrc(path: string): Promise<string> {
+  evictExpired();
   const hit = cache.get(path);
   if (hit && Date.now() - hit.at < TTL_MS) return hit.src;
   const src = fetchObjectUrl(path);

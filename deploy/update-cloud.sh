@@ -44,12 +44,25 @@ prune_backups() {
   done
 }
 
+# The backup sits on the same disk as the data. Refuse to start if there is not room for a full copy plus 1 GB spare,
+# checked before the server stops, so a full disk leaves the running server alone.
+check_backup_space() {
+  local used_kb avail_kb
+  used_kb=$(docker run --rm -v "$VOLUME":/data:ro alpine du -sk /data | cut -f1)
+  avail_kb=$(df -Pk backups | awk 'NR==2 {print $4}')
+  if [ "$avail_kb" -lt $((used_kb + 1048576)) ]; then
+    echo "Not enough free disk for a backup: the data is $((used_kb / 1024)) MB and $((avail_kb / 1024)) MB is free. Free some space, or delete old files in deploy/backups/, then run this again." >&2
+    exit 1
+  fi
+}
+
 echo "==> Installing Chatward server $VERSION"
 SERVER_ID=$(docker compose ps -a -q server)
 if [ -n "$SERVER_ID" ]; then
-  docker compose stop server
-
   VOLUME=$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/data"}}{{.Name}}{{end}}{{end}}' "$SERVER_ID")
+  check_backup_space
+
+  docker compose stop server
   echo "==> Backing up volume $VOLUME to backups/chatward-data-$STAMP.tar.gz"
   docker run --rm -v "$VOLUME":/data:ro -v "$PWD/backups":/backup alpine \
     tar czf "/backup/chatward-data-$STAMP.tar.gz" -C /data .

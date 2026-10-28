@@ -6,7 +6,7 @@ import { keepTokenFresh } from './api/token';
 import { refreshUnread, signOut, useSession, type ServerBundle } from './state/session';
 import { useSettings, applyTheme } from './state/settings';
 import { useVoice, rekeyActiveCall, resumeVoiceSlot, clearLeftoverVoiceSlot, leaveCallOnExit } from './state/voice';
-import { accountKey, adoptLegacyIfOwned, initDevice, syncChannelKeys, handleEnvelope, handleMemberLeave } from './crypto';
+import { accountKey, adoptLegacyIfOwned, initDevice, syncChannelKeys, handleEnvelope, handleMemberLeave, forgetChannels } from './crypto';
 import { installNotifications } from './notify/notify';
 import AuthScreen from './components/auth/AuthScreen';
 import ServerSidebar from './components/servers/ServerSidebar';
@@ -163,6 +163,7 @@ function Shell() {
             // leave the call if it was in the deleted voice channel, since the server has already dropped everyone
             if (useVoice.getState().channelId === f.channelId) void useVoice.getState().leave();
             st.removeChannel(f.serverId, f.channelId);
+            void forgetChannels([f.channelId]).catch((e) => console.error(e));
             // Calls key off the server's first text channel. Deleting that one moves them to the next channel's key.
             // No epoch moves here, so the call is rekeyed explicitly.
             void syncChannelKeys(useSession.getState().servers).then(rekeyActiveCall).catch((e) => console.error(e));
@@ -176,7 +177,9 @@ function Shell() {
           case 'server.delete': {
             // the server has already dropped every voice slot, so end our own call in it too
             if (useVoice.getState().serverId === f.serverId) void useVoice.getState().leave();
+            const channelIds = st.servers.find((b) => b.server.id === f.serverId)?.channels.map((c) => c.id) ?? [];
             st.removeServer(f.serverId);
+            void forgetChannels(channelIds).catch((e) => console.error(e));
             break;
           }
           case 'member.role': {
