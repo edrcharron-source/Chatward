@@ -1,0 +1,89 @@
+.settings {
+  display: flex;
+  position: relative;
+  width: min(840px, 94vw);
+  height: min(620px, 88vh);
+  overflow: hidden;
+}
+.settings-nav {
+  width: 180px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 16px 10px;
+  background: var(--bg-1);
+}
+.settings-nav button { text-align: left; background: transparent; color: var(--text-muted); }
+.settings-nav button:hover { background: var(--bg-hover); color: var(--text); }
+.settings-nav button.active { background: var(--bg-hover); color: var(--text-strong); }
+.settings-nav .spacer { flex: 1; }
+.settings-body { flex: 1; min-width: 0; padding: 28px 32px; overflow-y: auto; }
+.settings-body h2 { margin: 0 0 18px; font-size: 20px; color: var(--text-strong); }
+.settings-close { position: absolute; top: 12px; right: 12px; }
+
+.setting-section { display: flex; flex-direction: column; gap: 10px; margin-bottom: 26px; }
+.setting-section h3, .channel-group h4 {
+  margin: 0; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--text-muted);
+}
+.channel-group { display: flex; flex-direction: column; gap: 8px; }
+.channel-group h4 { margin-top: 4px; }
+.small { font-size: 12px; }
+
+.setting-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 12px 14px; background: var(--bg-1); border-radius: var(--radius); cursor: default;
+}
+.setting-row input[type='checkbox'] { width: 40px; height: 22px; flex: none; accent-color: var(--accent); cursor: pointer; }
+.setting-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.setting-text small { font-size: 12px; }
+.setting-row .slider { display: flex; align-items: center; gap: 10px; min-width: 200px; }
+.setting-row .slider output { min-width: 44px; text-align: right; font-variant-numeric: tabular-nums; }
+.setting-row input[type='range'] { width: 180px; }
+
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field > span { font-size: 12px; color: var(--text-muted); }
+.grow { flex: 1; min-width: 0; }
+.row-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.choice-group { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
+.choice {
+  display: flex; flex-direction: column; gap: 10px; padding: 12px; cursor: pointer;
+  background: var(--bg-1); border-radius: var(--radius); border: 2px solid transparent;
+}
+.choice:has(input:checked) { border-color: var(--accent); }
+.choice input { accent-color: var(--accent); align-self: flex-start; }
+.theme-swatch { height: 72px; border-radius: 8px; border: 1px solid var(--border); }
+.swatch-dark { background: linear-gradient(135deg, #313338 50%, #1e1f22 50%); }
+.swatch-light { background: linear-gradient(135deg, #ffffff 50%, #e3e5e8 50%); }
+.swatch-system { background: linear-gradient(135deg, #ffffff 50%, #1e1f22 50%); }
+
+.meter { height: 8px; background: var(--bg-0); border-radius: 4px; overflow: hidden; }
+.meter > div { height: 100%; width: 0; background: var(--ok); transition: width .05s linear; }
+.video-preview {
+  width: 100%; max-width: 360px; aspect-ratio: 16 / 9; object-fit: cover;
+  background: #000; border-radius: var(--radius);
+}
+
+.crop-box { display: flex; flex-direction: column; gap: 12px; }
+.avatar-lg { width: 72px; height: 72px; }
+.avatar-fallback { display: grid; place-items: center; font-size: 28px; color: var(--text-strong); }
+.avatar-crop { position: relative; width: 100%; height: 280px; background: var(--bg-0); border-radius: var(--radius); overflow: hidden; }
+
+.safety-number {
+  padding: 10px 12px; background: var(--bg-0); border-radius: 8px;
+  font-family: ui-monospace, Consolas, monospace; letter-spacing: .04em; line-height: 1.7;
+  white-space: pre-wrap; word-break: break-word;
+}
+.ok-text { color: var(--ok); }
+.error-text { color: var(--danger); }
+
+@media (max-width: 640px) {
+  .settings { flex-direction: column; }
+  .settings-nav { width: auto; flex-direction: row; overflow-x: auto; padding: 10px; }
+  .settings-nav .spacer { display: none; }
+  .settings-nav button { white-space: nowrap; }
+  .settings-body { padding: 20px 16px; }
+  .setting-row .slider { min-width: 0; }
+  .setting-row input[type='range'] { width: 120px; }
+}
