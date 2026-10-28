@@ -95,8 +95,27 @@ async function applyBitrate(room: Room, kbps: number): Promise<void> {
 const bump = () => useVoice.setState((s) => ({ version: s.version + 1 }));
 
 // Key provider of the call in progress, and the key it currently holds, so a group change can set a new key only when it differs.
-let activeKeyProvider: ExternalE2EEKeyProvider | null = null;
+let activeKeyProvider: IndexedKeyProvider | null = null;
 let activeKeyId = '';
+
+// LiveKit keeps one key per index. ExternalE2EEKeyProvider.setKey always writes index 0 and overwrites it, so a call that
+// switched keys dropped every frame still encrypted with the old one. Each new key goes to the next index instead, and the
+// previous key stays in its slot until the ring wraps, so frames already in flight still decrypt.
+const KEY_RING_SIZE = 16;
+
+class IndexedKeyProvider extends ExternalE2EEKeyProvider {
+  private nextIndex = 0;
+
+  constructor() {
+    super({ keyringSize: KEY_RING_SIZE });
+  }
+
+  async setIndexedKey(key: ArrayBuffer): Promise<void> {
+    const material = await crypto.subtle.importKey('raw', key, 'HKDF', false, ['deriveBits', 'deriveKey']);
+    this.nextIndex = (this.nextIndex + 1) % KEY_RING_SIZE;
+    this.onSetEncryptionKey(material, undefined, this.nextIndex);
+  }
+}
 
 const keyBuffer = (key: Uint8Array): ArrayBuffer => key.buffer.slice(key.byteOffset, key.byteOffset + key.byteLength) as ArrayBuffer;
 const keyId = (key: Uint8Array): string => Array.from(key, (b) => b.toString(16).padStart(2, '0')).join('');
@@ -119,7 +138,7 @@ async function applyCallKey(): Promise<void> {
   if (!activeKeyProvider || !channelId || status !== 'connected') return;
   const key = await voiceKey(channelId);
   if (!key || keyId(key) === activeKeyId) return;
-  await activeKeyProvider.setKey(keyBuffer(key));
+  await activeKeyProvider.setIndexedKey(keyBuffer(key));
   activeKeyId = keyId(key);
 }
 
@@ -290,8 +309,8 @@ export const useVoice = create<VoiceState>((set, get) => {
         const { url, token } = await api.post<{ url: string; token: string }>('/api/voice/token', { channelId });
         if (stale()) { abandon(channelId, room, mic); return; }
 
-        const keyProvider = new ExternalE2EEKeyProvider();
-        await keyProvider.setKey(keyBuffer(key));
+        const keyProvider = new IndexedKeyProvider();
+        await keyProvider.setIndexedKey(keyBuffer(key));
         if (stale()) { abandon(channelId, room, mic); return; }
         activeKeyProvider = keyProvider;
         activeKeyId = keyId(key);
