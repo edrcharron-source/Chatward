@@ -40,7 +40,8 @@ app.whenReady().then(() => {
     const sources = await desktopCapturer.getSources({ types: ['screen', 'window'] });
     const chosen = sources.find((s) => s.id === pendingSourceId);
     pendingSourceId = null;
-    if (chosen) cb({ video: chosen });
+    // 'loopback' captures system audio on Windows; renderer drops the track if the user unticks it.
+    if (chosen) cb({ video: chosen, audio: 'loopback' });
     else cb({});
   });
 
