@@ -1,3 +1,5 @@
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import type { Express, Response } from 'express';
 import { LIMITS, type Channel, type KeyEnvelope, type Message } from '@chatward/shared';
 import type { AuthedRequest, Ctx } from '../ctx.js';
@@ -85,6 +87,12 @@ export function register(app: Express, ctx: Ctx): void {
   const updateMessage = db.prepare(
     'UPDATE messages SET ciphertext=?, key_version=?, edited_at=? WHERE id=?');
   const deleteMessage = db.prepare('DELETE FROM messages WHERE id=?');
+  // Uploads attached to a message go with it. Returns their ids so the files can be removed after.
+  const deleteUploadsForMessage = db.prepare('DELETE FROM uploads WHERE message_id=? RETURNING id');
+  const deleteMessageAndUploads = db.transaction((messageId: string): string[] => {
+    deleteMessage.run(messageId);
+    return (deleteUploadsForMessage.all(messageId) as { id: string }[]).map((u) => u.id);
+  });
   const findMessage = db.prepare(
     'SELECT m.*, c.server_id FROM messages m JOIN channels c ON c.id=m.channel_id WHERE m.id=?');
 
@@ -247,9 +255,14 @@ export function register(app: Express, ctx: Ctx): void {
       res.status(403).json({ error: 'only the author or an admin can delete' });
       return;
     }
-    deleteMessage.run(row.id);
+    const uploadIds = deleteMessageAndUploads(row.id);
     ctx.broadcastToServer(row.server_id, { t: 'message.delete', channelId: row.channel_id, messageId: row.id });
     res.json({ ok: true });
+    // Free the disk space too. A failed removal is logged; the upload rows are already gone, so nothing points at the file.
+    for (const id of uploadIds) {
+      fs.rm(path.join(ctx.config.uploadsDir, id), { force: true })
+        .catch((err) => console.error(`upload ${id} cleanup failed`, err));
+    }
   });
 
   // ---------- channel keys ----------

@@ -421,6 +421,25 @@ async function main() {
     assert.ok(!fs.existsSync(soundFile), 'sound file removed when its server is deleted');
     log('deleting a server removes its soundboard files from disk');
 
+    // Deleting a message frees the uploads attached to it, rows and files, so the quota comes back at once.
+    const upChannels = (await api(alice.token, 'POST', '/api/servers', { name: 'Uploads' })).json;
+    const upChannel = upChannels.channels.find((c: { kind: string }) => c.kind === 'text').id as string;
+    const blob = await fetch(`${BASE}/api/uploads?tracked=1`, {
+      method: 'POST', headers: { authorization: `Bearer ${alice.token}`, 'content-type': 'application/octet-stream' },
+      body: Buffer.alloc(64, 7),
+    });
+    const uploadId = (await blob.json()).uploadId as string;
+    const blobFile = path.join(dataDir, 'uploads', uploadId);
+    const posted = await api(alice.token, 'POST', `/api/channels/${upChannel}/messages`, {
+      ciphertext: b64(new Uint8Array([1, 2, 3])), keyVersion: 1, attachmentIds: [uploadId],
+    });
+    assert.equal(posted.status, 201, 'message with an attachment is posted');
+    assert.ok(fs.existsSync(blobFile), 'upload file written');
+    assert.equal((await api(alice.token, 'DELETE', `/api/messages/${posted.json.message.id as string}`)).status, 200);
+    assert.ok(!fs.existsSync(blobFile), 'upload file removed when its message is deleted');
+    assert.equal((await api(alice.token, 'GET', `/api/uploads/${uploadId}`)).status, 404, 'upload row is gone too');
+    log('deleting a message frees its attached uploads from disk');
+
     // A server keeps at least one text channel, since voice calls take their key from the first one.
     const chanServer = (await api(alice.token, 'POST', '/api/servers', { name: 'Chan' })).json;
     const chanBase = `/api/servers/${chanServer.server.id as string}/channels`;
