@@ -101,10 +101,11 @@ const handlers: Record<string, (args: any) => Promise<unknown>> = {
   async sendAttachment({ channelId, sizeBytes }) {
     const bytes = new Uint8Array(randomBytes(sizeBytes));
     const enc = await encryptBlob(bytes);
-    const up = await api.putRaw<{ uploadId: string }>('POST', '/api/uploads', enc.blob, 'application/octet-stream');
+    // Same flow as the app: a tracked upload, reported by id when the message is posted.
+    const up = await api.putRaw<{ uploadId: string }>('POST', '/api/uploads?tracked=1', enc.blob, 'application/octet-stream');
     const attachment: Attachment = { uploadId: up.uploadId, name: 'big.bin', mime: 'application/octet-stream', size: bytes.length, key: enc.key, iv: enc.iv };
     const sealed = await encryptPayload(channelId, useSession.getState().user!.id, { text: 'see attached', attachments: [attachment] });
-    await api.post(`/api/channels/${channelId}/messages`, sealed);
+    await api.post(`/api/channels/${channelId}/messages`, { ...sealed, attachmentIds: [up.uploadId] });
     return { sha256: sha256(bytes), size: bytes.length };
   },
 
