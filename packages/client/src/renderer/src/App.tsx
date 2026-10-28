@@ -4,7 +4,7 @@ import { api } from './api/http';
 import { connectWs, disconnectWs, onFrame, sendFrame } from './api/ws';
 import { useSession, type ServerBundle } from './state/session';
 import { useSettings, applyTheme } from './state/settings';
-import { useVoice, rekeyActiveCall } from './state/voice';
+import { useVoice, rekeyActiveCall, resumeVoiceSlot } from './state/voice';
 import { accountKey, adoptLegacyIfOwned, initDevice, syncChannelKeys, handleEnvelope, handleMemberLeave } from './crypto';
 import { installNotifications } from './notify/notify';
 import AuthScreen from './components/auth/AuthScreen';
@@ -107,7 +107,10 @@ function Shell() {
             const mine = st.myStatus;
             useSession.setState({ presence: { ...f.presence, [f.user.id]: mine } });
             if (mine !== 'online') sendFrame({ t: 'presence', status: mine });
-            if (seenReady) loadServers().catch((e) => console.error('Could not refresh after reconnect', e));
+            if (seenReady) {
+              loadServers().catch((e) => console.error('Could not refresh after reconnect', e));
+              resumeVoiceSlot();
+            }
             seenReady = true;
             break;
           }

@@ -42,6 +42,16 @@ export interface VoiceState {
   setTheater: (key: string | null) => void;
 }
 
+/**
+ * Called when the websocket reconnects. If we are still in a call, the server may have lost our voice slot (it is
+ * in memory, so a restart clears it). Put the slot back so others see us and kicks reach us. The media is untouched.
+ */
+export function resumeVoiceSlot(): void {
+  const { channelId, room } = useVoice.getState();
+  if (!channelId || !room || isDemo()) return;
+  void api.post('/api/voice/rejoin', { channelId }).catch((e) => console.warn('could not restore voice slot', e));
+}
+
 /** The channel's bitrate, or the default when unset or not one of the allowed values. */
 export function channelBitrate(channel: Channel | undefined): number {
   const kbps = channel?.bitrateKbps;
