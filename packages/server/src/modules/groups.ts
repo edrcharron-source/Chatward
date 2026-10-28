@@ -67,12 +67,20 @@ export function register(app: Express, ctx: Ctx): void {
   const recordAck = db.prepare(
     'INSERT INTO mls_group_acks (group_id, device_id, epoch) VALUES (?,?,?) '
     + 'ON CONFLICT(group_id, device_id) DO UPDATE SET epoch=MAX(epoch, excluded.epoch)');
-  // An ack proves a device applied a Commit only if the device is still in the group, and a device's ack of its own
-  // Commit proves nothing about the others. So skip acks from current members that sent a Commit being dropped.
+  // The user who sent the Commit at an epoch, if there is one. A Commit moves its own sender forward, so that user's
+  // acks and later Commits prove nothing about the others.
+  const commitSenderUser = db.prepare(
+    'SELECT s.user_id AS userId FROM mls_commits c JOIN mls_group_seen_devices s '
+    + 'ON s.group_id=c.group_id AND s.device_id=c.sender_device_id WHERE c.group_id=? AND c.epoch=?');
+  // Someone else built on the Commit at `epoch`: a device of another user acked a later epoch, or another user sent a
+  // later Commit. Either one is only possible if that Commit applied, so it must not be dropped.
   const someoneAheadOf = db.prepare(
     'SELECT 1 FROM mls_group_acks a JOIN mls_group_devices g ON g.group_id=a.group_id AND g.device_id=a.device_id '
-    + 'WHERE a.group_id=? AND a.epoch>? AND a.device_id NOT IN '
-    + '(SELECT sender_device_id FROM mls_commits WHERE group_id=? AND epoch>=?) LIMIT 1');
+    + 'JOIN mls_group_seen_devices s ON s.group_id=a.group_id AND s.device_id=a.device_id '
+    + 'WHERE a.group_id=? AND a.epoch>? AND s.user_id IS NOT ? '
+    + 'UNION ALL SELECT 1 FROM mls_commits c JOIN mls_group_seen_devices s '
+    + 'ON s.group_id=c.group_id AND s.device_id=c.sender_device_id '
+    + 'WHERE c.group_id=? AND c.epoch>? AND s.user_id IS NOT ? LIMIT 1');
 
   const devicesOwner = (deviceId: string): string =>
     (db.prepare('SELECT user_id FROM devices WHERE device_id=?').get(deviceId) as { user_id: string }).user_id;
@@ -241,7 +249,8 @@ export function register(app: Express, ctx: Ctx): void {
         // A Commit that added this device is not junk: the device must join from its Welcome, not drop the Commit.
         if (welcomeForDeviceAfter.get(ch.id, epoch, deviceId)) return { ok: false as const, addedCaller: true as const, currentEpoch: current };
         // Commits that some device already applied are not junk: dropping them would fork that device off the group.
-        if (someoneAheadOf.get(ch.id, epoch, ch.id, epoch)) return { ok: false as const, appliedBy: true as const, currentEpoch: current };
+        const senderUser = (commitSenderUser.get(ch.id, epoch) as { userId: string | null } | undefined)?.userId ?? null;
+        if (someoneAheadOf.get(ch.id, epoch, senderUser, ch.id, epoch, senderUser)) return { ok: false as const, appliedBy: true as const, currentEpoch: current };
         dropCommitsFrom.run(ch.id, epoch);
         dropWelcomesAfter.run(ch.id, epoch);
         upsertGroupEpoch.run(ch.id, epoch);
