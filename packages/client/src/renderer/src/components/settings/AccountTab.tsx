@@ -100,6 +100,20 @@ export default function AccountTab() {
     setArea(null);
   }
 
+  async function removeAvatar() {
+    setBusy(true);
+    try {
+      const res = await api.del<{ user: User }>('/api/me/avatar');
+      setUser(res.user);
+      setSource(null);
+      setStatus({ ok: true, text: 'Profile picture removed.' });
+    } catch (err) {
+      setStatus({ ok: false, text: errorText(err) });
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function saveAvatar() {
     if (!source || !area) return;
     setBusy(true);
@@ -136,6 +150,7 @@ export default function AccountTab() {
             : <div className="avatar avatar-lg avatar-fallback" aria-hidden>{user.displayName.slice(0, 1).toUpperCase()}</div>}
           <div className="grow">
             <button type="button" onClick={() => fileRef.current?.click()}>Choose image…</button>
+            {user.avatarUrl && <button type="button" onClick={removeAvatar} disabled={busy}>Remove picture</button>}
             <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={onPick} />
           </div>
         </div>
