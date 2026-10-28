@@ -40,6 +40,12 @@
     "directories": {
       "output": "release"
     },
+    "publish": [
+      {
+        "provider": "generic",
+        "url": "http://localhost:3000/updates"
+      }
+    ],
     "files": [
       "out/**"
     ],
@@ -57,5 +63,8 @@
     },
     "electronVersion": "33.4.11",
     "npmRebuild": false
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.10"
   }
 }
