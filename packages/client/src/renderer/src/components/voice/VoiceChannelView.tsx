@@ -305,7 +305,7 @@ function Avatar({ user, size }: { user?: User; size: number }) {
   const [src, setSrc] = useState<string | null>(null);
   const avatarUrl = user?.avatarUrl;
   useEffect(() => {
-    if (!avatarUrl) return;
+    if (!avatarUrl) { setSrc(null); return; }
     let objectUrl: string | null = null;
     let alive = true;
     fetchObjectUrl(avatarUrl)
