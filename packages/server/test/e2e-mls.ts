@@ -263,6 +263,38 @@ async function main() {
     assert.equal(stale.json.currentEpoch, 4);
     log('stale commit at epoch 0 refused with 409 and currentEpoch 4');
 
+    // 8. A junk Commit at epoch 4 is accepted (the server cannot verify MLS) but nobody can apply it.
+    // The stuck device drops it through reset, and a valid Commit then takes its place.
+    const junk = await api(bob.token, 'POST', `/api/groups/${CHANNEL}/commits`, {
+      deviceId: bob.id, epoch: 4, commit: b64(new Uint8Array([1, 2, 3, 4])), members: [alice.id, bob.id, bob2.id], welcomes: [],
+    });
+    assert.equal(junk.status, 200, 'server accepts a junk Commit it cannot verify');
+    await assert.rejects(mls.receive(alice.state.get(CHANNEL)!, new Uint8Array([1, 2, 3, 4])), 'alice cannot apply the junk');
+    const carolReset = await api(carol.token, 'POST', `/api/groups/${CHANNEL}/reset`, { deviceId: carol.id, epoch: 4 });
+    assert.equal(carolReset.status, 404, 'removed carol cannot reset the group');
+    const otherDevice = await api(alice.token, 'POST', `/api/groups/${CHANNEL}/reset`, { deviceId: bob.id, epoch: 4 });
+    assert.equal(otherDevice.status, 403, 'reset needs one of the caller\'s own devices');
+    const ahead = await api(alice.token, 'POST', `/api/groups/${CHANNEL}/reset`, { deviceId: alice.id, epoch: 9 });
+    assert.equal(ahead.status, 409, 'cannot reset past the current epoch');
+    assert.equal(ahead.json.currentEpoch, 5);
+    const reset = await api(alice.token, 'POST', `/api/groups/${CHANNEL}/reset`, { deviceId: alice.id, epoch: 4 });
+    assert.equal(reset.status, 200, 'alice drops the junk Commit');
+    assert.equal(reset.json.epoch, 4);
+    const afterReset = await api(alice.token, 'GET', `/api/groups/${CHANNEL}/commits?from=4`);
+    assert.equal(afterReset.json.epoch, 4);
+    assert.equal(afterReset.json.commits.length, 0, 'the junk Commit is gone');
+    // Alice kept her own state, so a valid Commit at epoch 4 is accepted and bob follows it.
+    const heal = await mls.selfUpdate(alice.state.get(CHANNEL)!);
+    const r8 = await postCommit(alice, 4, heal, [alice.id, bob.id, bob2.id], []);
+    assert.equal(r8.status, 200, 'valid Commit accepted at epoch 4 after the reset');
+    assert.equal(r8.json.epoch, 5);
+    alice.state.set(CHANNEL, heal.state);
+    bob.state.set(CHANNEL, (await mls.receive(bob.state.get(CHANNEL)!, heal.commit!)).state);
+    const healed = await mls.encryptMessage(alice.state.get(CHANNEL)!, new TextEncoder().encode('back in sync'));
+    alice.state.set(CHANNEL, healed.state);
+    assert.equal(new TextDecoder().decode((await mls.receive(bob.state.get(CHANNEL)!, healed.ciphertext)).plaintext!), 'back in sync');
+    log('junk Commit at epoch 4 cannot be applied; reset refused for outsiders and future epochs; after reset a valid Commit moves the group on');
+
     console.log('\nE2E MLS: all checks passed');
   } catch (err) {
     failed = true;

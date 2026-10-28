@@ -97,6 +97,16 @@ async function main() {
     assert.ok(aliceSees.includes('hi from bob'), `alice reads bob's reply: ${JSON.stringify(aliceSees)}`);
     log("bob replies and alice decrypts it");
 
+    // 4b. B posts a Commit that nobody can apply. A keeps its group, has the server drop the Commit, and the channel keeps working.
+    await bob.call('junkCommit', { channelId, serverId });
+    await alice.call('sync');
+    assert.equal((await alice.call('status', { channelId })).epoch, 2, 'alice keeps her group at epoch 2 after the junk Commit');
+    await alice.call('send', { channelId, text: 'still here after junk' });
+    await bob.call('sync');
+    const afterJunk = (await bob.call('read', { channelId })).texts;
+    assert.ok(afterJunk.includes('still here after junk'), `bob reads after the junk Commit is dropped: ${JSON.stringify(afterJunk)}`);
+    log('a junk Commit from a member is dropped by the server, and the channel keeps working');
+
     // 6 (before the kick, while bob is still a member). A 5 MB attachment round-trips through encryptBlob/decryptBlob.
     const sent = await alice.call('sendAttachment', { channelId, sizeBytes: 5 * 1024 * 1024 });
     const got = await bob.call('fetchAttachment', { channelId });
