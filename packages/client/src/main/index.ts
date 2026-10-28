@@ -42,7 +42,14 @@ function createWindow() {
     },
   });
   // Never navigate away from the app; open links in the OS browser.
-  win.webContents.setWindowOpenHandler(({ url }) => { if (/^https?:/.test(url)) shell.openExternal(url); return { action: 'deny' }; });
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    // Watch party pop-out: our own page with ?watch-popout=1. Everything else stays denied.
+    if (url.includes('watch-popout=1') && (url.startsWith('file:') || url.startsWith('http://localhost:5173'))) {
+      return { action: 'allow', overrideBrowserWindowOptions: { width: 960, height: 540, resizable: true, webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true } } };
+    }
+    if (/^https?:/.test(url)) shell.openExternal(url);
+    return { action: 'deny' };
+  });
   win.webContents.on('will-navigate', (e, url) => { if (!url.startsWith('http://localhost:5173') && !url.startsWith('file:')) { e.preventDefault(); } });
   if (process.env['ELECTRON_RENDERER_URL']) win.loadURL(process.env['ELECTRON_RENDERER_URL']);
   else win.loadFile(join(__dirname, '../renderer/index.html'));
