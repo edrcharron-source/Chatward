@@ -27,7 +27,9 @@ export function attachWs(http: HttpServer, ctx: Ctx) {
     const { userId, deviceId } = session;
     wss.handleUpgrade(req, socket, head, (ws: AliveSocket) => {
       ws.isAlive = true;
-      ws.on('pong', () => { ws.isAlive = true; });
+      // Each pong proves the socket is still alive, so this device has seen everything up to now.
+      // Without this, a server restart would replay alerts the device already showed this session.
+      ws.on('pong', () => { ws.isAlive = true; markDeviceSeen(deviceId); });
       let set = socketsByUser.get(userId);
       if (!set) socketsByUser.set(userId, (set = new Set()));
       set.add(ws);
