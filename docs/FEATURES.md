@@ -10,7 +10,7 @@ Rules for every feature thread
 ## Server (packages/server/src/modules)
 | id | owns | notes |
 |---|---|---|
-| server-auth | `auth.ts`, `servers.ts` | register/login (argon2 via @node-rs/argon2, first user needs no invite and gets a "My Server" created? NO: first user just registers; server creation is explicit), profile + avatar (store under `config.dataDir/avatars`, sniff magic bytes png/jpeg/webp, cap size), servers/channels/invites/kick, `member.join` + `member.devices` + `channel.new` + `user.update` broadcasts, login upserts device keys |
+| server-auth | `auth.ts`, `servers.ts` | register/login (argon2 via @node-rs/argon2, the first user ever registered needs no invite; later users need a valid invite code; server creation is explicit via POST /api/servers), profile + avatar (store under `config.dataDir/avatars`, sniff magic bytes png/jpeg/webp, cap size), servers/channels/invites/kick, `member.join` + `member.devices` + `channel.new` + `user.update` broadcasts, login upserts device keys |
 | server-messages | `messages.ts`, `uploads.ts` | history pagination, post/edit/delete with membership check and size caps, key envelope store/fetch/key-status, WS `message.*` + `key.envelope` push, uploads to `config.uploadsDir` (id-named files, size cap, only members of any shared server may fetch) |
 | server-extras | `soundboard.ts`, `gifs.ts`, `linkpreview.ts`, `voice.ts` | per CONTRACT; linkpreview SSRF-safe (DNS resolve + private range block, redirects revalidated, 5s/1MB caps); voice tokens via livekit-server-sdk, occupancy tracking + `voice.state` broadcast + `ctx.onDisconnect` cleanup; soundboard audio sniffed + size/duration capped |
 
