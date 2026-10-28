@@ -46,6 +46,8 @@ export interface VoiceState {
 /**
  * Called when the websocket reconnects. If we are still in a call, the server may have lost our voice slot (it is
  * in memory, so a restart clears it). Put the slot back so others see us and kicks reach us. The media is untouched.
+ * If the server refuses (we were removed, lost access, or the call moved to another device), hang up: the call is no
+ * longer ours on the server.
  */
 export function resumeVoiceSlot(): void {
   const { channelId, room } = useVoice.getState();
@@ -57,7 +59,17 @@ export function resumeVoiceSlot(): void {
       const { muted, deafened } = useVoice.getState();
       return api.post('/api/voice/state', { channelId, muted, deafened });
     })
-    .catch((e) => console.warn('could not restore voice slot', e));
+    .catch((e) => {
+      console.warn('could not restore voice slot', e);
+      if (!(e instanceof ApiError) || ![403, 404, 409].includes(e.status)) return;
+      // Skip the leave call: the server has already refused this slot, so it would be refused again.
+      const notice = e.status === 409 && e.message.includes('another device')
+        ? 'The call moved to another device'
+        : 'You are no longer in this call';
+      void useVoice.getState().leave(false)
+        .then(() => useVoice.setState({ notice }))
+        .catch((err) => console.error(err));
+    });
 }
 
 /**
