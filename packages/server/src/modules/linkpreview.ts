@@ -62,7 +62,9 @@ async function fetchOnce(url: URL, maxBytes: number, accept: string): Promise<Re
   return new Promise<Response>((resolve, reject) => {
     const req = client.get(url, {
       headers: { 'User-Agent': 'ChatwardLinkPreview/1.0', Accept: accept, 'Accept-Encoding': 'identity' },
-      lookup: (_host: string, _opts: unknown, cb: (err: null, address: string, family: number) => void) => cb(null, target.address, target.family),
+      // Node 20+ may ask for all addresses (autoSelectFamily); answer in whichever shape was requested.
+      lookup: ((_host: string, opts: { all?: boolean }, cb: (...a: unknown[]) => void) =>
+        opts?.all ? cb(null, [{ address: target.address, family: target.family }]) : cb(null, target.address, target.family)) as never,
       signal: AbortSignal.timeout(TIMEOUT_MS),
     }, (res) => {
       const chunks: Buffer[] = [];
