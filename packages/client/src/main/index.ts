@@ -46,6 +46,19 @@ function sendReferrerForYouTube() {
   });
 }
 
+// Never navigate away from the app; open links in the OS browser.
+function guardWebContents(wc: Electron.WebContents) {
+  wc.setWindowOpenHandler(({ url }) => {
+    // Watch party pop-out: our own page with ?watch-popout=1. Everything else stays denied.
+    if (url.includes('watch-popout=1') && (url.startsWith('file:') || url.startsWith('http://localhost:5173'))) {
+      return { action: 'allow', overrideBrowserWindowOptions: { width: 960, height: 540, resizable: true, webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true } } };
+    }
+    if (/^https?:/.test(url)) shell.openExternal(url);
+    return { action: 'deny' };
+  });
+  wc.on('will-navigate', (e, url) => { if (!url.startsWith('http://localhost:5173') && !url.startsWith('file:')) { e.preventDefault(); } });
+}
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1280, height: 800, minWidth: 900, minHeight: 600,
@@ -57,16 +70,9 @@ function createWindow() {
       contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true,
     },
   });
-  // Never navigate away from the app; open links in the OS browser.
-  win.webContents.setWindowOpenHandler(({ url }) => {
-    // Watch party pop-out: our own page with ?watch-popout=1. Everything else stays denied.
-    if (url.includes('watch-popout=1') && (url.startsWith('file:') || url.startsWith('http://localhost:5173'))) {
-      return { action: 'allow', overrideBrowserWindowOptions: { width: 960, height: 540, resizable: true, webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true } } };
-    }
-    if (/^https?:/.test(url)) shell.openExternal(url);
-    return { action: 'deny' };
-  });
-  win.webContents.on('will-navigate', (e, url) => { if (!url.startsWith('http://localhost:5173') && !url.startsWith('file:')) { e.preventDefault(); } });
+  guardWebContents(win.webContents);
+  // Child windows (the watch-party pop-out) don't inherit the handlers above, so guard them too.
+  win.webContents.on('did-create-window', (child) => guardWebContents(child.webContents));
   if (process.env['ELECTRON_RENDERER_URL']) win.loadURL(process.env['ELECTRON_RENDERER_URL']);
   else win.loadFile(join(__dirname, '../renderer/index.html'));
 }
