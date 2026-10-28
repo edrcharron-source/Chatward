@@ -26,7 +26,7 @@ If `UPDATE_SSH_HOST` is not set, the release still publishes to GitHub and the u
 To force everyone onto a version, set `MIN_CLIENT_VERSION=0.2.0` in the server's `.env` and run `docker compose up -d`.
 
 ## Known limits
-- The update feed is served over plain HTTP unless the server sits behind HTTPS. Put a reverse proxy with HTTPS (e.g. Caddy) in front before friends use it over the internet. Otherwise someone on the network path could swap the installer.
+- The app only fetches updates over HTTPS (plain HTTP is allowed only for localhost testing). Put a reverse proxy with HTTPS (e.g. Caddy) in front of the server, or friends will not get auto-updates. This is because the installer is unsigned and an attacker on the network could otherwise swap it.
 - The installer is not code-signed, so Windows SmartScreen warns on install and the updater cannot check the publisher.
 - The version check runs when the app starts and when the server address is saved. A client that logs in before the check finishes may briefly show the chat.
 - Demo mode skips all of this.

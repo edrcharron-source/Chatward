@@ -45,7 +45,16 @@ export function setupUpdater(): void {
     // Dev runs have no installer to update to, so answer "none" and skip the network.
     if (!app.isPackaged) { setStatus({ state: 'none' }); return; }
     const base = String(serverUrl).replace(/\/$/, '');
-    if (!/^https?:\/\//.test(base)) throw new Error('Server address must start with http:// or https://');
+    // The installer is unsigned, so the feed must be HTTPS or a network attacker could swap latest.yml and the installer together.
+    // Plain HTTP is only allowed to this computer itself (local testing).
+    let url: URL;
+    try { url = new URL(base); } catch { throw new Error('Server address is not a valid URL'); }
+    const loopback = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
+    if (url.protocol !== 'https:' && !(url.protocol === 'http:' && loopback)) {
+      const message = 'Updates are only fetched over HTTPS. Put the server behind HTTPS to enable auto-update.';
+      setStatus({ state: 'error', message });
+      throw new Error(message);
+    }
     feedBase = `${base}/updates`;
     autoUpdater.setFeedURL({ provider: 'generic', url: feedBase });
     checkNow();
