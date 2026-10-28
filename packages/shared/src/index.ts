@@ -13,6 +13,9 @@ export const LIMITS = {
   HISTORY_PAGE: 50,
 } as const;
 
+export const VOICE_BITRATES_KBPS = [8, 16, 32, 64, 96, 128] as const;
+export const DEFAULT_VOICE_BITRATE_KBPS = 64;
+
 export interface User {
   id: string;
   username: string;
@@ -40,6 +43,8 @@ export interface Channel {
   serverId: string;
   name: string;
   kind: 'text' | 'voice';
+  /** Voice channels only: Opus publish bitrate in kbps (one of VOICE_BITRATES_KBPS). Absent/ignored for text. */
+  bitrateKbps?: number;
 }
 
 export interface Member {
@@ -130,6 +135,7 @@ export type ServerFrame =
   | { t: 'member.devices'; serverId: string; userId: string; devices: DeviceKeys[] }
   | { t: 'key.envelope'; envelope: KeyEnvelope }
   | { t: 'channel.new'; channel: Channel }
+  | { t: 'channel.update'; channel: Channel }
   | { t: 'sound.new'; sound: SoundboardSound }
   | { t: 'sound.delete'; serverId: string; soundId: string }
   | { t: 'sound.play'; serverId: string; channelId: string; soundId: string; userId: string }

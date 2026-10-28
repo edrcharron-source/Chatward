@@ -70,6 +70,11 @@ function Shell() {
             void syncChannelKeys(useSession.getState().servers);
             break;
           }
+          case 'channel.update': {
+            const b = st.servers.find((x) => x.server.id === f.channel.serverId);
+            if (b) st.upsertServer({ ...b, channels: b.channels.map((c) => (c.id === f.channel.id ? f.channel : c)) });
+            break;
+          }
           case 'member.join': {
             const b = st.servers.find((x) => x.server.id === f.serverId);
             if (b) st.upsertServer({ ...b, members: [...b.members.filter((m) => m.user.id !== f.member.user.id), f.member] });

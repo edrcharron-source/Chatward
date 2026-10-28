@@ -60,6 +60,8 @@ Voice (module `voice`)
 
 `member.leave` {serverId,userId}: after a kick, send to remaining members AND to the kicked user (sendToUser) so their client drops the server.
 
+`channel.update` {channel}: a channel's settings changed (voice bitrateKbps). PATCH /api/servers/:id/channels/:channelId {bitrateKbps} (admin; one of 8/16/32/64/96/128, default 64) broadcasts it; live calls re-publish at the new bitrate.
+
 WS fan-out: server pushes ServerFrame events to every connected socket whose user is a member of the relevant server.
 Server exposes `ctx.broadcastToServer(serverId, frame)` and `ctx.sendToUser(userId, frame)`.
 
