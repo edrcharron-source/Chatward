@@ -13,6 +13,7 @@ import ChannelList from './components/servers/ChannelList';
 import MemberList from './components/servers/MemberList';
 import ChatView from './components/chat/ChatView';
 import VoiceChannelView from './components/voice/VoiceChannelView';
+import { WatchPartyPanel } from './components/watchparty';
 import SettingsModal from './components/settings/SettingsModal';
 
 export function App() {
@@ -32,6 +33,7 @@ export function App() {
 function Shell() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [ready, setReady] = useState(false);
+  const [watchOpen, setWatchOpen] = useState(false);
   const { servers, activeServerId, activeChannelId } = useSession();
   const bundle = servers.find((s) => s.server.id === activeServerId);
   const channel = bundle?.channels.find((c) => c.id === activeChannelId);
@@ -107,7 +109,15 @@ function Shell() {
         {channel?.kind === 'voice'
           ? <VoiceChannelView key={channel.id} channel={channel} />
           : channel
-            ? <ChatView key={channel.id} channel={channel} />
+            ? <>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '4px 12px', background: 'var(--bg-2)' }}>
+                  <button className="icon" onClick={() => setWatchOpen((o) => !o)} aria-pressed={watchOpen} title="Watch YouTube together">
+                    🎬 {watchOpen ? 'Close watch party' : 'Watch together'}
+                  </button>
+                </div>
+                {watchOpen && <WatchPartyPanel key={channel.id} channelId={channel.id} />}
+                <ChatView key={channel.id} channel={channel} />
+              </>
             : <div style={{ margin: 'auto' }} className="muted">{bundle ? 'Select a channel' : 'Create or join a server to get started'}</div>}
       </main>
       {bundle && <MemberList members={bundle.members as Member[]} />}
