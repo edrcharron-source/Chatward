@@ -4,7 +4,7 @@ import { ExternalE2EEKeyProvider, Room, RoomEvent, Track, type Participant } fro
 import { api } from '../api/http';
 import { voiceKey } from '../crypto';
 import { startCamera, stopCamera, startScreen, stopScreen } from '../components/voice/media';
-import { attachRemote, closeAudio, detachRemote, openMic, setDeafened, setTransmitting, startPlayback } from './voiceAudio';
+import { attachRemote, closeAudio, detachRemote, micLevel, openMic, setDeafened, setTransmitting, startPlayback } from './voiceAudio';
 import { useSession } from './session';
 import { useSettings } from './settings';
 import { demoVoice } from '../demo/voice';
@@ -41,6 +41,39 @@ const MIC_PUBLISH = { dtx: true, red: false, audioPreset: { maxBitrate: 64_000 }
 
 const bump = () => useVoice.setState((s) => ({ version: s.version + 1 }));
 
+// Your own speaking state comes from your mic level, so it works without LiveKit's active-speaker data.
+const METER_MS = 100;
+const SPEAK_LEVEL = 0.01;
+const SPEAK_HOLD_MS = 400;
+let selfTalking = false;
+let lastLoud = 0;
+let meterTimer: number | undefined;
+
+/** The speaking list for remote voices, with the local user placed by the mic meter. */
+function speakingList(others: string[]): string[] {
+  const selfId = useSession.getState().user?.id;
+  const rest = others.filter((id) => id !== selfId);
+  return selfTalking && selfId ? [...rest, selfId] : rest;
+}
+
+function startMeter(): void {
+  endMeter();
+  meterTimer = window.setInterval(() => {
+    const now = performance.now();
+    if (micLevel() >= SPEAK_LEVEL) lastLoud = now;
+    const talking = now - lastLoud < SPEAK_HOLD_MS;
+    if (talking === selfTalking) return;
+    selfTalking = talking;
+    useVoice.setState((s) => ({ speaking: speakingList(s.speaking) }));
+  }, METER_MS);
+}
+
+function endMeter(): void {
+  window.clearInterval(meterTimer);
+  meterTimer = undefined;
+  selfTalking = false;
+}
+
 export const useVoice = create<VoiceState>((set, get) => {
   /** muted and deafened both close the mic path; deafening also silences playback */
   function syncMic(): void {
@@ -72,12 +105,13 @@ export const useVoice = create<VoiceState>((set, get) => {
         bump();
       })
       .on(RoomEvent.ActiveSpeakersChanged, (speakers: Participant[]) => {
-        if (current()) set({ speaking: speakers.map((p) => p.identity) });
+        if (current()) set({ speaking: speakingList(speakers.map((p) => p.identity)) });
       })
       .on(RoomEvent.Reconnecting, () => { if (current()) set({ status: 'connecting' }); })
       .on(RoomEvent.Reconnected, () => { if (current()) set({ status: 'connected' }); })
       .on(RoomEvent.Disconnected, () => {
         if (!current()) return; // our own leave() already cleaned up
+        endMeter();
         closeAudio();
         set({ room: null, status: 'error', error: 'Voice connection lost', speaking: [], cameraOn: false, screenOn: false });
         const channelId = get().channelId;
@@ -98,11 +132,13 @@ export const useVoice = create<VoiceState>((set, get) => {
       if (isDemo()) {
         try {
           const selfId = useSession.getState().user?.id ?? 'you';
-          await demoVoice.join(channelId, selfId, { loopback: get().demoLoopback, onSpeaking: (ids) => set({ speaking: ids }) });
+          await demoVoice.join(channelId, selfId, { loopback: get().demoLoopback, onSpeaking: (ids) => set({ speaking: speakingList(ids) }) });
           set({ status: 'connected' });
           syncMic();
+          startMeter();
         } catch (e) {
           demoVoice.leave();
+          endMeter();
           closeAudio();
           set({ channelId: null, serverId: null, status: 'error', error: e instanceof Error ? e.message : String(e), speaking: [] });
         }
@@ -133,7 +169,9 @@ export const useVoice = create<VoiceState>((set, get) => {
         await room.localParticipant.publishTrack(mic, { source: Track.Source.Microphone, ...MIC_PUBLISH });
         set({ status: 'connected' });
         syncMic();
+        startMeter();
       } catch (e) {
+        endMeter();
         closeAudio();
         void room?.disconnect();
         set({ room: null, status: 'error', error: e instanceof Error ? e.message : String(e), speaking: [] });
@@ -147,6 +185,7 @@ export const useVoice = create<VoiceState>((set, get) => {
       if (!channelId) return;
       // clear state first so the Disconnected handler ignores this room
       set({ room: null, channelId: null, serverId: null, status: 'idle', error: null, cameraOn: false, screenOn: false, speaking: [] });
+      endMeter();
       closeAudio();
       demoVoice.leave(); // no-op outside a demo call
       if (room) await room.disconnect();

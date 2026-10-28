@@ -113,6 +113,8 @@
 .cw-occupants { list-style: none; margin: 2px 0 6px 26px; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .cw-occupants li { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-muted); }
 .cw-occupants .avatar { width: 18px !important; height: 18px !important; }
+.cw-occupants li[data-speaking] { color: var(--text-strong); }
+.cw-occupants li[data-speaking] .avatar { box-shadow: 0 0 0 2px var(--ok); }
 
 .cw-here { font-size: 10px; font-weight: 700; color: var(--ok); text-transform: uppercase; letter-spacing: .04em; }
 
