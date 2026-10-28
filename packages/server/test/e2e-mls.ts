@@ -554,6 +554,22 @@ async function main() {
     assert.ok(bobRemovals >= 2, `the kick is repeated after a restart and a rejoin (removals: ${bobRemovals})`);
     log('a kick after a restart and rejoin keeps removing the user from the room');
 
+    // A kick LiveKit cannot confirm is recorded at once. A restart right after it must still keep bob out, even though
+    // LiveKit still has him in the room.
+    assert.equal((await api(bob.token, 'POST', '/api/voice/token', { channelId: voiceChan })).status, 200, 'bob joins the call for a kick that fails');
+    fakeLiveKit.members.add(`${voiceChan}:${bob.user as string}`);
+    fakeLiveKit.mode = 'down';
+    assert.equal((await api(alice.token, 'POST', '/api/voice/kick', { channelId: voiceChan, userId: bob.user })).status, 200, 'alice removes bob while LiveKit is down');
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    const exitedAfterFailedKick = new Promise((resolve) => server.once('exit', resolve));
+    server.kill();
+    await exitedAfterFailedKick;
+    fakeLiveKit.mode = 'up';
+    server = await startServer();
+    assert.equal((await api(bob.token, 'POST', '/api/voice/rejoin', { channelId: voiceChan })).status, 409, 'after a restart bob is still refused');
+    fakeLiveKit.members.delete(`${voiceChan}:${bob.user as string}`);
+    log('a kick LiveKit could not confirm is recorded at once, so a restart keeps the user out');
+
     // A lookup LiveKit cannot answer is 503 and the client retries. LiveKit saying "not in the room" is 409 with a code.
     assert.equal((await api(bob.token, 'POST', '/api/voice/token', { channelId: voiceChan })).status, 200, 'bob joins the call again');
     assert.equal((await api(bob.token, 'POST', '/api/voice/leave', { channelId: voiceChan })).status, 200, 'bob leaves the slot, so the next rejoin must ask LiveKit');

@@ -8,7 +8,7 @@ import { LIMITS, type DeviceKeys } from '@chatward/shared';
 import type { AuthedRequest, Ctx } from '../ctx.js';
 import { clearSetupCode, setupCode } from '../config.js';
 import { newId } from '../db.js';
-import { endAccountCall, endCallOnDevice, endCallOnOtherDevices } from './voice.js';
+import { endAccountCall, endCallOnDevice, endCallOnOtherDevices, forgetUserRemovals } from './voice.js';
 import {
   ApiError,
   announceJoin,
@@ -481,6 +481,7 @@ export function register(app: Express, ctx: Ctx): void {
           banner_path=NULL, bio='', pronouns='', accent_color=NULL, banner_color=NULL, deleted_at=? WHERE id=?`)
         .run(`deleted-${uid}`, Date.now(), uid);
     })();
+    forgetUserRemovals(ctx, uid);
     // Peers still share a server with the user at this point, so they hear about the wipe before the removal.
     broadcastDevices(ctx, uid);
     broadcastUser(ctx, uid);
