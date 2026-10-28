@@ -1,5 +1,5 @@
 // Offline stand-in for the server. Implements docs/CONTRACT.md REST routes and the WS frame stream in memory.
-import { DEFAULT_VOICE_BITRATE_KBPS, VOICE_BITRATES_KBPS, type Channel, type Message, type ServerFrame, type SoundboardSound, type User } from '@chatward/shared';
+import { DEFAULT_VOICE_BITRATE_KBPS, LIMITS, VOICE_BITRATES_KBPS, type Channel, type Member, type Message, type ServerFrame, type SoundboardSound, type User } from '@chatward/shared';
 import { avatarPng } from './assets';
 import { createWorld, makeMessage, newId, SERVER_ID, YOU_ID } from './world';
 
@@ -51,7 +51,8 @@ const BOT_LINES = [
 const BOT_REPLIES = ['lol', 'ha yes', 'agreed 😂', 'nice one', 'wait say that again', 'ok fair'];
 
 function randomBot() {
-  return world.bots[Math.floor(Math.random() * world.bots.length)];
+  const bots = activeBots();
+  return bots[Math.floor(Math.random() * bots.length)];
 }
 
 function pick<T>(list: T[]): T { return list[Math.floor(Math.random() * list.length)]; }
@@ -59,9 +60,11 @@ function pick<T>(list: T[]): T { return list[Math.floor(Math.random() * list.len
 function scheduleBotChatter() {
   const loop = () => {
     const bot = randomBot();
-    const channel = pick(['demo-ch-general', 'demo-ch-memes']);
-    emit({ t: 'typing', channelId: channel, userId: bot.user.id });
-    later(1500 + Math.random() * 1500, () => postBotMessage(channel, bot.user.id, pick(BOT_LINES)));
+    if (bot) {
+      const channel = pick(['demo-ch-general', 'demo-ch-memes']);
+      emit({ t: 'typing', channelId: channel, userId: bot.user.id });
+      later(1500 + Math.random() * 1500, () => postBotMessage(channel, bot.user.id, pick(BOT_LINES)));
+    }
     later(20_000 + Math.random() * 25_000, loop);
   };
   later(8_000, loop);
@@ -70,13 +73,52 @@ function scheduleBotChatter() {
 function scheduleVoiceChurn() {
   // Casey drops into the Lounge now and then, so join/leave tones and the member list both move.
   const loop = () => {
-    const lounge = (world.voice['demo-vc-lounge'] ??= []);
-    const inLounge = lounge.includes('demo-casey');
-    world.voice['demo-vc-lounge'] = inLounge ? lounge.filter((id) => id !== 'demo-casey') : [...lounge, 'demo-casey'];
-    emit({ t: 'voice.state', serverId: SERVER_ID, channelId: 'demo-vc-lounge', userIds: world.voice['demo-vc-lounge'] });
+    if (isMember('demo-casey')) {
+      const lounge = (world.voice['demo-vc-lounge'] ??= []);
+      const inLounge = lounge.includes('demo-casey');
+      world.voice['demo-vc-lounge'] = inLounge ? lounge.filter((id) => id !== 'demo-casey') : [...lounge, 'demo-casey'];
+      emit({ t: 'voice.state', serverId: SERVER_ID, channelId: 'demo-vc-lounge', userIds: world.voice['demo-vc-lounge'] });
+    }
     later(40_000 + Math.random() * 30_000, loop);
   };
   later(45_000, loop);
+}
+
+function isMember(userId: string): boolean {
+  return world.members.some((m) => m.user.id === userId);
+}
+
+/** Bots that are still in the server. A kicked or banned bot stops talking. */
+function activeBots() {
+  return world.bots.filter((b) => isMember(b.user.id));
+}
+
+function memberOrThrow(userId: string): Member {
+  const member = world.members.find((m) => m.user.id === userId);
+  if (!member) throw new HttpError(404, 'member not found');
+  return member;
+}
+
+/**
+ * Same rules as the server's moderation checks. The demo has one person and that person owns the server,
+ * so the only cases that can refuse are self-targeting, owner targeting and unknown members.
+ */
+function demoTarget(actorId: string, targetId: string): Member {
+  if (targetId === actorId) throw new HttpError(400, 'you cannot remove yourself');
+  const target = memberOrThrow(targetId);
+  if (target.role === 'owner') throw new HttpError(403, 'you cannot remove this member');
+  return target;
+}
+
+/** Takes a member out of the server, their voice call, and the member list, then tells every open socket. */
+function removeDemoMember(userId: string) {
+  world.members = world.members.filter((m) => m.user.id !== userId);
+  for (const [channelId, userIds] of Object.entries(world.voice)) {
+    if (!userIds.includes(userId)) continue;
+    world.voice[channelId] = userIds.filter((id) => id !== userId);
+    emit({ t: 'voice.state', serverId: SERVER_ID, channelId, userIds: world.voice[channelId] });
+  }
+  emit({ t: 'member.leave', serverId: SERVER_ID, userId });
 }
 
 function postBotMessage(channelId: string, authorId: string, text: string) {
@@ -87,6 +129,7 @@ function postBotMessage(channelId: string, authorId: string, text: string) {
 
 function botReplyToUser(channelId: string) {
   const bot = randomBot();
+  if (!bot) return;
   later(1500 + Math.random() * 1500, () => {
     emit({ t: 'typing', channelId, userId: bot.user.id });
     later(1200 + Math.random() * 800, () => postBotMessage(channelId, bot.user.id, pick(BOT_REPLIES)));
@@ -220,19 +263,63 @@ on('POST', /^\/api\/servers\/([^/]+)\/channels$/, (r) => {
   emit({ t: 'channel.new', channel });
   return json({ channel }, 201);
 });
-// Demo-only: the real server has no channel PATCH route yet.
 on('PATCH', /^\/api\/servers\/([^/]+)\/channels\/([^/]+)$/, (r) => {
   serverGuard(r.match[1]);
   const channel = requireChannel(r.match[2]);
-  const { bitrateKbps } = (r.body ?? {}) as { bitrateKbps?: unknown };
-  if (channel.kind !== 'voice') throw new HttpError(400, 'bitrateKbps applies to voice channels only');
-  if (!(VOICE_BITRATES_KBPS as readonly unknown[]).includes(bitrateKbps)) {
-    throw new HttpError(400, `bitrateKbps must be one of ${VOICE_BITRATES_KBPS.join(', ')}`);
+  const body = (r.body ?? {}) as { name?: unknown; bitrateKbps?: unknown };
+  if (body.name === undefined && body.bitrateKbps === undefined) throw new HttpError(400, 'nothing to update');
+  let updated: Channel = { ...channel, name: body.name === undefined ? channel.name : str(body.name, 'name', LIMITS.CHANNEL_NAME_MAX) };
+  if (body.bitrateKbps !== undefined) {
+    if (channel.kind !== 'voice') throw new HttpError(400, 'bitrate can only be set on voice channels');
+    if (!(VOICE_BITRATES_KBPS as readonly unknown[]).includes(body.bitrateKbps)) {
+      throw new HttpError(400, `bitrateKbps must be one of ${VOICE_BITRATES_KBPS.join(', ')}`);
+    }
+    updated = { ...updated, bitrateKbps: body.bitrateKbps as number };
   }
-  const updated: Channel = { ...channel, bitrateKbps: bitrateKbps as number };
   world.channels = world.channels.map((c) => (c.id === channel.id ? updated : c));
   emit({ t: 'channel.update', channel: updated });
   return json({ channel: updated });
+});
+on('DELETE', /^\/api\/servers\/([^/]+)\/channels\/([^/]+)$/, (r) => {
+  serverGuard(r.match[1]);
+  const channel = requireChannel(r.match[2]);
+  world.channels = world.channels.filter((c) => c.id !== channel.id);
+  delete world.messages[channel.id];
+  delete world.watch[channel.id];
+  delete world.voice[channel.id];
+  emit({ t: 'channel.delete', serverId: SERVER_ID, channelId: channel.id });
+  return json({ ok: true });
+});
+on('PATCH', /^\/api\/servers\/([^/]+)$/, (r) => {
+  serverGuard(r.match[1]);
+  world.server = { ...world.server, name: str((r.body as { name?: unknown })?.name, 'server name', LIMITS.SERVER_NAME_MAX) };
+  emit({ t: 'server.update', server: world.server });
+  return json({ server: world.server });
+});
+// The demo keeps its one server so there is always something to look at. Deleting is turned off here.
+on('DELETE', /^\/api\/servers\/([^/]+)$/, (r) => {
+  serverGuard(r.match[1]);
+  throw new HttpError(403, 'Deleting the server is turned off in the offline demo');
+});
+on('POST', /^\/api\/servers\/([^/]+)\/leave$/, (r) => {
+  serverGuard(r.match[1]);
+  throw new HttpError(400, 'the owner cannot leave; delete the server instead');
+});
+on('PATCH', /^\/api\/servers\/([^/]+)\/members\/([^/]+)$/, (r) => {
+  serverGuard(r.match[1]);
+  const role = (r.body as { role?: unknown })?.role;
+  if (role !== 'admin' && role !== 'member') throw new HttpError(400, 'role must be admin or member');
+  const target = memberOrThrow(r.match[2]);
+  if (target.role === 'owner') throw new HttpError(400, 'the owner role cannot be changed');
+  world.members = world.members.map((m) => (m === target ? { ...m, role } : m));
+  emit({ t: 'member.role', serverId: SERVER_ID, userId: target.user.id, role });
+  return json({ ok: true });
+});
+on('DELETE', /^\/api\/servers\/([^/]+)\/members\/([^/]+)$/, (r) => {
+  serverGuard(r.match[1]);
+  demoTarget(YOU_ID, r.match[2]);
+  removeDemoMember(r.match[2]);
+  return json({ ok: true });
 });
 on('POST', /^\/api\/servers\/([^/]+)\/invites$/, (r) => {
   serverGuard(r.match[1]);
@@ -249,14 +336,22 @@ on('DELETE', /^\/api\/servers\/([^/]+)\/invites\/([^/]+)$/, (r) => {
 });
 on('GET', /^\/api\/servers\/([^/]+)\/bans$/, (r) => {
   serverGuard(r.match[1]);
-  return json({ bans: [] });
+  return json({ bans: world.bans });
 });
 on('POST', /^\/api\/servers\/([^/]+)\/bans$/, (r) => {
   serverGuard(r.match[1]);
+  const targetId = (r.body as { userId?: unknown })?.userId;
+  if (typeof targetId !== 'string') throw new HttpError(400, 'userId is required');
+  const target = demoTarget(YOU_ID, targetId);
+  world.bans = [...world.bans.filter((b) => b.user.id !== targetId), { user: target.user, bannedAt: Date.now() }];
+  removeDemoMember(targetId);
   return json({ ok: true });
 });
 on('DELETE', /^\/api\/servers\/([^/]+)\/bans\/([^/]+)$/, (r) => {
   serverGuard(r.match[1]);
+  const before = world.bans.length;
+  world.bans = world.bans.filter((b) => b.user.id !== r.match[2]);
+  if (world.bans.length === before) throw new HttpError(404, 'ban not found');
   return json({ ok: true });
 });
 on('GET', /^\/api\/servers\/([^/]+)\/voice-state$/, (r) => {
