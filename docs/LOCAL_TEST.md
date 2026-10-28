@@ -12,7 +12,7 @@ You only need **Docker Desktop**. No Git, no Node, no coding tools.
 
 ## Using it
 - Open Chatward. The server address is already `http://localhost:3000`.
-- Click **Register**. The first account needs no invite. Create a server, then make an invite code from the server menu.
+- Click **Register**. The first account needs the **Setup code** instead of an invite. Open the `.env` file in the `chatward-server` folder, copy the value after `SETUP_CODE=`, and paste it there. (`start-server.bat` also shows it in its window on the first run.) Create a server, then make an invite code from the server menu for everyone else.
 - Voice, screen share and the soundboard work from the voice channel. Use headphones to avoid echo.
 
 ## Testing with a second "person" on the same PC

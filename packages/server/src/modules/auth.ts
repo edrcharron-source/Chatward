@@ -6,6 +6,7 @@ import { hash, verify } from '@node-rs/argon2';
 import rateLimit from 'express-rate-limit';
 import { LIMITS, type DeviceKeys } from '@chatward/shared';
 import type { AuthedRequest, Ctx } from '../ctx.js';
+import { clearSetupCode, setupCode } from '../config.js';
 import { newId } from '../db.js';
 import {
   ApiError,
@@ -49,6 +50,14 @@ function newResetCode(): string {
 /** Codes are compared by hash, so the database never holds a usable code. */
 function codeHash(code: string): string {
   return crypto.createHash('sha256').update(code.toUpperCase().replace(/[^A-Z0-9]/g, '')).digest('hex');
+}
+
+/** Compares a typed setup code with the real one. Case, spaces and dashes don't matter, as with reset codes. */
+function setupCodeMatches(given: string): boolean {
+  const normalize = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const expected = Buffer.from(normalize(setupCode()));
+  const actual = Buffer.from(normalize(given));
+  return actual.length === expected.length && crypto.timingSafeEqual(actual, expected);
 }
 
 /** Uncompressed P-256 point (65 bytes, leading 0x04), base64. */
@@ -237,12 +246,18 @@ export function register(app: Express, ctx: Ctx): void {
     const password = validPassword(body.password);
     const device = parseDevice(body.device);
     const inviteCode = typeof body.inviteCode === 'string' ? body.inviteCode : null;
+    const givenSetupCode = typeof body.setupCode === 'string' ? body.setupCode : '';
     const id = newId();
     const passwordHash = await hash(password);
 
+    let firstAccount = false;
     const joinedServerId = ctx.db.transaction((): string | null => {
       const { n } = ctx.db.prepare('SELECT COUNT(*) AS n FROM users').get() as { n: number };
       const first = n === 0;
+      firstAccount = first;
+      // The first account owns the server, so anyone who reaches a fresh server first would take it. The setup code stops that.
+      if (first && !givenSetupCode.trim()) throw new ApiError(403, 'a setup code is required for the first account');
+      if (first && !setupCodeMatches(givenSetupCode)) throw new ApiError(403, 'setup code is incorrect');
       if (!first && !inviteCode) throw new ApiError(403, 'an invite code is required');
       try {
         ctx.db
@@ -259,6 +274,7 @@ export function register(app: Express, ctx: Ctx): void {
       return joined.serverId;
     })();
 
+    if (firstAccount) clearSetupCode();
     if (joinedServerId) announceJoin(ctx, joinedServerId, id);
     res.json({ token: ctx.signToken(id, device.deviceId), user: mustUser(ctx, id) });
   }));

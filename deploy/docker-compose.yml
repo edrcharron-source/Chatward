@@ -2,6 +2,7 @@
 # and ports 80 and 443 must be open). Then: docker compose -f deploy/docker-compose.yml up -d --build
 # Only Caddy (80/443) is reachable from outside; the server and LiveKit signalling sit behind it.
 # Compose stops if the LiveKit keys are missing (see deploy/bundle/.env.example).
+# Optional SETUP_CODE in deploy/.env: the code the first account must enter. If blank, the server makes one and prints it in its log (docker compose logs server).
 services:
   caddy:
     image: caddy:2
@@ -37,6 +38,7 @@ services:
       TRUST_PROXY: 1   # Caddy is in front of this server, so it sends the real client IP in X-Forwarded-For
       KLIPY_API_KEY: ${KLIPY_API_KEY:-}
       UPLOAD_QUOTA_MB: ${UPLOAD_QUOTA_MB:-1024}   # upload space per person, in MB. 0 = no limit
+      SETUP_CODE: ${SETUP_CODE:-}   # the first account must enter this; blank = the server makes one and logs it
     volumes: ["chatward-data:/data", "./updates:/updates:ro"]
     expose: ["3000"]
     restart: unless-stopped

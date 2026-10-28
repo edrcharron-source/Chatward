@@ -17,6 +17,7 @@ export default function AuthScreen() {
   const [displayName, setDisplayName] = useState('');
   const [password, setPassword] = useState('');
   const [inviteCode, setInviteCode] = useState('');
+  const [setupCode, setSetupCode] = useState('');
   const [resetCode, setResetCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -62,6 +63,7 @@ export default function AuthScreen() {
               password,
               device,
               inviteCode: inviteCode.trim() || undefined,
+              setupCode: setupCode.trim() || undefined,
             });
       };
       // An old PC device is only adopted once the server accepts it for this account. If another account owns it, the server refuses and this account keeps its own device.
@@ -126,6 +128,13 @@ export default function AuthScreen() {
           <span>{mode === 'reset' ? 'New password' : 'Password'}</span>
           <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} required />
         </label>
+
+        {mode === 'register' && (
+          <label className="cw-field">
+            <span>Setup code</span>
+            <input value={setupCode} onChange={(e) => setSetupCode(e.target.value)} spellCheck={false} placeholder="Only needed for the first account" />
+          </label>
+        )}
 
         {mode === 'register' && (
           <label className="cw-field">

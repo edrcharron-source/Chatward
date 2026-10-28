@@ -7,6 +7,7 @@ import path from 'node:path';
 import readline from 'node:readline';
 
 const PORT = 3998;
+const SETUP_CODE = 'e2e-setup-code';
 const BASE = `http://127.0.0.1:${PORT}`;
 const here = import.meta.dirname;
 const serverDir = path.resolve(here, '../../../server');
@@ -44,7 +45,7 @@ async function startServer(): Promise<ChildProcess> {
   fs.mkdirSync(dataDir, { recursive: true });
   const child = spawn('node', ['dist/index.js'], {
     cwd: serverDir,
-    env: { ...process.env, DATA_DIR: dataDir, PORT: String(PORT), HOST: '127.0.0.1' },
+    env: { ...process.env, DATA_DIR: dataDir, PORT: String(PORT), HOST: '127.0.0.1', SETUP_CODE },
     stdio: 'inherit',
   });
   for (let i = 0; i < 100; i++) {
@@ -71,7 +72,7 @@ async function main() {
     await bob.call('init', { serverUrl: BASE, username: 'bob' });
 
     // 1. Device A registers as the first user and creates a server. Its sync creates the channel group.
-    await alice.call('register', { username: 'alice' });
+    await alice.call('register', { username: 'alice', setupCode: SETUP_CODE });
     const { serverId, channelId } = await alice.call('createServer', { name: 'S' });
     await alice.call('sync');
     assert.equal((await alice.call('status', { channelId })).epoch, 1, 'alice creates the group at epoch 1');
