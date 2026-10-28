@@ -1,6 +1,6 @@
 // Demo mode entry. Owner: demo-backend thread. Keep the exported signatures stable.
 import type { ServerFrame } from '@chatward/shared';
-import { useSession } from '../state/session';
+import { signOut, useSession } from '../state/session';
 import { attachSocket, demoFetch, demoUser, DEMO_TOKEN, startDemoWorld, stopDemoWorld } from './backend';
 
 export const DEMO_URL = 'http://demo.chatward.local';
@@ -86,10 +86,9 @@ export async function enterDemo(): Promise<void> {
 }
 
 /** Leave demo: remove interceptors, log out, restore the previous server URL. */
-export function exitDemo(): void {
-  const s = useSession.getState();
-  s.logout();
-  s.setServerUrl(previousUrl ?? DEFAULT_URL);
+export async function exitDemo(): Promise<void> {
+  await signOut();
+  useSession.getState().setServerUrl(previousUrl ?? DEFAULT_URL);
   removeDemoNetwork();
 }
 

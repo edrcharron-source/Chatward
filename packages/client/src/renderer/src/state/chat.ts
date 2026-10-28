@@ -4,7 +4,7 @@ import { api } from '../api/http';
 import { onFrame, sendFrame } from '../api/ws';
 import { buildLinkPreviews, extractUrls, uploadAttachment } from '../components/media';
 import { decryptMessage, encryptPayload, onKeysChanged } from '../crypto';
-import { useSession } from './session';
+import { onBeforeSignOut, useSession } from './session';
 
 export type Gif = NonNullable<MessagePayload['gif']>;
 
@@ -37,6 +37,9 @@ export const useChat = create<ChatState>(() => ({
   drafts: {},
   setDraft: (channelId, text) => useChat.setState((s) => ({ drafts: { ...s.drafts, [channelId]: text } })),
 }));
+
+// On logout, drop the cache so the next person on this computer never sees the previous account's messages or drafts.
+onBeforeSignOut(() => useChat.setState({ channels: {}, payloads: {}, typing: {}, drafts: {} }));
 
 const channelOf = (id: string) => useChat.getState().channels[id] ?? EMPTY;
 

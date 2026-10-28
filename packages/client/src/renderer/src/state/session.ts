@@ -36,6 +36,20 @@ interface SessionState {
   clearUnread: (channelId: string) => void;
 }
 
+type SignOutHook = () => void | Promise<void>;
+const signOutHooks: SignOutHook[] = [];
+
+/** Cleanup that must run while the token is still set, such as leaving a call on the server. */
+export function onBeforeSignOut(hook: SignOutHook) { signOutHooks.push(hook); }
+
+/** Logs out. Hooks run first, so their server calls still go out as this user. Then the session is cleared. */
+export async function signOut() {
+  for (const hook of signOutHooks) {
+    try { await hook(); } catch { /* cleanup is best effort; logging out must still finish */ }
+  }
+  useSession.getState().logout();
+}
+
 const LS = 'chatward.session';
 const saved = (() => { try { return JSON.parse(localStorage.getItem(LS) ?? '{}'); } catch { return {}; } })();
 
