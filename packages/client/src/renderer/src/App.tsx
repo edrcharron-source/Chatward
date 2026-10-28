@@ -4,7 +4,7 @@ import { api } from './api/http';
 import { connectWs, disconnectWs, onFrame, sendFrame } from './api/ws';
 import { useSession, type ServerBundle } from './state/session';
 import { useSettings, applyTheme } from './state/settings';
-import { useVoice, rekeyActiveCall, resumeVoiceSlot } from './state/voice';
+import { useVoice, rekeyActiveCall, resumeVoiceSlot, clearLeftoverVoiceSlot, leaveCallOnExit } from './state/voice';
 import { accountKey, adoptLegacyIfOwned, initDevice, syncChannelKeys, handleEnvelope, handleMemberLeave } from './crypto';
 import { installNotifications } from './notify/notify';
 import AuthScreen from './components/auth/AuthScreen';
@@ -110,6 +110,8 @@ function Shell() {
             if (seenReady) {
               loadServers().catch((e) => console.error('Could not refresh after reconnect', e));
               resumeVoiceSlot();
+            } else {
+              clearLeftoverVoiceSlot();
             }
             seenReady = true;
             break;
@@ -200,7 +202,8 @@ function Shell() {
       });
       setReady(true);
     })().catch((e) => console.error(e));
-    return () => { off?.(); stopNotify?.(); disconnectWs(); };
+    window.addEventListener('pagehide', leaveCallOnExit);
+    return () => { off?.(); stopNotify?.(); disconnectWs(); window.removeEventListener('pagehide', leaveCallOnExit); };
   }, []);
 
   async function loadServers() {

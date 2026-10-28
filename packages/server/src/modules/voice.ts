@@ -166,6 +166,13 @@ export function register(app: Express, ctx: Ctx): void {
     res.json({ ok: true });
   });
 
+  // A client that starts up with no call of its own calls this. After a restart or crash the old slot has no client left
+  // to end it, and the 409 above would lock the user out. Clears whichever voice channel the account holds.
+  app.post('/api/voice/clear', ctx.requireAuth, (req, res) => {
+    leaveVoice(ctx, (req as AuthedRequest).userId);
+    res.json({ ok: true });
+  });
+
   // Server admins can remove someone from a call. Joining again is still allowed; this only ends the current call.
   app.post('/api/voice/kick', ctx.requireAuth, (req, res) => {
     const actorId = (req as AuthedRequest).userId;

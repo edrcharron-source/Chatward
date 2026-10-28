@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { compareVersions, type UpdateStatus, type VersionInfo } from '@chatward/shared';
 import { DEMO_URL } from '../demo';
+import { useVoice } from './voice';
 
 /** How this app build compares with the server it is pointed at. */
 export type ServerVersionState =
@@ -31,6 +32,12 @@ export function initUpdates(): Promise<void> {
     useUpdates.setState({ status: await window.chatward.updates.getStatus() });
   })();
   return ready;
+}
+
+/** Restarts to apply a downloaded update. Ends any call first, so the restart does not leave a ghost voice slot behind. */
+export async function installUpdate(): Promise<void> {
+  await useVoice.getState().leave().catch((e) => console.warn('could not leave call before update', e));
+  await window.chatward.updates.install();
 }
 
 /**

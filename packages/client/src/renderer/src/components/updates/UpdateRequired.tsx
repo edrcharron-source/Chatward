@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { checkServerVersion, useUpdates } from '../../state/updates';
+import { checkServerVersion, installUpdate, useUpdates } from '../../state/updates';
 import './updates.css';
 
 /** Full-screen gate shown instead of the app when this build is older than the server's minimum. */
@@ -9,7 +9,7 @@ export default function UpdateRequired({ serverUrl, minClientVersion }: { server
 
   let body: ReactNode;
   if (status.state === 'ready') {
-    body = <button className="primary" onClick={() => void window.chatward.updates.install()}>Restart to update</button>;
+    body = <button className="primary" onClick={() => void installUpdate()}>Restart to update</button>;
   } else if (status.state === 'downloading') {
     body = <p className="muted">Downloading Chatward {status.version}… {status.percent}%</p>;
   } else {

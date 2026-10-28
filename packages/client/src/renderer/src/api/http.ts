@@ -23,6 +23,14 @@ async function req<T>(method: string, path: string, body?: unknown, opts: { raw?
   return (ct.includes('application/json') ? res.json() : res.arrayBuffer()) as Promise<T>;
 }
 
+/** A JSON POST that the browser keeps going while the window unloads. Fire and forget: the page may be gone before it answers. */
+export function postOnUnload(path: string, body: unknown): void {
+  const { serverUrl, token } = useSession.getState();
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  void fetch(serverUrl.replace(/\/$/, '') + path, { method: 'POST', headers, body: JSON.stringify(body), keepalive: true }).catch(() => {});
+}
+
 export const api = {
   get: <T>(path: string) => req<T>('GET', path),
   post: <T>(path: string, body?: unknown) => req<T>('POST', path, body ?? {}),
