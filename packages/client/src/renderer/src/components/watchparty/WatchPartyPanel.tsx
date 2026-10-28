@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type FormEvent, type ReactElement } from '
 import type { Message, MessagePayload, ServerFrame } from '@chatward/shared';
 import { api } from '../../api/http';
 import { onFrame } from '../../api/ws';
-import { decryptMessage, encryptPayload } from '../../crypto';
+import { decryptMessage, encryptPayload, onKeysChanged } from '../../crypto';
 import { useSession } from '../../state/session';
 import { decodeState, DRIFT_SECONDS, encodeState, playhead, SEEK_SECONDS, type StampedState, type WatchState } from './sync';
 import { bindPlayer, embedSrc, parseYouTubeUrl, sendCommand, type PlayerEvent } from './youtube';
@@ -70,6 +70,8 @@ export function WatchPartyPanel({ channelId }: { channelId: string }): ReactElem
   const lastSentTs = useRef<number | null>(null);
   /** set by Stop until the publish settles, so the old embed cannot publish over the stop */
   const stopping = useRef(false);
+  /** true when the last snapshot we were sent could not be decrypted yet, so new keys should retry it */
+  const undecrypted = useRef(false);
 
   const serverNow = () => Date.now() + clockOffset.current;
 
@@ -148,8 +150,10 @@ export function WatchPartyPanel({ channelId }: { channelId: string }): ReactElem
     let cancelled = false;
     remoteRef.current = null;
     lastSentTs.current = null;
+    undecrypted.current = false;
     setRemote(null);
-    (async () => {
+    // Fetches the latest snapshot. Runs on mount, on every socket reconnect (frames may have been missed), and when keys arrive after a failed decrypt.
+    const load = async () => {
       try {
         const before = Date.now();
         const res = await api.get<{ state: Snapshot | null; serverNow: number }>(`/api/channels/${channelId}/watch`);
@@ -157,21 +161,35 @@ export function WatchPartyPanel({ channelId }: { channelId: string }): ReactElem
         clockOffset.current = res.serverNow - (before + Date.now()) / 2;
         if (res.state) {
           const s = await openSnapshot(channelId, res.state);
-          if (!cancelled && s) accept(s);
+          if (cancelled) return;
+          undecrypted.current = !s;
+          if (s) accept(s);
         }
       } catch (e) {
         if (!cancelled) setError(errorText(e));
       }
-    })();
+    };
+    void load();
     const unsubscribe = onFrame((f: ServerFrame) => {
+      if (f.t === 'ready') {
+        void load();
+        return;
+      }
       if (f.t !== 'watch.sync' || f.channelId !== channelId || f.ts === lastSentTs.current) return;
       void openSnapshot(channelId, f).then((s) => {
-        if (!cancelled && s) accept(s);
+        if (cancelled) return;
+        undecrypted.current = !s;
+        if (s) accept(s);
       });
+    });
+    // Keys can arrive after the snapshot, so a snapshot that could not be opened gets another try.
+    const unsubscribeKeys = onKeysChanged(() => {
+      if (undecrypted.current) void load();
     });
     return () => {
       cancelled = true;
       unsubscribe();
+      unsubscribeKeys();
     };
   }, [channelId]);
 
