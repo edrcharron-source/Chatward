@@ -34,6 +34,8 @@ export function register(app: Express, ctx: Ctx): void {
   const markConsumed = db.prepare('UPDATE mls_keypackages SET consumed_at=? WHERE id=?');
   const pickLastResort = db.prepare(
     'SELECT kp FROM mls_keypackages WHERE device_id=? AND last_resort=1 ORDER BY id DESC LIMIT 1');
+  const anyKeyPackage = db.prepare('SELECT 1 FROM mls_keypackages WHERE device_id=? LIMIT 1');
+  const serversOfUser = db.prepare('SELECT server_id FROM members WHERE user_id=?');
 
   const groupEpoch = db.prepare('SELECT epoch FROM mls_groups WHERE group_id=?');
   const upsertGroupEpoch = db.prepare(
@@ -83,9 +85,18 @@ export function register(app: Express, ctx: Ctx): void {
     }
     const items = keyPackages as { kp?: unknown; lastResort?: unknown }[];
     if (!items.every((k) => isB64(k?.kp, MAX_KEYPACKAGE_CHARS))) return void bad(res, 'invalid kp');
+    // A device that has never had KeyPackages can't be added to any group yet. Peers synced when it joined
+    // and found nothing to claim, so tell them now. Their sync then claims these packages and adds the device.
+    const firstUpload = !anyKeyPackage.get(deviceId);
     db.transaction(() => {
       for (const k of items) insertKeyPackage.run(deviceId, k.kp, k.lastResort === true ? 1 : 0);
     })();
+    if (firstUpload) {
+      const devices = ctx.getDevices(userId);
+      for (const { server_id } of serversOfUser.all(userId) as { server_id: string }[]) {
+        ctx.broadcastToServer(server_id, { t: 'member.devices', serverId: server_id, userId, devices });
+      }
+    }
     res.json({ added: items.length, available: (availableCount.get(deviceId) as { n: number }).n });
   });
 
