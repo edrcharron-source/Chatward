@@ -5,21 +5,23 @@ import { createHash, randomBytes } from 'node:crypto';
 import readline from 'node:readline';
 import { api } from '../../src/renderer/src/api/http';
 import {
-  decryptBlob, decryptMessage, encryptBlob, encryptPayload, getDevice, initDevice, syncChannelKeys,
+  accountKey, decryptBlob, decryptMessage, encryptBlob, encryptPayload, getDevice, initDevice, syncChannelKeys,
 } from '../../src/renderer/src/crypto';
 import { useSession, type ServerBundle } from '../../src/renderer/src/state/session';
 import { secureStoreContents } from './shim';
 
 const PASSWORD = 'correct-horse-1';
+let accountId = '';
 const sha256 = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
 
 interface Message { id: string; channelId: string; authorId: string; keyVersion: number; ciphertext: string }
 interface Attachment { uploadId: string; name: string; mime: string; size: number; key: string; iv: string }
 
 const handlers: Record<string, (args: any) => Promise<unknown>> = {
-  async init({ serverUrl }) {
+  async init({ serverUrl, username }) {
     useSession.setState({ serverUrl });
-    const device = await initDevice();
+    accountId = accountKey(serverUrl, username);
+    const device = await initDevice(accountId);
     return { deviceId: device.deviceId };
   },
 
@@ -48,6 +50,22 @@ const handlers: Record<string, (args: any) => Promise<unknown>> = {
     return {};
   },
 
+  /** Posts bytes that are not a valid Commit, at this device's current epoch: what a member could send by mistake or on purpose. */
+  async junkCommit({ channelId, serverId }) {
+    const vault = JSON.parse(secureStoreContents.get(`crypto.vault.v2|${accountId}`) ?? '{}');
+    const { servers } = await api.get<{ servers: ServerBundle[] }>('/api/servers');
+    const bundle = servers.find((b) => b.server.id === serverId)!;
+    const members = bundle.members.flatMap((m) => m.devices.map((d) => d.deviceId));
+    await api.post(`/api/groups/${channelId}/commits`, {
+      deviceId: getDevice().deviceId,
+      epoch: vault.groups[channelId].epoch,
+      commit: Buffer.from([1, 2, 3, 4]).toString('base64'),
+      members,
+      welcomes: [],
+    });
+    return {};
+  },
+
   async kick({ serverId, userId }) {
     await api.del(`/api/servers/${serverId}/members/${userId}`);
     return {};
@@ -55,7 +73,7 @@ const handlers: Record<string, (args: any) => Promise<unknown>> = {
 
   /** Epoch of this device's view of the channel group, read from the vault it persisted. */
   async status({ channelId }) {
-    const vault = JSON.parse(secureStoreContents.get('crypto.vault.v2') ?? '{}');
+    const vault = JSON.parse(secureStoreContents.get(`crypto.vault.v2|${accountId}`) ?? '{}');
     return { epoch: vault.groups?.[channelId]?.epoch ?? null };
   },
 

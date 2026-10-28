@@ -1,17 +1,20 @@
 import { useState, type FormEvent } from 'react';
-import type { Channel, User } from '@chatward/shared';
+import { LIMITS, type Channel, type User } from '@chatward/shared';
 import { api } from '../../api/http';
 import { useSession } from '../../state/session';
 import { useVoice } from '../../state/voice';
+import { useMemberMenu } from '../voice/MemberMenu';
 import VoiceDock from '../voice/VoiceDock';
 import Avatar from './Avatar';
 import ChannelSettingsDialog from './ChannelSettingsDialog';
+import InvitesDialog from './InvitesDialog';
 import Dialog from './Dialog';
+import ServerSettingsDialog from './ServerSettingsDialog';
 import { errorText, isAdmin } from './util';
 import './servers.css';
 import ProfileTrigger from '../profile/ProfileTrigger';
 
-type DialogKind = 'channel' | 'invite' | null;
+type DialogKind = 'channel' | 'invite' | 'server' | null;
 
 export default function ChannelList({ onOpenSettings, onReload }: { onOpenSettings: () => void; onReload: () => Promise<void> }) {
   const user = useSession((s) => s.user);
@@ -25,6 +28,7 @@ export default function ChannelList({ onOpenSettings, onReload }: { onOpenSettin
   const [dialog, setDialog] = useState<DialogKind>(null);
   const [voiceError, setVoiceError] = useState<string | null>(null);
   const [settingsChannel, setSettingsChannel] = useState<Channel | null>(null);
+  const memberMenu = useMemberMenu();
 
   const bundle = servers.find((b) => b.server.id === activeServerId);
   const admin = isAdmin(bundle?.members.find((m) => m.user.id === user?.id));
@@ -61,10 +65,11 @@ export default function ChannelList({ onOpenSettings, onReload }: { onOpenSettin
     <aside className="cw-channels" aria-label="Channels">
       <header className="cw-channels-head">
         <h2>{bundle?.server.name ?? 'Chatward'}</h2>
-        {bundle && admin && (
+        {bundle && (
           <div className="cw-head-actions">
-            <button type="button" className="icon" title="Create channel" aria-label="Create channel" onClick={() => setDialog('channel')}>＋</button>
-            <button type="button" className="icon" title="Invite people" aria-label="Invite people" onClick={() => setDialog('invite')}>✉</button>
+            {admin && <button type="button" className="icon" title="Create channel" aria-label="Create channel" onClick={() => setDialog('channel')}>＋</button>}
+            {admin && <button type="button" className="icon" title="Invite people" aria-label="Invite people" onClick={() => setDialog('invite')}>✉</button>}
+            <button type="button" className="icon" title="Server settings" aria-label="Server settings" onClick={() => setDialog('server')}>⚙</button>
           </div>
         )}
       </header>
@@ -80,17 +85,21 @@ export default function ChannelList({ onOpenSettings, onReload }: { onOpenSettin
                 const count = unread[c.id] ?? 0;
                 const active = c.id === activeChannelId;
                 return (
-                  <button
-                    key={c.id}
-                    type="button"
-                    className={`cw-channel${active ? ' active' : ''}${count > 0 ? ' unread' : ''}`}
-                    aria-current={active ? 'true' : undefined}
-                    onClick={() => openText(c)}
-                  >
-                    <span className="cw-channel-icon" aria-hidden="true">#</span>
-                    <span className="cw-channel-name">{c.name}</span>
-                    {count > 0 && <span className="cw-badge" aria-label={`${count} unread`}>{count > 99 ? '99+' : count}</span>}
-                  </button>
+                  <div key={c.id} className="cw-voice-row">
+                    <button
+                      type="button"
+                      className={`cw-channel${active ? ' active' : ''}${count > 0 ? ' unread' : ''}`}
+                      aria-current={active ? 'true' : undefined}
+                      onClick={() => openText(c)}
+                    >
+                      <span className="cw-channel-icon" aria-hidden="true">#</span>
+                      <span className="cw-channel-name">{c.name}</span>
+                      {count > 0 && <span className="cw-badge" aria-label={`${count} unread`}>{count > 99 ? '99+' : count}</span>}
+                    </button>
+                    {admin && (
+                      <button type="button" className="icon cw-channel-gear" title={`${c.name} settings`} aria-label={`${c.name} settings`} onClick={() => setSettingsChannel(c)}>⚙</button>
+                    )}
+                  </div>
                 );
               })}
             </section>
@@ -119,7 +128,11 @@ export default function ChannelList({ onOpenSettings, onReload }: { onOpenSettin
                     {occupants.length > 0 && (
                       <ul className="cw-occupants" aria-label={`In ${c.name}`}>
                         {occupants.map((u) => (
-                          <li key={u.id} data-speaking={speaking.includes(u.id) || undefined}>
+                          <li
+                            key={u.id}
+                            data-speaking={speaking.includes(u.id) || undefined}
+                            onContextMenu={u.id === user?.id ? undefined : (e) => memberMenu.openMenu(e, { userId: u.id, channelId: c.id, serverId: c.serverId })}
+                          >
                             <ProfileTrigger user={u}>
                               <Avatar user={u} size={18} />
                               <span>{u.displayName}</span>
@@ -137,6 +150,7 @@ export default function ChannelList({ onOpenSettings, onReload }: { onOpenSettin
           </>
         )}
       </div>
+      {memberMenu.element}
 
       <VoiceDock />
 
@@ -156,7 +170,10 @@ export default function ChannelList({ onOpenSettings, onReload }: { onOpenSettin
         <ChannelSettingsDialog channel={settingsChannel} onClose={() => setSettingsChannel(null)} onReload={onReload} />
       )}
       {dialog === 'invite' && bundle && (
-        <InviteDialog serverId={bundle.server.id} onClose={() => setDialog(null)} />
+        <InvitesDialog serverId={bundle.server.id} onClose={() => setDialog(null)} />
+      )}
+      {dialog === 'server' && bundle && (
+        <ServerSettingsDialog serverId={bundle.server.id} onClose={() => setDialog(null)} onReload={onReload} />
       )}
     </aside>
   );
@@ -189,7 +206,7 @@ function CreateChannelDialog({ serverId, onClose, onReload }: { serverId: string
       <form onSubmit={submit}>
         <label>
           Channel name
-          <input value={name} onChange={(e) => setName(e.target.value)} maxLength={64} autoFocus required />
+          <input value={name} onChange={(e) => setName(e.target.value)} maxLength={LIMITS.CHANNEL_NAME_MAX} autoFocus required />
         </label>
         <label>
           Type
@@ -204,64 +221,6 @@ function CreateChannelDialog({ serverId, onClose, onReload }: { serverId: string
           <button type="submit" className="primary" disabled={busy}>{busy ? 'Creating…' : 'Create channel'}</button>
         </div>
       </form>
-    </Dialog>
-  );
-}
-
-function InviteDialog({ serverId, onClose }: { serverId: string; onClose: () => void }) {
-  const [maxUses, setMaxUses] = useState(1);
-  const [invite, setInvite] = useState<{ code: string; expiresAt: number | string } | null>(null);
-  const [copied, setCopied] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function generate() {
-    setBusy(true);
-    setError(null);
-    setCopied(false);
-    try {
-      setInvite(await api.post<{ code: string; expiresAt: number | string }>(`/api/servers/${serverId}/invites`, { maxUses }));
-    } catch (err) {
-      setError(errorText(err));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function copy() {
-    if (!invite) return;
-    try {
-      await navigator.clipboard.writeText(invite.code);
-      setCopied(true);
-    } catch {
-      setError('Copy failed. Select the code and copy it manually.');
-    }
-  }
-
-  return (
-    <Dialog title="Invite people" onClose={onClose}>
-      <label>
-        Uses
-        <select value={maxUses} onChange={(e) => setMaxUses(Number(e.target.value))}>
-          <option value={1}>Single use</option>
-          <option value={5}>5 people</option>
-          <option value={10}>10 people</option>
-        </select>
-      </label>
-      <p className="cw-hint">Invites expire after 7 days.</p>
-      {invite && (
-        <>
-          <div className="cw-invite-code">{invite.code}</div>
-          <p className="cw-hint">Expires {new Date(invite.expiresAt).toLocaleString()}</p>
-        </>
-      )}
-      {error && <p className="cw-error" role="alert">{error}</p>}
-      <div className="cw-dialog-actions">
-        {invite && <button type="button" onClick={() => void copy()}>{copied ? 'Copied' : 'Copy code'}</button>}
-        <button type="button" className="primary" onClick={() => void generate()} disabled={busy}>
-          {busy ? 'Generating…' : invite ? 'New invite' : 'Generate invite'}
-        </button>
-      </div>
     </Dialog>
   );
 }

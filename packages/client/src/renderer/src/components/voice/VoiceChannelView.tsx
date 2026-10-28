@@ -1,13 +1,14 @@
-import { Fragment, useEffect, useRef, useState, type RefObject } from 'react';
+import { Fragment, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type RefObject } from 'react';
 import { Track, type Participant } from 'livekit-client';
 import type { Channel, User } from '@chatward/shared';
 import { fetchObjectUrl } from '../../api/http';
 import { DEMO_URL } from '../../demo';
 import { demoVoice } from '../../demo/voice';
 import { useSession } from '../../state/session';
-import { useSettings } from '../../state/settings';
 import { useVoice } from '../../state/voice';
 import ProfileTrigger from '../profile/ProfileTrigger';
+import { useMemberMenu } from './MemberMenu';
+import SoundboardPanel from '../soundboard/SoundboardPanel';
 
 const NOBODY: string[] = [];
 
@@ -62,8 +63,7 @@ export default function VoiceChannelView({ channel, theaterOnly = false }: { cha
   const selfId = useSession((s) => s.user?.id);
   const occupants = useSession((s) => s.voiceOccupants[channel.id]) ?? NOBODY;
   const members = useSession((s) => s.servers.find((b) => b.server.id === channel.serverId)?.members);
-  const userVolumes = useSettings((s) => s.userVolumes);
-  const setUserVolume = useSettings((s) => s.setUserVolume);
+  const menu = useMemberMenu();
 
   const users = new Map((members ?? []).map((m) => [m.user.id, m.user]));
   const feeds = demo && inCall ? demoVoice.snapshot() : null;
@@ -79,10 +79,12 @@ export default function VoiceChannelView({ channel, theaterOnly = false }: { cha
 
   const specs: Spec[] = entries.flatMap((e) => {
     const user = users.get(e.id);
-    const base = { user, joined: e.joined, local: e.local, micOff: e.micOff, speaking: speaking.includes(e.id) };
+    // your own tiles have no menu: there is nothing to mute or kick
+    const onMenu = e.local ? undefined : (ev: ReactMouseEvent) => menu.openMenu(ev, { userId: e.id, channelId: channel.id, serverId: channel.serverId });
+    const base = { user, joined: e.joined, local: e.local, micOff: e.micOff, speaking: speaking.includes(e.id), onMenu };
     const screenKey = `${e.id}:screen`;
     const tiles: Spec[] = [
-      { key: e.id, props: { ...base, video: e.camera, volume: userVolumes[e.id] ?? 1, onVolume: (v) => setUserVolume(e.id, v) } },
+      { key: e.id, props: { ...base, video: e.camera } },
     ];
     if (e.screen) {
       tiles.push({
@@ -111,6 +113,7 @@ export default function VoiceChannelView({ channel, theaterOnly = false }: { cha
     return (
       <div style={{ height: '100%', minHeight: 0, padding: 12, boxSizing: 'border-box' }}>
         {theaterLayout || <div className="muted" style={{ textAlign: 'center', paddingTop: 40 }}>Nobody is sharing a screen right now.</div>}
+        {menu.element}
       </div>
     );
   }
@@ -132,15 +135,23 @@ export default function VoiceChannelView({ channel, theaterOnly = false }: { cha
         <div role="alert" style={{ padding: '8px 16px', color: 'var(--danger)' }}>{error}</div>
       )}
 
-      <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: 16 }}>
-        {entries.length === 0
-          ? <div className="muted" style={{ margin: 'auto', textAlign: 'center', paddingTop: 40 }}>Nobody is in this voice channel yet.</div>
-          : theaterLayout || (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 12 }}>
-              {specs.map((s) => <Fragment key={s.key}>{renderTile(s)}</Fragment>)}
-            </div>
-          )}
+      <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
+        <div style={{ flex: 1, minWidth: 0, overflow: 'auto', padding: 16 }}>
+          {entries.length === 0
+            ? <div className="muted" style={{ margin: 'auto', textAlign: 'center', paddingTop: 40 }}>Nobody is in this voice channel yet.</div>
+            : theaterLayout || (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 12 }}>
+                {specs.map((s) => <Fragment key={s.key}>{renderTile(s)}</Fragment>)}
+              </div>
+            )}
+        </div>
+        {inCall && (
+          <aside style={{ flex: '0 0 260px', minHeight: 0, overflow: 'auto', borderLeft: '1px solid var(--border)' }}>
+            <SoundboardPanel serverId={channel.serverId} channelId={channel.id} />
+          </aside>
+        )}
       </div>
+      {menu.element}
     </div>
   );
 }
@@ -153,8 +164,8 @@ interface TileProps {
   speaking: boolean;
   screen?: boolean;
   video?: Feed;
-  volume?: number;
-  onVolume?: (v: number) => void;
+  /** right-click on this tile opens the member menu (not set for yourself) */
+  onMenu?: (e: ReactMouseEvent) => void;
   /** this share is the one shown in theater mode */
   theater?: boolean;
   /** grow to fill the space it is given instead of keeping 16:9 */
@@ -163,15 +174,14 @@ interface TileProps {
   onTheater?: () => void;
 }
 
-function Tile({ user, joined, local, micOff, speaking, screen, video, volume = 1, onVolume, theater = false, fill = false, onTheater }: TileProps) {
+function Tile({ user, joined, local, micOff, speaking, screen, video, onMenu, theater = false, fill = false, onTheater }: TileProps) {
   const name = user?.displayName ?? user?.username ?? 'Unknown';
-  const pct = Math.round(volume * 100);
   const frame = useRef<HTMLDivElement>(null);
   const full = useFullscreen(frame);
   const expanded = full || fill;
 
   return (
-    <div className="card" data-speaking={speaking || undefined} style={{ padding: 8, display: 'flex', flexDirection: 'column', gap: 8, ...(fill ? { flex: 1, minHeight: 0, minWidth: 0 } : {}) }}>
+    <div className="card" data-speaking={speaking || undefined} onContextMenu={onMenu} style={{ padding: 8, display: 'flex', flexDirection: 'column', gap: 8, ...(fill ? { flex: 1, minHeight: 0, minWidth: 0 } : {}) }}>
       <div
         ref={frame}
         onDoubleClick={screen ? () => void toggleFullscreen(frame.current) : undefined}
@@ -214,18 +224,6 @@ function Tile({ user, joined, local, micOff, speaking, screen, video, volume = 1
           </button>
         )}
       </div>
-      {!screen && !local && joined && onVolume && (
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
-          <span className="muted">Volume</span>
-          <input
-            type="range" min={0} max={300} step={5} value={pct}
-            onChange={(e) => onVolume(Number(e.target.value) / 100)}
-            aria-label={`${name} volume`}
-            style={{ flex: 1 }}
-          />
-          <span style={{ width: 40, textAlign: 'right' }}>{pct}%</span>
-        </label>
-      )}
       {!joined && <span className="muted" style={{ fontSize: 12 }}>Join to hear {name}</span>}
     </div>
   );

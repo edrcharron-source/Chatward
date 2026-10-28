@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# PC-only, local test server. Not for cloud servers: a cloud server (AWS Lightsail) runs the
+# HTTPS setup in deploy/ (deploy/docker-compose.yml with DOMAIN set, see deploy/Caddyfile).
 # Installs a new server bundle in place. Unzip the new chatward-server.zip over this folder first.
 # Your .env, updates/ (desktop installers) and backups/ are kept. Usage: ./update-server.sh
 #
@@ -7,6 +9,14 @@
 # 3. Waits for the server to answer. If it does not, the rollback steps are printed.
 set -euo pipefail
 cd "$(dirname "$0")"
+
+# The server refuses to start with the public LiveKit defaults, so check .env before touching the running server.
+LIVEKIT_KEY=$(grep -E '^LIVEKIT_API_KEY=' .env 2>/dev/null | cut -d= -f2- || true)
+LIVEKIT_SECRET=$(grep -E '^LIVEKIT_API_SECRET=' .env 2>/dev/null | cut -d= -f2- || true)
+if [ -z "$LIVEKIT_KEY" ] || [ -z "$LIVEKIT_SECRET" ] || [ "$LIVEKIT_KEY" = devkey ] || [ "$LIVEKIT_SECRET" = secret ] || [ "${#LIVEKIT_SECRET}" -lt 32 ]; then
+  echo "Set LIVEKIT_API_KEY and LIVEKIT_API_SECRET in .env first (secret: 32+ random characters). See docs/UPDATES.md." >&2
+  exit 1
+fi
 
 VERSION=$(cat VERSION 2>/dev/null || echo dev)
 PORT=$(grep -E '^PORT=' .env 2>/dev/null | cut -d= -f2 || true)

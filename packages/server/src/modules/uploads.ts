@@ -6,6 +6,9 @@ import type { AuthedRequest, Ctx } from '../ctx.js';
 import { newId } from '../db.js';
 
 const UPLOAD_ID = /^[0-9a-z]{1,40}$/;
+// An upload nobody attached to a message within this window is treated as abandoned.
+const UNATTACHED_GRACE_MS = 24 * 60 * 60 * 1000;
+const SWEEP_INTERVAL_MS = 60 * 60 * 1000;
 
 // Binary route only: the global parser is JSON with a small limit.
 const rawBody = express.raw({ type: '*/*', limit: LIMITS.UPLOAD_MAX_BYTES });
@@ -24,7 +27,7 @@ const readRawBody = (req: Request, res: Response, next: NextFunction) =>
 export function register(app: Express, ctx: Ctx): void {
   const { db } = ctx;
 
-  const insertUpload = db.prepare('INSERT INTO uploads (id, owner_id, size, created_at) VALUES (?,?,?,?)');
+  const insertUpload = db.prepare('INSERT INTO uploads (id, owner_id, size, created_at, tracked) VALUES (?,?,?,?,?)');
   const findUpload = db.prepare('SELECT owner_id FROM uploads WHERE id=?');
   // Two users may fetch an upload if they share at least one server.
   const sharesServer = db.prepare(
@@ -32,6 +35,27 @@ export function register(app: Express, ctx: Ctx): void {
 
   const filePathFor = (id: string) => path.join(ctx.config.uploadsDir, id);
 
+  // One atomic statement: a row is only removed while it still matches, so a message attaching it
+  // at the same moment cannot lose its file. Returns the ids so their files can be removed after.
+  const sweepAbandoned = db.prepare(`
+    DELETE FROM uploads
+    WHERE tracked=1 AND (
+      (message_id IS NULL AND created_at < ?)
+      OR (message_id IS NOT NULL AND message_id NOT IN (SELECT id FROM messages)))
+    RETURNING id`);
+
+  const sweep = async () => {
+    const removed = sweepAbandoned.all(Date.now() - UNATTACHED_GRACE_MS) as { id: string }[];
+    for (const { id } of removed) {
+      await fs.rm(filePathFor(id), { force: true }).catch((err) => console.error(`upload ${id} cleanup failed`, err));
+    }
+  };
+  void sweep().catch((err) => console.error('upload cleanup failed', err));
+  setInterval(() => {
+    sweep().catch((err) => console.error('upload cleanup failed', err));
+  }, SWEEP_INTERVAL_MS).unref();
+
+  // Clients send `?tracked=1` when they will report the upload's message through `attachmentIds`.
   app.post('/api/uploads', ctx.requireAuth, readRawBody, async (req, res, next) => {
     try {
       const userId = (req as AuthedRequest).userId;
@@ -41,8 +65,9 @@ export function register(app: Express, ctx: Ctx): void {
         return;
       }
       const id = newId();
+      const tracked = req.query.tracked === '1' ? 1 : 0;
       await fs.writeFile(filePathFor(id), body, { flag: 'wx', mode: 0o600 });
-      insertUpload.run(id, userId, body.length, Date.now());
+      insertUpload.run(id, userId, body.length, Date.now(), tracked);
       res.status(201).json({ uploadId: id });
     } catch (err) {
       next(err);

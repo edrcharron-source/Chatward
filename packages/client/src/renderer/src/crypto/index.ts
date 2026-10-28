@@ -35,15 +35,17 @@ interface Vault {
   pool: Record<string, mls.StoredKeyPackage>;
 }
 
-const DEVICE_STORE = 'crypto.device.v1';
-const VAULT_STORE = 'crypto.vault.v2';
+// Before accounts had their own keys, the PC's single device and vault lived under these two keys.
+const LEGACY_DEVICE_STORE = 'crypto.device.v1';
+const LEGACY_VAULT_STORE = 'crypto.vault.v2';
 /** Refill the single-use KeyPackage pool when the server reports fewer than this. */
 const KEYPACKAGE_LOW_WATER = 5;
 const KEYPACKAGE_BATCH = 10;
 
+let account: string | null = null;
 let device: DeviceKeys | null = null;
 let privates: { ecdh: CryptoKey; sign: CryptoKey } | null = null;
-let vault: Vault = { channels: {}, groups: {}, shared: {}, pool: {} };
+let vault: Vault = emptyVault();
 const aesCache = new Map<string, Promise<CryptoKey>>();
 const groupStates = new Map<string, ClientState>();
 const listeners = new Set<() => void>();
@@ -66,34 +68,88 @@ async function readStored<T>(key: string): Promise<T | null> {
   return raw ? (JSON.parse(raw) as T) : null;
 }
 
-function persistVault(): Promise<void> {
-  return secureStore().set(VAULT_STORE, JSON.stringify(vault));
+function emptyVault(): Vault {
+  return { channels: {}, groups: {}, shared: {}, pool: {} };
 }
 
-async function createDevice(): Promise<StoredDevice> {
+/** Each account on this PC has its own device keys and vault. The key is the server address plus the username. */
+export function accountKey(serverUrl: string, username: string): string {
+  return `${serverUrl.replace(/\/$/, '')}|${username}`;
+}
+
+const deviceStore = (acct: string) => `crypto.device.v2|${acct}`;
+const vaultStore = (acct: string) => `crypto.vault.v2|${acct}`;
+
+function currentAccount(): string {
+  if (account === null) throw new Error('No account is active; call initDevice() first');
+  return account;
+}
+
+function persistVault(): Promise<void> {
+  return secureStore().set(vaultStore(currentAccount()), JSON.stringify(vault));
+}
+
+async function newStoredDevice(): Promise<StoredDevice> {
   const ecdh = await generateEcdh();
   const sign = await generateSigning();
-  const stored: StoredDevice = {
+  return {
     deviceId: crypto.randomUUID(),
     ecdhPublic: toB64(await exportRawPublic(ecdh.publicKey)),
     signPublic: toB64(await exportRawPublic(sign.publicKey)),
     ecdhPrivate: await exportJwk(ecdh.privateKey),
     signPrivate: await exportJwk(sign.privateKey),
   };
-  await secureStore().set(DEVICE_STORE, JSON.stringify(stored));
-  return stored;
 }
 
-/** Load or create this device's keypairs (stored via window.chatward.secureStore). Registers nothing on the server. */
-export function initDevice(): Promise<DeviceKeys> {
+async function useDevice(stored: StoredDevice): Promise<void> {
+  privates = { ecdh: await importEcdhPrivate(stored.ecdhPrivate), sign: await importSignPrivate(stored.signPrivate) };
+  device = { deviceId: stored.deviceId, ecdhPublic: stored.ecdhPublic, signPublic: stored.signPublic };
+}
+
+/** Loads this account's device and vault, creating them on first use. The first account to start after an update takes over the legacy device and vault. */
+async function loadAccount(acct: string): Promise<{ stored: StoredDevice; vault: Vault }> {
+  const own = await readStored<StoredDevice>(deviceStore(acct));
+  if (own) return { stored: own, vault: (await readStored<Vault>(vaultStore(acct))) ?? emptyVault() };
+
+  const legacy = await readStored<StoredDevice>(LEGACY_DEVICE_STORE);
+  const stored = legacy ?? (await newStoredDevice());
+  const legacyVault = legacy ? await readStored<Vault>(LEGACY_VAULT_STORE) : null;
+  const loaded = { stored, vault: legacyVault ?? emptyVault() };
+  await secureStore().set(deviceStore(acct), JSON.stringify(stored));
+  await secureStore().set(vaultStore(acct), JSON.stringify(loaded.vault));
+  if (legacy) {
+    await secureStore().set(LEGACY_DEVICE_STORE, '');
+    await secureStore().set(LEGACY_VAULT_STORE, '');
+  }
+  return loaded;
+}
+
+/** Load or create this account's device keypairs (stored via window.chatward.secureStore). Registers nothing on the server. */
+export function initDevice(acct: string): Promise<DeviceKeys> {
   return serial(async () => {
-    if (!device) {
-      const stored = (await readStored<StoredDevice>(DEVICE_STORE)) ?? (await createDevice());
-      privates = { ecdh: await importEcdhPrivate(stored.ecdhPrivate), sign: await importSignPrivate(stored.signPrivate) };
-      device = { deviceId: stored.deviceId, ecdhPublic: stored.ecdhPublic, signPublic: stored.signPublic };
-      vault = (await readStored<Vault>(VAULT_STORE)) ?? vault;
+    if (acct !== account || !device) {
+      const loaded = await loadAccount(acct);
+      await useDevice(loaded.stored);
+      vault = loaded.vault;
+      account = acct;
+      groupStates.clear();
+      aesCache.clear();
     }
-    return device;
+    return getDevice();
+  });
+}
+
+/** Give the current account a brand-new device and an empty vault. Used when the server says this device id belongs to another account. */
+export function renewDevice(): Promise<DeviceKeys> {
+  return serial(async () => {
+    const stored = await newStoredDevice();
+    await secureStore().set(deviceStore(currentAccount()), JSON.stringify(stored));
+    await useDevice(stored);
+    vault = emptyVault();
+    groupStates.clear();
+    aesCache.clear();
+    await persistVault();
+    return getDevice();
   });
 }
 
@@ -151,7 +207,7 @@ async function ensureKeyPool(): Promise<boolean> {
 }
 
 async function newKeyPackage(lastResort: boolean) {
-  const keys = await mls.newMemberKeys(getDevice().deviceId);
+  const keys = await mls.newMemberKeys({ deviceId: getDevice().deviceId, signPrivate: privates!.sign });
   return { kp: await mls.encodeKeyPackage(keys), keys, lastResort };
 }
 
@@ -161,7 +217,7 @@ function groupOf(channelId: string): ClientState | null {
   if (cached) return cached;
   const stored = vault.groups[channelId];
   if (!stored) return null;
-  const state = mls.decodeGroup(fromB64(stored.state));
+  const state = mls.decodeGroup(fromB64(stored.state), deviceDirectory());
   groupStates.set(channelId, state);
   return state;
 }
@@ -193,7 +249,7 @@ async function ensureGroup(channelId: string, members: Member[]): Promise<boolea
 async function joinFromPool(welcome: string): Promise<ClientState | null> {
   for (const [kp, entry] of Object.entries(vault.pool)) {
     try {
-      const state = await mls.joinFromWelcome(fromB64(welcome), mls.restoreKeyPackage(entry));
+      const state = await mls.joinFromWelcome(fromB64(welcome), mls.restoreKeyPackage(entry), deviceDirectory());
       if (!entry.lastResort) delete vault.pool[kp];
       return state;
     } catch {
@@ -205,7 +261,9 @@ async function joinFromPool(welcome: string): Promise<ClientState | null> {
 
 async function createGroup(channelId: string, members: Member[]): Promise<boolean> {
   const me = getDevice();
-  const solo = await mls.createMlsGroup(channelId, await mls.newMemberKeys(me.deviceId));
+  const solo = await mls.createMlsGroup(
+    channelId, await mls.newMemberKeys({ deviceId: me.deviceId, signPrivate: privates!.sign }), deviceDirectory(),
+  );
   const added = await claimFor(members, new Set(members.flatMap((m) => m.devices).map((d) => d.deviceId).filter((id) => id !== me.deviceId)));
   const step = added.length ? await mls.addMembers(solo, added.map((a) => a.kp)) : await mls.selfUpdate(solo);
   // Publishing the commit is what makes this the group. A 409 means another device created it first; we join by Welcome.
@@ -215,27 +273,41 @@ async function createGroup(channelId: string, members: Member[]): Promise<boolea
   return true;
 }
 
-/** Apply Commits we have not seen. A failure means we can no longer follow the group, usually because we were removed. */
+/**
+ * Apply Commits we have not seen. A Commit that will not apply is not ours to trust, and any member can post one, so we
+ * keep the last state we could apply and ask the server to drop that Commit. The group then moves on from its epoch.
+ */
 async function catchUp(channelId: string): Promise<boolean> {
   const stored = vault.groups[channelId];
   let state = groupOf(channelId)!;
   let epoch = stored.epoch;
   const res = await api.get<{ commits: { epoch: number; commit: string }[] }>(`/api/groups/${channelId}/commits?from=${epoch}`);
   if (res.commits.length === 0) return false;
-  try {
-    for (const c of res.commits) {
-      if (c.epoch !== epoch) break;
+  let stuck = false;
+  for (const c of res.commits) {
+    if (c.epoch !== epoch) break;
+    try {
       state = (await mls.receive(state, fromB64(c.commit))).state;
-      epoch += 1;
+    } catch {
+      stuck = true;
+      break;
     }
-  } catch {
-    delete vault.groups[channelId];
-    groupStates.delete(channelId);
-    return true;
+    epoch += 1;
   }
-  if (epoch === stored.epoch) return false;
-  await setGroup(channelId, state, epoch);
-  return true;
+  const moved = epoch !== stored.epoch;
+  if (moved) await setGroup(channelId, state, epoch);
+  if (stuck) await dropCommitsFrom(channelId, epoch);
+  return moved;
+}
+
+/** Ask the server to drop the Commit at `epoch` and everything after it. A failure here is logged, not fatal to sync. */
+async function dropCommitsFrom(channelId: string, epoch: number): Promise<void> {
+  const me = getDevice();
+  try {
+    await api.post(`/api/groups/${channelId}/reset`, { deviceId: me.deviceId, epoch });
+  } catch (err) {
+    console.warn(`Could not drop an unreadable commit in channel ${channelId}`, err);
+  }
 }
 
 /** Remove devices that left the server, then add devices that joined it. Each step is one Commit. */
@@ -251,7 +323,7 @@ async function reconcile(channelId: string, members: Member[]): Promise<boolean>
   if (gone.length) {
     const step = await mls.removeMembers(state, gone.map((l) => l.leafIndex));
     const remaining = mls.memberLeaves(step.state).map((l) => l.deviceId);
-    if ((await postCommit(channelId, epoch, step, remaining, [])) === 'conflict') return false;
+    if ((await postCommit(channelId, epoch, step, remaining, [])) === 'conflict') return (await catchUp(channelId)) || changed;
     await setGroup(channelId, step.state, epoch + 1);
     state = step.state;
     epoch += 1;
@@ -265,7 +337,7 @@ async function reconcile(channelId: string, members: Member[]): Promise<boolean>
   if (added.length === 0) return changed;
   const step = await mls.addMembers(state, added.map((a) => a.kp));
   const after = [...inGroup, ...added.map((a) => a.deviceId)];
-  if ((await postCommit(channelId, epoch, step, after, added.map((a) => a.deviceId))) === 'conflict') return changed;
+  if ((await postCommit(channelId, epoch, step, after, added.map((a) => a.deviceId))) === 'conflict') return (await catchUp(channelId)) || changed;
   await setGroup(channelId, step.state, epoch + 1);
   return true;
 }
@@ -381,6 +453,11 @@ function knownDevices(): Map<string, DeviceKeys> {
     for (const member of bundle.members) for (const d of member.devices) map.set(d.deviceId, d);
   }
   return map;
+}
+
+/** MLS credentials are accepted only if they name a device from this list and are signed by that device's key. */
+function deviceDirectory(): mls.DeviceDirectory {
+  return (deviceId) => knownDevices().get(deviceId)?.signPublic;
 }
 
 function localVersions(channelId: string): number[] {

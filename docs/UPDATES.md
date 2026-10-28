@@ -10,6 +10,15 @@ The app updates itself from your own server, because the repo is private and fri
 - **Release:** the Release workflow builds `Chatward-Setup.exe` and `latest.yml`, then copies them to `updates/` on the server over SSH.
 - **Server update:** unzip the new `chatward-server.zip` over the server folder and run `./update-server.sh`. It backs up the database volume to `backups/`, rebuilds the server and prints rollback steps if it does not come back.
 
+## Server setup: LiveKit keys (required)
+Voice, video and screen share use LiveKit, which signs every call with a key pair. The old `devkey` / `secret` pair is public, so anyone could join your calls with it. The server now refuses to start with those values.
+- **Windows test server:** `start-server.bat` creates the keys in `.env` by itself on first run. Nothing to do.
+- **Linux server (Lightsail):** before the first start, or before `./update-server.sh`, edit `.env` in the server folder and set:
+  - `LIVEKIT_API_KEY`: any short ID, e.g. `API` followed by 12 random characters.
+  - `LIVEKIT_API_SECRET`: at least 32 random characters. Make one with `openssl rand -hex 32`.
+
+  Keep `.env` private. Changing the keys restarts LiveKit, so a call in progress drops and must be rejoined.
+
 ## One-time setup (GitHub repo secrets)
 Settings → Secrets and variables → Actions:
 - `UPDATE_SSH_HOST`: the server's address, e.g. the Lightsail static IP.

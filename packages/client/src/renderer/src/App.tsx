@@ -4,8 +4,8 @@ import { api } from './api/http';
 import { connectWs, disconnectWs, onFrame } from './api/ws';
 import { useSession, type ServerBundle } from './state/session';
 import { useSettings, applyTheme } from './state/settings';
-import { useVoice } from './state/voice';
-import { initDevice, syncChannelKeys, handleEnvelope, handleMemberLeave } from './crypto';
+import { useVoice, rekeyActiveCall } from './state/voice';
+import { accountKey, initDevice, syncChannelKeys, handleEnvelope, handleMemberLeave } from './crypto';
 import { installNotifications } from './notify/notify';
 import AuthScreen from './components/auth/AuthScreen';
 import ServerSidebar from './components/servers/ServerSidebar';
@@ -89,14 +89,24 @@ function Shell() {
   useEffect(() => {
     let off: (() => void) | undefined;
     let stopNotify: (() => void) | undefined;
+    let seenReady = false;
     (async () => {
-      await initDevice();
+      const { serverUrl, user } = useSession.getState();
+      await initDevice(accountKey(serverUrl, user?.username ?? ''));
       await loadServers();
       connectWs();
       stopNotify = installNotifications();
       off = onFrame((f) => {
         const st = useSession.getState();
         switch (f.t) {
+          case 'ready': {
+            // Every (re)connect: rebuild what may have changed while the socket was down.
+            st.setUser(f.user);
+            useSession.setState({ presence: f.presence });
+            if (seenReady) loadServers().catch((e) => console.error('Could not refresh after reconnect', e));
+            seenReady = true;
+            break;
+          }
           case 'presence': st.setPresence(f.userId, f.status); break;
           case 'voice.state': st.setVoiceOccupants(f.channelId, f.userIds); break;
           case 'user.update': {
@@ -115,6 +125,23 @@ function Shell() {
             if (b) st.upsertServer({ ...b, channels: b.channels.map((c) => (c.id === f.channel.id ? f.channel : c)) });
             break;
           }
+          case 'channel.delete': {
+            // leave the call if it was in the deleted voice channel, since the server has already dropped everyone
+            if (useVoice.getState().channelId === f.channelId) void useVoice.getState().leave();
+            st.removeChannel(f.serverId, f.channelId);
+            break;
+          }
+          case 'server.update': {
+            const b = st.servers.find((x) => x.server.id === f.server.id);
+            if (b) st.upsertServer({ ...b, server: f.server });
+            break;
+          }
+          case 'server.delete': st.removeServer(f.serverId); break;
+          case 'member.role': {
+            const b = st.servers.find((x) => x.server.id === f.serverId);
+            if (b) st.upsertServer({ ...b, members: b.members.map((m) => (m.user.id === f.userId ? { ...m, role: f.role } : m)) });
+            break;
+          }
           case 'member.join': {
             const b = st.servers.find((x) => x.server.id === f.serverId);
             if (b) st.upsertServer({ ...b, members: [...b.members.filter((m) => m.user.id !== f.member.user.id), f.member] });
@@ -122,10 +149,12 @@ function Shell() {
             break;
           }
           case 'member.leave': {
-            if (f.userId === st.user?.id) { st.setServers(st.servers.filter((b) => b.server.id !== f.serverId)); break; }
+            if (f.userId === st.user?.id) { st.removeServer(f.serverId); break; }
             const b = st.servers.find((x) => x.server.id === f.serverId);
             if (b) st.upsertServer({ ...b, members: b.members.filter((m) => m.user.id !== f.userId) });
-            void handleMemberLeave(f.serverId, f.userId, useSession.getState().servers);
+            void handleMemberLeave(f.serverId, f.userId, useSession.getState().servers)
+              .then(rekeyActiveCall)
+              .catch((e) => console.error(e));
             break;
           }
           case 'member.devices': {
@@ -134,6 +163,11 @@ function Shell() {
             void syncChannelKeys(useSession.getState().servers);
             break;
           }
+          // Another device moved a group on, so catch up now. Then the call key follows the new epoch.
+          case 'group.commit':
+          case 'group.welcome':
+            void syncChannelKeys(useSession.getState().servers).then(rekeyActiveCall).catch((e) => console.error(e));
+            break;
           case 'key.envelope': void handleEnvelope(f.envelope); break;
         }
       });
@@ -199,7 +233,7 @@ function Shell() {
               ? <ChatView key={channel.id} channel={channel} />
               : <div style={{ margin: 'auto' }} className="muted">{bundle ? 'Select a channel' : 'Create or join a server to get started'}</div>}
       </main>
-      {bundle && !hideSidebars && <MemberList members={bundle.members as Member[]} />}
+      {bundle && !hideSidebars && <MemberList serverId={bundle.server.id} members={bundle.members as Member[]} />}
       {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
       {/* keep voice room mounted even when browsing text channels */}
       {voiceChannelId && null}

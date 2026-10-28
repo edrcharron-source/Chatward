@@ -4,7 +4,7 @@ import express, { type Express, type NextFunction, type Request, type Response }
 import { LIMITS, type SoundboardSound } from '@chatward/shared';
 import type { AuthedRequest, Ctx } from '../ctx.js';
 import { newId } from '../db.js';
-import { isInVoiceChannel } from './voice.js';
+import { isInVoiceChannel, isVoiceSilenced } from './voice.js';
 
 const SOUNDS_PER_SERVER = 100;
 const NAME_MAX = 32;
@@ -137,6 +137,8 @@ export function register(app: Express, ctx: Ctx): void {
     if (channel.kind !== 'voice') { res.status(400).json({ error: 'not a voice channel' }); return; }
     // Only someone actually in the voice channel can trigger a sound there.
     if (!isInVoiceChannel(channelId, userId)) { res.status(409).json({ error: 'join the voice channel first' }); return; }
+    // Muted or deafened users cannot reach the call, so their sounds are not announced either.
+    if (isVoiceSilenced(userId)) { res.status(409).json({ error: 'unmute to play sounds in this call' }); return; }
 
     const soundId = (req.body as { soundId?: unknown } | undefined)?.soundId;
     const row = typeof soundId === 'string' ? soundById(soundId) : undefined;

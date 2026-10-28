@@ -1,16 +1,24 @@
 import type { Express } from 'express';
-import { AccessToken } from 'livekit-server-sdk';
+import { AccessToken, RoomServiceClient } from 'livekit-server-sdk';
 import type { Ctx, AuthedRequest } from '../ctx.js';
 
 // In-memory voice occupancy. Lost on restart, which is fine: clients rejoin.
 const occupants = new Map<string, Set<string>>(); // channelId -> userIds
 const voiceChannelOf = new Map<string, string>(); // userId -> channelId (a user is in at most one VC)
+const selfState = new Map<string, { muted: boolean; deafened: boolean }>(); // userId -> self mute/deafen, reported by the client
 
-const TOKEN_TTL = '1h';
+// Only needed to join. An active call keeps its LiveKit session, so a short TTL does not cut calls off.
+const TOKEN_TTL = '10m';
 
 /** True if the user currently holds a voice slot in this channel. Used by soundboard. */
 export function isInVoiceChannel(channelId: string, userId: string): boolean {
   return occupants.get(channelId)?.has(userId) ?? false;
+}
+
+/** True if the user has muted or deafened themselves in their current call. Used by soundboard. */
+export function isVoiceSilenced(userId: string): boolean {
+  const state = selfState.get(userId);
+  return !!state && (state.muted || state.deafened);
 }
 
 /** Removes the user from whatever voice channel they are in. For ctx.onDisconnect and kicks. */
@@ -19,12 +27,41 @@ export function leaveVoice(ctx: Ctx, userId: string): void {
   if (channelId) leaveChannel(ctx, channelId, userId);
 }
 
+/**
+ * For a server kick: drops the user from voice, then removes them from every voice room on the server, so they stop
+ * receiving media now. Not used on a dropped socket, where a reconnect should keep the call. Checks every room
+ * rather than the in-memory occupancy, which a dropped socket may have cleared.
+ */
+export function kickFromCall(ctx: Ctx, serverId: string, userId: string): void {
+  leaveVoice(ctx, userId);
+  const rooms = new RoomServiceClient(ctx.config.livekit.apiUrl, ctx.config.livekit.apiKey, ctx.config.livekit.apiSecret);
+  const channels = ctx.db.prepare("SELECT id FROM channels WHERE server_id=? AND kind='voice'").all(serverId) as { id: string }[];
+  for (const { id } of channels) {
+    // Fails for rooms the user is not in, which is expected. A real failure is logged.
+    rooms.removeParticipant(id, userId).catch((err: unknown) => console.warn('livekit removeParticipant failed', id, err));
+  }
+}
+
+/** Drops the user from the channel's voice slot and from the LiveKit room, so they stop hearing the call now. */
+function kickFromChannelCall(ctx: Ctx, channelId: string, userId: string): void {
+  leaveChannel(ctx, channelId, userId);
+  const rooms = new RoomServiceClient(ctx.config.livekit.apiUrl, ctx.config.livekit.apiKey, ctx.config.livekit.apiSecret);
+  // Fails if LiveKit no longer has the participant (already left or still connecting). Either way they are out.
+  rooms.removeParticipant(channelId, userId).catch((err: unknown) => console.warn('livekit removeParticipant failed', err));
+}
+
+/** Empties a voice channel, e.g. when the channel is deleted. */
+export function clearVoiceChannel(ctx: Ctx, channelId: string): void {
+  for (const userId of [...(occupants.get(channelId) ?? [])]) leaveChannel(ctx, channelId, userId);
+}
+
 function leaveChannel(ctx: Ctx, channelId: string, userId: string): boolean {
   const set = occupants.get(channelId);
   if (!set?.has(userId)) return false;
   set.delete(userId);
   if (set.size === 0) occupants.delete(channelId);
   voiceChannelOf.delete(userId);
+  selfState.delete(userId);
   broadcastState(ctx, channelId);
   return true;
 }
@@ -75,6 +112,45 @@ export function register(app: Express, ctx: Ctx): void {
     const channelId = (req.body as { channelId?: unknown } | undefined)?.channelId;
     if (typeof channelId !== 'string') { res.status(400).json({ error: 'channelId required' }); return; }
     leaveChannel(ctx, channelId, userId);
+    res.json({ ok: true });
+  });
+
+  // Server admins can remove someone from a call. Joining again is still allowed; this only ends the current call.
+  app.post('/api/voice/kick', ctx.requireAuth, (req, res) => {
+    const actorId = (req as AuthedRequest).userId;
+    const body = (req.body ?? {}) as { channelId?: unknown; userId?: unknown };
+    if (typeof body.channelId !== 'string' || typeof body.userId !== 'string') {
+      res.status(400).json({ error: 'channelId and userId required' });
+      return;
+    }
+    const channelId = body.channelId;
+    const targetId = body.userId;
+    const channel = ctx.getChannel(channelId);
+    const actorRole = channel ? ctx.roleIn(channel.serverId, actorId) : null;
+    if (!channel || !actorRole) { res.status(404).json({ error: 'channel not found' }); return; }
+    if (channel.kind !== 'voice') { res.status(400).json({ error: 'not a voice channel' }); return; }
+    if (actorRole === 'member') { res.status(403).json({ error: 'admins only' }); return; }
+    if (targetId === actorId) { res.status(400).json({ error: 'use Leave voice to leave yourself' }); return; }
+    if (!occupants.get(channelId)?.has(targetId)) { res.status(404).json({ error: 'they are not in this call' }); return; }
+    // Same rule as removing a member from the server: admins cannot touch the owner or other admins.
+    const targetRole = ctx.roleIn(channel.serverId, targetId);
+    if (targetRole === 'owner' || (targetRole === 'admin' && actorRole !== 'owner')) {
+      res.status(403).json({ error: 'you cannot kick this member' });
+      return;
+    }
+    kickFromChannelCall(ctx, channelId, targetId);
+    res.json({ ok: true });
+  });
+
+  // The client reports its own mic/speaker state so the server can refuse soundboard plays from silenced users.
+  app.post('/api/voice/state', ctx.requireAuth, (req, res) => {
+    const userId = (req as AuthedRequest).userId;
+    const body = (req.body ?? {}) as { channelId?: unknown; muted?: unknown; deafened?: unknown };
+    if (typeof body.channelId !== 'string' || typeof body.muted !== 'boolean' || typeof body.deafened !== 'boolean') {
+      res.status(400).json({ error: 'channelId, muted and deafened required' }); return;
+    }
+    if (!isInVoiceChannel(body.channelId, userId)) { res.status(409).json({ error: 'join the voice channel first' }); return; }
+    selfState.set(userId, { muted: body.muted, deafened: body.deafened });
     res.json({ ok: true });
   });
 

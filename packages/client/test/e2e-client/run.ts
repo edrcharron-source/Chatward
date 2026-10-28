@@ -64,8 +64,8 @@ async function main() {
   const bob = new Device('bob');
   let failed = false;
   try {
-    await alice.call('init', { serverUrl: BASE });
-    await bob.call('init', { serverUrl: BASE });
+    await alice.call('init', { serverUrl: BASE, username: 'alice' });
+    await bob.call('init', { serverUrl: BASE, username: 'bob' });
 
     // 1. Device A registers as the first user and creates a server. Its sync creates the channel group.
     await alice.call('register', { username: 'alice' });
@@ -97,6 +97,16 @@ async function main() {
     assert.ok(aliceSees.includes('hi from bob'), `alice reads bob's reply: ${JSON.stringify(aliceSees)}`);
     log("bob replies and alice decrypts it");
 
+    // 4b. B posts a Commit that nobody can apply. A keeps its group, has the server drop the Commit, and the channel keeps working.
+    await bob.call('junkCommit', { channelId, serverId });
+    await alice.call('sync');
+    assert.equal((await alice.call('status', { channelId })).epoch, 2, 'alice keeps her group at epoch 2 after the junk Commit');
+    await alice.call('send', { channelId, text: 'still here after junk' });
+    await bob.call('sync');
+    const afterJunk = (await bob.call('read', { channelId })).texts;
+    assert.ok(afterJunk.includes('still here after junk'), `bob reads after the junk Commit is dropped: ${JSON.stringify(afterJunk)}`);
+    log('a junk Commit from a member is dropped by the server, and the channel keeps working');
+
     // 6 (before the kick, while bob is still a member). A 5 MB attachment round-trips through encryptBlob/decryptBlob.
     const sent = await alice.call('sendAttachment', { channelId, sizeBytes: 5 * 1024 * 1024 });
     const got = await bob.call('fetchAttachment', { channelId });
@@ -116,6 +126,16 @@ async function main() {
     const bobDecrypt = await bob.call('decrypt', { message: secret });
     assert.equal(bobDecrypt.text, null, 'the kicked bob cannot decrypt the new message');
     log('alice kicks bob; a Remove is committed, and bob cannot decrypt the next message');
+
+    // A second account on the same PC gets its own device, and alice's group state is still there when she switches back.
+    const epochOnPc = (await alice.call('status', { channelId })).epoch;
+    await alice.call('init', { serverUrl: BASE, username: 'carol' });
+    const carolInvite = await alice.call('invite', { serverId });
+    await alice.call('register', { username: 'carol', inviteCode: carolInvite.code });
+    log('a second account on the same PC registers with its own device');
+    await alice.call('init', { serverUrl: BASE, username: 'alice' });
+    assert.equal((await alice.call('status', { channelId })).epoch, epochOnPc, "alice's group state survives switching accounts");
+    log("switching back to the first account on the same PC keeps its group state");
 
     console.log('\nE2E client: all checks passed');
   } catch (err) {

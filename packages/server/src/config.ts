@@ -15,6 +15,24 @@ function jwtSecret(): string {
   return s;
 }
 
+/** LiveKit keys. The dev defaults are public, so production refuses to start with them. */
+function livekitKeys(): { apiKey: string; apiSecret: string } {
+  const apiKey = process.env.LIVEKIT_API_KEY ?? 'devkey';
+  const apiSecret = process.env.LIVEKIT_API_SECRET ?? 'secret';
+  if (process.env.NODE_ENV === 'production') {
+    if (!process.env.LIVEKIT_API_KEY || !process.env.LIVEKIT_API_SECRET) {
+      throw new Error('Set LIVEKIT_API_KEY and LIVEKIT_API_SECRET in .env before starting the server.');
+    }
+    if (apiKey === 'devkey' || apiSecret === 'secret') {
+      throw new Error('LIVEKIT_API_KEY / LIVEKIT_API_SECRET are still the public defaults. Replace them (see docs/UPDATES.md).');
+    }
+    if (apiSecret.length < 32) {
+      throw new Error('LIVEKIT_API_SECRET must be at least 32 characters.');
+    }
+  }
+  return { apiKey, apiSecret };
+}
+
 export const config = {
   port: Number(process.env.PORT ?? 3000),
   host: process.env.HOST ?? '0.0.0.0',
@@ -31,8 +49,9 @@ export const config = {
   klipyApiKey: process.env.KLIPY_API_KEY ?? '',
   livekit: {
     url: process.env.LIVEKIT_URL ?? 'ws://localhost:7880',
-    apiKey: process.env.LIVEKIT_API_KEY ?? 'devkey',
-    apiSecret: process.env.LIVEKIT_API_SECRET ?? 'secret',
+    /** Server-side API (kick from a room) speaks HTTP, so the ws:// URL is mapped to http://. */
+    apiUrl: (process.env.LIVEKIT_URL ?? 'ws://localhost:7880').replace(/^ws/, 'http'),
+    ...livekitKeys(),
   },
 };
 fs.mkdirSync(config.uploadsDir, { recursive: true });

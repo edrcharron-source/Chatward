@@ -57,6 +57,13 @@ export function openDb(): DB {
     max_uses INTEGER NOT NULL DEFAULT 1,
     uses INTEGER NOT NULL DEFAULT 0
   );
+  CREATE TABLE IF NOT EXISTS bans (
+    server_id TEXT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    banned_by TEXT NOT NULL REFERENCES users(id),
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (server_id, user_id)
+  );
   CREATE TABLE IF NOT EXISTS messages (
     id TEXT PRIMARY KEY,
     channel_id TEXT NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
@@ -135,6 +142,16 @@ export function openDb(): DB {
   };
   for (const [col, def] of Object.entries(profileCols)) {
     if (!userCols.has(col)) db.exec(`ALTER TABLE users ADD COLUMN ${col} ${def}`);
+  }
+  // Upload cleanup: `tracked` marks uploads from clients that report which message they were attached to.
+  // Older uploads stay tracked=0 and are never swept, since the server cannot see inside message ciphertext.
+  const uploadCols = new Set((db.pragma('table_info(uploads)') as { name: string }[]).map((c) => c.name));
+  const uploadColumns: Record<string, string> = {
+    tracked: 'INTEGER NOT NULL DEFAULT 0',
+    message_id: 'TEXT',
+  };
+  for (const [col, def] of Object.entries(uploadColumns)) {
+    if (!uploadCols.has(col)) db.exec(`ALTER TABLE uploads ADD COLUMN ${col} ${def}`);
   }
   return db;
 }

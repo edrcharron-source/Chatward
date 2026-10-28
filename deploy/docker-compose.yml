@@ -1,10 +1,24 @@
-# Local test:  docker compose -f deploy/docker-compose.yml up -d --build
+# Run: put DOMAIN=chat.example.com, LIVEKIT_API_KEY and LIVEKIT_API_SECRET in deploy/.env (DNS must point at this server,
+# and ports 80 and 443 must be open). Then: docker compose -f deploy/docker-compose.yml up -d --build
+# Only Caddy (80/443) is reachable from outside; the server and LiveKit signalling sit behind it.
+# Compose stops if the LiveKit keys are missing (see deploy/bundle/.env.example).
 services:
+  caddy:
+    image: caddy:2
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in deploy/.env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    ports: ["80:80", "443:443"]
+    depends_on: [server, livekit]
+    restart: unless-stopped
   livekit:
     image: livekit/livekit-server:latest
-    command: --config /etc/livekit.yaml --node-ip 127.0.0.1
+    command: '--config /etc/livekit.yaml --keys "${LIVEKIT_API_KEY:?set LIVEKIT_API_KEY in deploy/.env}: ${LIVEKIT_API_SECRET:?set LIVEKIT_API_SECRET in deploy/.env}"'
     volumes: ["./livekit.yaml:/etc/livekit.yaml:ro"]
-    ports: ["7880:7880", "7881:7881", "50000-50100:50000-50100/udp"]
+    ports: ["7881:7881", "50000-50100:50000-50100/udp"]
     restart: unless-stopped
   server:
     build: { context: .., dockerfile: deploy/Dockerfile.server }
@@ -12,12 +26,15 @@ services:
       PORT: 3000
       DATA_DIR: /data
       UPLOADS_DIR: /data/uploads   # move to a mounted block-storage disk later
-      LIVEKIT_URL: ws://localhost:7880
-      LIVEKIT_API_KEY: devkey
-      LIVEKIT_API_SECRET: secret
+      LIVEKIT_URL: wss://${DOMAIN:?set DOMAIN in deploy/.env}
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:?set LIVEKIT_API_KEY in deploy/.env}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:?set LIVEKIT_API_SECRET in deploy/.env}
+      NODE_ENV: production
       KLIPY_API_KEY: ${KLIPY_API_KEY:-}
     volumes: ["chatward-data:/data"]
-    ports: ["3000:3000"]
+    expose: ["3000"]
     restart: unless-stopped
 volumes:
   chatward-data:
+  caddy-data:
+  caddy-config:

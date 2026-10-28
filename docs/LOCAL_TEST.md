@@ -7,7 +7,7 @@ You only need **Docker Desktop**. No Git, no Node, no coding tools.
 2. Go to the [Releases page](https://github.com/edrcharron-source/Chatward/releases) and download two files from the newest release:
    - `Chatward-Setup.exe` (the app)
    - `chatward-server.zip` (the server)
-3. Unzip `chatward-server.zip` anywhere (for example your Desktop), open the `chatward-server` folder, and double-click **`start-server.bat`**. The first run takes a few minutes while it sets itself up. When it says the server is running, you can close that window.
+3. Unzip `chatward-server.zip` anywhere (for example your Desktop), open the `chatward-server` folder, and double-click **`start-server.bat`**. The first run takes a few minutes while it sets itself up. It also creates random voice keys in the `.env` file, so nothing needs typing. When it says the server is running, you can close that window.
 4. Run `Chatward-Setup.exe`. Windows may warn "unknown publisher" because the app isn't code-signed yet: click **More info → Run anyway**.
 
 ## Using it

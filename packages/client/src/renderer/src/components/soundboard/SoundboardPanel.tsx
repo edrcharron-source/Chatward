@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { ServerFrame, SoundboardSound } from '@chatward/shared';
+import type { Member, ServerFrame, SoundboardSound } from '@chatward/shared';
 import { api } from '../../api/http';
 import { onFrame } from '../../api/ws';
 import { useSession } from '../../state/session';
@@ -7,8 +7,12 @@ import { useVoice } from '../../state/voice';
 import { forgetSound, playSound } from './playback';
 import UploadSoundDialog from './UploadSoundDialog';
 
+const NO_MEMBERS: Member[] = [];
+
 export default function SoundboardPanel({ serverId, channelId }: { serverId: string; channelId: string }) {
   const me = useSession((s) => s.user?.id);
+  const members = useSession((s) => s.servers.find((b) => b.server.id === serverId)?.members ?? NO_MEMBERS);
+  const myRole = members.find((m) => m.user.id === me)?.role;
   const inThisCall = useVoice((s) => s.channelId === channelId);
   const [sounds, setSounds] = useState<SoundboardSound[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -89,7 +93,7 @@ export default function SoundboardPanel({ serverId, channelId }: { serverId: str
               key={sound.id}
               sound={sound}
               playing={flashId === sound.id}
-              canDelete={sound.ownerId === me}
+              canDelete={sound.ownerId === me || myRole === 'owner' || myRole === 'admin'}
               onPlay={() => handlePlay(sound)}
               onDelete={() => handleDelete(sound)}
             />

@@ -29,15 +29,23 @@ interface Dev {
 
 interface DeviceKeys { deviceId: string; ecdhPublic: string; signPublic: string }
 
+/** Each device's ECDSA signing private key, which signs its MLS credentials. */
+const signPrivates = new Map<string, CryptoKey>();
+/** Stands in for the server's device list that clients check MLS credentials against. */
+const registeredSignKeys = new Map<string, string>();
+const devices: mls.DeviceDirectory = (deviceId) => registeredSignKeys.get(deviceId);
+
 async function makeDeviceKeys(): Promise<DeviceKeys> {
   const ecdh = await generateEcdh();
   const sign = await generateSigning();
-  return {
-    deviceId: crypto.randomUUID(),
-    ecdhPublic: toB64(await exportRawPublic(ecdh.publicKey)),
-    signPublic: toB64(await exportRawPublic(sign.publicKey)),
-  };
+  const deviceId = crypto.randomUUID();
+  const signPublic = toB64(await exportRawPublic(sign.publicKey));
+  signPrivates.set(deviceId, sign.privateKey);
+  registeredSignKeys.set(deviceId, signPublic);
+  return { deviceId, ecdhPublic: toB64(await exportRawPublic(ecdh.publicKey)), signPublic };
 }
+
+const newKeys = (deviceId: string) => mls.newMemberKeys({ deviceId, signPrivate: signPrivates.get(deviceId)! });
 
 /** The text channel under test, set once the server exists. */
 let CHANNEL = '';
@@ -78,7 +86,7 @@ async function uploadPool(dev: Dev, singleUse: number) {
   const items: { kp: string; lastResort?: boolean }[] = [];
   const made: [string, mls.MemberKeys][] = [];
   for (let i = 0; i <= singleUse; i++) {
-    const keys = await mls.newMemberKeys(dev.id);
+    const keys = await newKeys(dev.id);
     const kp = await mls.encodeKeyPackage(keys);
     items.push({ kp, lastResort: i === singleUse });
     made.push([kp, keys]);
@@ -116,7 +124,7 @@ async function joinFromServer(dev: Dev) {
   const welcome = unb64(mine[mine.length - 1].welcome);
   for (const keys of dev.pool.values()) {
     try {
-      dev.state.set(CHANNEL, await mls.joinFromWelcome(welcome, keys));
+      dev.state.set(CHANNEL, await mls.joinFromWelcome(welcome, keys, devices));
       return;
     } catch { /* not the KeyPackage this Welcome was made for */ }
   }
@@ -166,7 +174,7 @@ async function main() {
     log('registered alice (owner), bob and carol through invites; uploaded KeyPackage pools');
 
     // 1. First group creation, then add bob.
-    alice.state.set(CHANNEL, await mls.createMlsGroup(CHANNEL, await mls.newMemberKeys(alice.id)));
+    alice.state.set(CHANNEL, await mls.createMlsGroup(CHANNEL, await newKeys(alice.id), devices));
     const [bobKp] = (await claim(alice, bob.user)).filter((k) => k.deviceId === bob.id);
     const add1 = await mls.addMembers(alice.state.get(CHANNEL)!, [bobKp.kp]);
     const r1 = await postCommit(alice, 0, add1, [alice.id, bob.id], [bob.id]);
@@ -262,6 +270,70 @@ async function main() {
     assert.equal(stale.status, 409);
     assert.equal(stale.json.currentEpoch, 4);
     log('stale commit at epoch 0 refused with 409 and currentEpoch 4');
+
+    // 8. Moderation: revoked invites stop working, bans block rejoin until lifted.
+    const revoked = await invite(1);
+    const revokeRes = await api(alice.token, 'DELETE', `/api/servers/${serverId}/invites/${revoked}`);
+    assert.equal(revokeRes.status, 200, 'owner revokes an invite');
+    const listed = (await api(alice.token, 'GET', `/api/servers/${serverId}/invites`)).json.invites as { code: string }[];
+    assert.ok(!listed.some((i) => i.code === revoked), 'revoked invite is no longer listed');
+    const lateReg = await api(null, 'POST', '/api/auth/register', {
+      username: 'erin', displayName: 'Erin', password: PASSWORD, device: await makeDeviceKeys(), inviteCode: revoked,
+    });
+    assert.equal(lateReg.status, 403, 'revoked invite cannot be redeemed');
+    log('revoked invite listed as gone and refused on register');
+
+    const daveReg = (await api(null, 'POST', '/api/auth/register', {
+      username: 'dave', displayName: 'Dave', password: PASSWORD, device: await makeDeviceKeys(), inviteCode: await invite(5),
+    })).json;
+    const dave = { id: daveReg.user.id as string, token: daveReg.token as string };
+    const banRes = await api(alice.token, 'POST', `/api/servers/${serverId}/bans`, { userId: dave.id });
+    assert.equal(banRes.status, 200, 'owner bans dave');
+    const daveServers = (await api(dave.token, 'GET', '/api/servers')).json.servers as { server: { id: string } }[];
+    assert.ok(!daveServers.some((b) => b.server.id === serverId), 'banned dave is removed from the server');
+    const rejoin = await api(dave.token, 'POST', `/api/invites/${await invite(5)}/join`, {});
+    assert.equal(rejoin.status, 403, 'banned dave cannot rejoin with a fresh invite');
+    const bans = (await api(alice.token, 'GET', `/api/servers/${serverId}/bans`)).json.bans as { user: { id: string } }[];
+    assert.ok(bans.some((b) => b.user.id === dave.id), 'ban is listed');
+    log('ban removes dave and blocks a fresh invite; ban listed for admins');
+
+    const unban = await api(alice.token, 'DELETE', `/api/servers/${serverId}/bans/${dave.id}`);
+    assert.equal(unban.status, 200, 'owner lifts the ban');
+    const back = await api(dave.token, 'POST', `/api/invites/${await invite(5)}/join`, {});
+    assert.equal(back.status, 200, 'dave can join again after unban');
+    log('unban lets dave rejoin with an invite');
+
+    // 9. A junk Commit at epoch 4 is accepted (the server cannot verify MLS) but nobody can apply it.
+    // The stuck device drops it through reset, and a valid Commit then takes its place.
+    const junk = await api(bob.token, 'POST', `/api/groups/${CHANNEL}/commits`, {
+      deviceId: bob.id, epoch: 4, commit: b64(new Uint8Array([1, 2, 3, 4])), members: [alice.id, bob.id, bob2.id], welcomes: [],
+    });
+    assert.equal(junk.status, 200, 'server accepts a junk Commit it cannot verify');
+    await assert.rejects(mls.receive(alice.state.get(CHANNEL)!, new Uint8Array([1, 2, 3, 4])), 'alice cannot apply the junk');
+    const carolReset = await api(carol.token, 'POST', `/api/groups/${CHANNEL}/reset`, { deviceId: carol.id, epoch: 4 });
+    assert.equal(carolReset.status, 404, 'removed carol cannot reset the group');
+    const otherDevice = await api(alice.token, 'POST', `/api/groups/${CHANNEL}/reset`, { deviceId: bob.id, epoch: 4 });
+    assert.equal(otherDevice.status, 403, 'reset needs one of the caller\'s own devices');
+    const ahead = await api(alice.token, 'POST', `/api/groups/${CHANNEL}/reset`, { deviceId: alice.id, epoch: 9 });
+    assert.equal(ahead.status, 409, 'cannot reset past the current epoch');
+    assert.equal(ahead.json.currentEpoch, 5);
+    const reset = await api(alice.token, 'POST', `/api/groups/${CHANNEL}/reset`, { deviceId: alice.id, epoch: 4 });
+    assert.equal(reset.status, 200, 'alice drops the junk Commit');
+    assert.equal(reset.json.epoch, 4);
+    const afterReset = await api(alice.token, 'GET', `/api/groups/${CHANNEL}/commits?from=4`);
+    assert.equal(afterReset.json.epoch, 4);
+    assert.equal(afterReset.json.commits.length, 0, 'the junk Commit is gone');
+    // Alice kept her own state, so a valid Commit at epoch 4 is accepted and bob follows it.
+    const heal = await mls.selfUpdate(alice.state.get(CHANNEL)!);
+    const r8 = await postCommit(alice, 4, heal, [alice.id, bob.id, bob2.id], []);
+    assert.equal(r8.status, 200, 'valid Commit accepted at epoch 4 after the reset');
+    assert.equal(r8.json.epoch, 5);
+    alice.state.set(CHANNEL, heal.state);
+    bob.state.set(CHANNEL, (await mls.receive(bob.state.get(CHANNEL)!, heal.commit!)).state);
+    const healed = await mls.encryptMessage(alice.state.get(CHANNEL)!, new TextEncoder().encode('back in sync'));
+    alice.state.set(CHANNEL, healed.state);
+    assert.equal(new TextDecoder().decode((await mls.receive(bob.state.get(CHANNEL)!, healed.ciphertext)).plaintext!), 'back in sync');
+    log('junk Commit at epoch 4 cannot be applied; reset refused for outsiders and future epochs; after reset a valid Commit moves the group on');
 
     console.log('\nE2E MLS: all checks passed');
   } catch (err) {
