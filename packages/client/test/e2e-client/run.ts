@@ -244,6 +244,21 @@ async function main() {
     assert.ok(graceSees.includes('hello grace'), `grace reads after a late Commit: ${JSON.stringify(graceSees)}`);
     log('alice\'s Commit arrives after she gave up on it; she adopts the step she kept and grace can read');
 
+    // 5g. Alice creates a server, and the Commit that creates its group is held back, so she gives up on it. Nobody
+    // else is in the group yet, so no Welcome will ever come. When the Commit reaches the server late, alice must adopt
+    // the group from the step she kept instead of waiting forever.
+    const late = await alice.call('createServer', { name: 'Late' });
+    await alice.call('holdNextCommit');
+    await alice.call('sync'); // the group-creating Commit gets no answer and is kept
+    assert.equal((await alice.call('status', { channelId: late.channelId })).epoch, null, 'alice has no group while the create Commit is held');
+    await alice.call('sendHeldCommit'); // the create Commit reaches the server late
+    await alice.call('sync');
+    assert.equal((await alice.call('status', { channelId: late.channelId })).epoch, 1, 'alice adopts her late create Commit at epoch 1');
+    await alice.call('send', { channelId: late.channelId, text: 'creator after a late create' });
+    const lateSees = (await alice.call('read', { channelId: late.channelId })).texts;
+    assert.ok(lateSees.includes('creator after a late create'), `alice reads after adopting a late create: ${JSON.stringify(lateSees)}`);
+    log('alice\'s create Commit arrives after she gave up on it; she adopts the group and reads her channel');
+
     // Ten devices join a channel that already has a group. They are added four at a time, one Commit per batch, so no
     // Commit grows past the server's body limit. Alice's Commits (1 -> 4) go out in three batches.
     const big = await alice.call('createServer', { name: 'Big' });
