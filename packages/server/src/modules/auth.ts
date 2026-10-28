@@ -79,6 +79,18 @@ function upsertDevice(ctx: Ctx, userId: string, d: DeviceKeys): boolean {
   return true;
 }
 
+/** True if this device id is not yet registered to the user, so signing in with it adds a device. */
+function isNewDevice(ctx: Ctx, userId: string, deviceId: string): boolean {
+  return !ctx.db.prepare('SELECT 1 FROM devices WHERE device_id=? AND user_id=?').get(deviceId, userId);
+}
+
+/** Tells the account's signed-in devices that a new one was added, so the owner can spot a login they didn't make. */
+function announceNewDevice(ctx: Ctx, userId: string, deviceId: string): void {
+  const row = ctx.db.prepare('SELECT created_at FROM devices WHERE device_id=? AND user_id=?').get(deviceId, userId) as
+    { created_at: number } | undefined;
+  if (row) ctx.sendToUser(userId, { t: 'device.added', deviceId, createdAt: row.created_at });
+}
+
 function broadcastDevices(ctx: Ctx, userId: string): void {
   const devices = ctx.getDevices(userId);
   const serverIds = ctx.db.prepare('SELECT server_id FROM members WHERE user_id=?').all(userId) as { server_id: string }[];
@@ -216,7 +228,9 @@ export function register(app: Express, ctx: Ctx): void {
       : undefined;
     const ok = password !== '' && (await verify(row?.password_hash ?? (await dummyHash), password));
     if (!row || !ok) throw new ApiError(401, 'invalid username or password');
+    const newDevice = isNewDevice(ctx, row.id, device.deviceId);
     if (ctx.db.transaction(() => upsertDevice(ctx, row.id, device))()) broadcastDevices(ctx, row.id);
+    if (newDevice) announceNewDevice(ctx, row.id, device.deviceId);
     res.json({ token: ctx.signToken(row.id, device.deviceId), user: mustUser(ctx, row.id) });
   }));
 
@@ -274,6 +288,7 @@ export function register(app: Express, ctx: Ctx): void {
       ? (ctx.db.prepare('SELECT id FROM users WHERE username=?').get(username) as { id: string } | undefined)
       : undefined;
     const passwordHash = await hash(newPassword);
+    const newDevice = user ? isNewDevice(ctx, user.id, device.deviceId) : false;
     const devicesChanged = ctx.db.transaction(() => {
       const used = user
         ? ctx.db.prepare(`DELETE FROM password_resets WHERE user_id=? AND code_hash=? AND expires_at>? AND ${ISSUER_OWNS_SHARED_SERVER}`)
@@ -286,6 +301,7 @@ export function register(app: Express, ctx: Ctx): void {
       return upsertDevice(ctx, user.id, device);
     })();
     if (devicesChanged) broadcastDevices(ctx, user!.id);
+    if (newDevice) announceNewDevice(ctx, user!.id, device.deviceId);
     res.json({ token: ctx.signToken(user!.id, device.deviceId), user: mustUser(ctx, user!.id) });
     ctx.revokeSockets(user!.id);
   }));
