@@ -2,8 +2,9 @@ import { create } from 'zustand';
 import { LIMITS, type Attachment, type Message, type MessagePayload } from '@chatward/shared';
 import { api } from '../api/http';
 import { onFrame, sendFrame } from '../api/ws';
-import { buildLinkPreviews, extractUrls, uploadAttachment } from '../components/media';
+import { buildLinkPreviews, extractUrls, shrinkPreviewImage, uploadAttachment } from '../components/media';
 import { decryptMessage, encryptPayload, onKeysChanged } from '../crypto';
+import { fitPayload } from './fitPayload';
 import { onBeforeSignOut, refreshUnread, useSession } from './session';
 
 export type Gif = NonNullable<MessagePayload['gif']>;
@@ -178,8 +179,8 @@ async function buildPayload(text: string, attachments?: Attachment[], gif?: Gif)
 export async function sendMessage(channelId: string, input: { text: string; files: File[]; gif?: Gif }) {
   const me = requireMe();
   const attachments = input.files.length ? await Promise.all(input.files.map((f) => uploadAttachment(f))) : undefined;
-  const payload = await buildPayload(input.text, attachments, input.gif);
-  const { ciphertext, keyVersion } = await encryptPayload(channelId, me, payload);
+  const built = await buildPayload(input.text, attachments, input.gif);
+  const { payload, ciphertext, keyVersion } = await encryptWithinLimit(channelId, me, built);
   const attachmentIds = attachments?.map((a) => a.uploadId) ?? [];
   const { message } = await api.post<{ message: Message }>(`/api/channels/${channelId}/messages`, { ciphertext, keyVersion, attachmentIds });
   mergeMessages(channelId, [message]);
@@ -188,11 +189,16 @@ export async function sendMessage(channelId: string, input: { text: string; file
 
 export async function editMessage(m: Message, text: string) {
   const old = useChat.getState().payloads[m.id];
-  const payload = await buildPayload(text, old?.attachments, old?.gif);
-  const { ciphertext, keyVersion } = await encryptPayload(m.channelId, m.authorId, payload);
+  const built = await buildPayload(text, old?.attachments, old?.gif);
+  const { payload, ciphertext, keyVersion } = await encryptWithinLimit(m.channelId, m.authorId, built);
   const { message } = await api.patch<{ message: Message }>(`/api/messages/${m.id}`, { ciphertext, keyVersion });
   mergeMessages(m.channelId, [message]);
   useChat.setState((s) => ({ payloads: { ...s.payloads, [m.id]: payload } }));
+}
+
+/** Link-preview images can push a message past the server's ciphertext cap; fitPayload trims them first. */
+function encryptWithinLimit(channelId: string, authorId: string, payload: MessagePayload) {
+  return fitPayload(payload, (candidate) => encryptPayload(channelId, authorId, candidate), shrinkPreviewImage);
 }
 
 export async function deleteMessage(m: Message) {
