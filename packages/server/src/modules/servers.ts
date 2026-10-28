@@ -15,7 +15,7 @@ import type { AuthedRequest, Ctx } from '../ctx.js';
 import { newId } from '../db.js';
 import { soundsDirOf } from './soundboard.js';
 import { forgetWatchParty } from './watchparty.js';
-import { clearVoiceChannel, kickFromCall } from './voice.js';
+import { clearVoiceChannel, forgetChannelRemovals, forgetMemberRemovals, kickFromCall } from './voice.js';
 
 const { SERVER_NAME_MAX, CHANNEL_NAME_MAX } = LIMITS;
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -254,6 +254,7 @@ export function register(app: Express, ctx: Ctx): void {
     // Everyone in the voice channel is dropped first. Messages, keys and MLS state cascade with the row.
     clearVoiceChannel(ctx, channelId);
     ctx.db.prepare('DELETE FROM channels WHERE id=?').run(channelId);
+    forgetChannelRemovals(ctx, channelId);
     forgetWatchParty(channelId);
     ctx.broadcastToServer(serverId, { t: 'channel.delete', serverId, channelId });
     res.json({ ok: true });
@@ -283,6 +284,7 @@ export function register(app: Express, ctx: Ctx): void {
     const channelIds = ctx.db.prepare('SELECT id FROM channels WHERE server_id=?').all(serverId) as { id: string }[];
     for (const { id } of channelIds) forgetWatchParty(id);
     ctx.db.prepare('DELETE FROM servers WHERE id=?').run(serverId);
+    for (const { id } of channelIds) forgetChannelRemovals(ctx, id);
     pruneResetCodes(ctx);
     // Sound rows cascade with the server, but their audio files live on disk and would be left behind.
     const soundsDir = soundsDirOf(ctx.config.dataDir);
@@ -300,6 +302,7 @@ export function register(app: Express, ctx: Ctx): void {
     if (!role) throw new ApiError(404, 'server not found');
     if (role === 'owner') bad('the owner cannot leave; delete the server instead');
     ctx.db.prepare('DELETE FROM members WHERE server_id=? AND user_id=?').run(serverId, uid);
+    forgetMemberRemovals(ctx, serverId, uid);
     pruneResetCodes(ctx);
     // Sent after the delete, so the leaving user needs an explicit send.
     const leave: ServerFrame = { t: 'member.leave', serverId, userId: uid };
@@ -500,6 +503,7 @@ export function pruneResetCodes(ctx: Ctx): void {
 /** Takes a user out of the server: membership, their live socket, and any voice call they are in. */
 export function removeMember(ctx: Ctx, serverId: string, targetId: string): void {
   ctx.db.prepare('DELETE FROM members WHERE server_id=? AND user_id=?').run(serverId, targetId);
+  forgetMemberRemovals(ctx, serverId, targetId);
   pruneResetCodes(ctx);
   // Sent after the delete, so the kicked user needs an explicit send.
   const leave: ServerFrame = { t: 'member.leave', serverId, userId: targetId };

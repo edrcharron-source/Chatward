@@ -50,21 +50,37 @@ const REJOIN_RETRY_MS = [3_000, 6_000, 12_000];
 // for as long as the call is up, since the server slot is gone until a rejoin succeeds. Tell the person once it has
 // gone on for about 5 minutes.
 const LOOKUP_RETRY_MS = 30_000;
+// The notice shows once the slow-schedule failures reach this count, or once they have lasted this long, whichever is first.
 const LOOKUP_NOTICE_TRIES = 10;
+const LOOKUP_NOTICE_MS = 5 * 60_000;
 const LOOKUP_NOTICE = 'Voice server is not responding. Retrying until it recovers';
 let rejoinRetry: ReturnType<typeof setTimeout> | undefined;
 // Counts resumeVoiceSlot calls. A rejoin POST still in flight when a newer call starts (a reconnect during an outage)
 // must do nothing when it returns, or it would start a second retry chain next to the new one.
 let rejoinGeneration = 0;
+// Slow-schedule failures since the rejoin started failing. Kept across reconnects, so a flapping connection still gets the
+// notice. Cleared on a successful rejoin and when the call ends.
+let slowFailures = 0;
+let firstSlowFailureAt = 0;
+
+/** Counts one failure on the slow schedule and shows the "not responding" notice once the outage has lasted long enough. */
+function noteSlowFailure(): void {
+  if (slowFailures === 0) firstSlowFailureAt = Date.now();
+  slowFailures++;
+  if (slowFailures >= LOOKUP_NOTICE_TRIES || Date.now() - firstSlowFailureAt >= LOOKUP_NOTICE_MS) {
+    useVoice.setState({ notice: LOOKUP_NOTICE });
+  }
+}
 
 /**
  * Called when the websocket reconnects. If we are still in a call, the server may have lost our voice slot (it is
  * in memory, so a restart clears it). Put the slot back so others see us and kicks reach us. The media is untouched.
  * If the server refuses (we were removed, lost access, or the call moved to another device), hang up: the call is no
  * longer ours on the server.
- * The two kinds of retry have their own counters: a LiveKit lookup outage must not use up the "not in the room" tries.
+ * The fast retries have their own counter, and the slow-schedule failures are counted in module state, so a reconnect does
+ * not restart the count.
  */
-export function resumeVoiceSlot(retryTries = 0, lookupTries = 0): void {
+export function resumeVoiceSlot(retryTries = 0): void {
   clearTimeout(rejoinRetry);
   const generation = ++rejoinGeneration;
   const { channelId, room } = useVoice.getState();
@@ -75,8 +91,10 @@ export function resumeVoiceSlot(retryTries = 0, lookupTries = 0): void {
   const { muted, deafened } = useVoice.getState();
   void api.post('/api/voice/rejoin', { channelId, muted, deafened })
     .then(() => {
-      // The slot is back, so the "not responding" notice from an earlier outage no longer applies.
-      if (!isStale() && useVoice.getState().notice === LOOKUP_NOTICE) useVoice.setState({ notice: null });
+      if (isStale()) return;
+      // The slot is back, so the "not responding" notice and the failure count from an earlier outage no longer apply.
+      slowFailures = 0;
+      if (useVoice.getState().notice === LOOKUP_NOTICE) useVoice.setState({ notice: null });
     }, (e) => {
       if (isStale()) return;
       console.warn('could not restore voice slot', e);
@@ -86,9 +104,9 @@ export function resumeVoiceSlot(retryTries = 0, lookupTries = 0): void {
       if (!refused) {
         // A 503 says nothing about the media, so keep retrying on the slow schedule while the call goes on.
         if (lookupDown) {
-          if (lookupTries === LOOKUP_NOTICE_TRIES) useVoice.setState({ notice: LOOKUP_NOTICE });
+          noteSlowFailure();
           rejoinRetry = setTimeout(() => {
-            if (useVoice.getState().room === room) resumeVoiceSlot(retryTries, lookupTries + 1);
+            if (useVoice.getState().room === room) resumeVoiceSlot(retryTries);
           }, LOOKUP_RETRY_MS);
           return;
         }
@@ -96,15 +114,16 @@ export function resumeVoiceSlot(retryTries = 0, lookupTries = 0): void {
         const delay = REJOIN_RETRY_MS[retryTries];
         if (delay !== undefined) {
           rejoinRetry = setTimeout(() => {
-            if (useVoice.getState().room === room) resumeVoiceSlot(retryTries + 1, lookupTries);
+            if (useVoice.getState().room === room) resumeVoiceSlot(retryTries + 1);
           }, delay);
           return;
         }
         // Out of fast tries. Only "not in the room" hangs up, since that call is not coming back. Anything else keeps
         // the call going on the slow schedule until a rejoin gets through.
         if (!notInRoom) {
+          noteSlowFailure();
           rejoinRetry = setTimeout(() => {
-            if (useVoice.getState().room === room) resumeVoiceSlot(retryTries, lookupTries + 1);
+            if (useVoice.getState().room === room) resumeVoiceSlot(retryTries);
           }, LOOKUP_RETRY_MS);
           return;
         }
@@ -303,6 +322,7 @@ export const useVoice = create<VoiceState>((set, get) => {
       })
       .on(RoomEvent.Disconnected, () => {
         if (!current()) return; // our own leave() already cleaned up
+        slowFailures = 0;
         endMeter();
         closeAudio();
         set({ room: null, status: 'error', error: 'Voice connection lost', speaking: [], cameraOn: false, screenOn: false });
@@ -315,6 +335,7 @@ export const useVoice = create<VoiceState>((set, get) => {
   async function hangUp(notifyServer = true): Promise<void> {
     const { room, channelId } = get();
     if (!channelId) return;
+    slowFailures = 0;
     set({ room: null, channelId: null, serverId: null, status: 'idle', error: null, cameraOn: false, screenOn: false, theaterKey: null, speaking: [], notice: null });
     activeKeyProvider = null;
     activeKeyId = '';

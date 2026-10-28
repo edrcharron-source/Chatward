@@ -137,8 +137,14 @@ function isRemoved(ctx: Ctx, channelId: string, userId: string): boolean {
   return !!ctx.db.prepare('SELECT 1 FROM voice_removals WHERE room_id=? AND user_id=?').get(channelId, userId);
 }
 
-/** Marks a removal that outlived its window, and keeps ending the LiveKit session until LiveKit confirms it is gone. */
+/**
+ * Marks a removal that LiveKit did not confirm, and keeps ending the LiveKit session until it does. Skipped once the
+ * channel or the account is deleted, since a mark for it could never clear.
+ */
 function markRemoved(ctx: Ctx, channelId: string, userId: string): void {
+  const channelLive = ctx.db.prepare('SELECT 1 FROM channels WHERE id=?').get(channelId);
+  const userLive = ctx.db.prepare('SELECT 1 FROM users WHERE id=? AND deleted_at IS NULL').get(userId);
+  if (!channelLive || !userLive) return;
   ctx.db.prepare('INSERT OR IGNORE INTO voice_removals (room_id, user_id) VALUES (?, ?)').run(channelId, userId);
   startRemovalRetry(ctx, channelId, userId);
 }
@@ -147,7 +153,8 @@ function startRemovalRetry(ctx: Ctx, channelId: string, userId: string): void {
   const key = `${channelId}:${userId}`;
   if (removalRetries.has(key)) return;
   const retry = setInterval(() => {
-    void removeFromRoom(ctx, channelId, userId, true).then((gone) => { if (gone) stopRemovalRetry(channelId, userId); });
+    // LiveKit has the user gone, so the mark has done its job and is dropped. Otherwise it would stay for good.
+    void removeFromRoom(ctx, channelId, userId, true).then((gone) => { if (gone) clearRemoved(ctx, channelId, userId); });
   }, REMOVAL_RETRY_MS);
   retry.unref();
   removalRetries.set(key, retry);
@@ -165,6 +172,29 @@ function stopRemovalRetry(channelId: string, userId: string): void {
 function clearRemoved(ctx: Ctx, channelId: string, userId: string): void {
   ctx.db.prepare('DELETE FROM voice_removals WHERE room_id=? AND user_id=?').run(channelId, userId);
   stopRemovalRetry(channelId, userId);
+}
+
+/** Drops the removal marks matching a SQL condition and ends their retries. Nothing else clears them once their owner is gone. */
+function dropRemovals(ctx: Ctx, condition: string, params: string[]): void {
+  const rows = ctx.db.prepare(`SELECT room_id, user_id FROM voice_removals WHERE ${condition}`).all(...params) as
+    { room_id: string; user_id: string }[];
+  ctx.db.prepare(`DELETE FROM voice_removals WHERE ${condition}`).run(...params);
+  for (const { room_id, user_id } of rows) stopRemovalRetry(room_id, user_id);
+}
+
+/** For a deleted channel: drops every mark in it. */
+export function forgetChannelRemovals(ctx: Ctx, channelId: string): void {
+  dropRemovals(ctx, 'room_id=?', [channelId]);
+}
+
+/** For a deleted account: drops every mark it has. */
+export function forgetUserRemovals(ctx: Ctx, userId: string): void {
+  dropRemovals(ctx, 'user_id=?', [userId]);
+}
+
+/** For a membership that ends: drops the user's marks in the server's voice channels. A removal that follows writes its own. */
+export function forgetMemberRemovals(ctx: Ctx, serverId: string, userId: string): void {
+  dropRemovals(ctx, 'user_id=? AND room_id IN (SELECT id FROM channels WHERE server_id=?)', [userId, serverId]);
 }
 
 // How long a rejoin waits for LiveKit to say whether the user is in the room before it gives up on the lookup.
@@ -208,24 +238,33 @@ function noteLookup(ctx: Ctx, result: 'in' | 'absent' | 'unknown'): void {
 /**
  * For a removal (kick, ban, leave from the server, deleted channel or device): ends the session now, then keeps ending it
  * for TOKEN_TTL_MS. The window runs from the removal, not from the join, because LiveKit's refreshed tokens can outlive
- * the join token. Failing while the user is not in the room is expected.
+ * the join token. Failing while the user is not in the room is expected. An attempt that LiveKit does not confirm writes the
+ * removal mark at once, so a restart inside the window still keeps the user out.
  */
 function evictFromRoom(ctx: Ctx, channelId: string, userId: string): void {
-  removeFromRoom(ctx, channelId, userId);
   stopEviction(channelId, userId);
   const key = `${channelId}:${userId}`;
   // Rooms the user never got a token for cannot be rejoined on an old token, so no repeat.
-  if (!lastToken.has(key)) return;
-  const repeat = setInterval(() => removeFromRoom(ctx, channelId, userId, true), EVICT_EVERY_MS);
+  if (!lastToken.has(key)) {
+    void removeFromRoom(ctx, channelId, userId);
+    return;
+  }
+  const attempt = (quiet: boolean): void => {
+    void removeFromRoom(ctx, channelId, userId, quiet).then((gone) => {
+      // Only while this removal is still in force. A fresh token ends it, and its late answer must not mark the user again.
+      if (!gone && evictions.has(key)) markRemoved(ctx, channelId, userId);
+    });
+  };
+  const repeat = setInterval(() => attempt(true), EVICT_EVERY_MS);
   const end = setTimeout(() => {
     stopEviction(channelId, userId);
     lastToken.delete(key);
-    markRemoved(ctx, channelId, userId);
   }, TOKEN_TTL_MS);
   // Timers must not keep the process alive on shutdown.
   repeat.unref();
   end.unref();
   evictions.set(key, { repeat, end });
+  attempt(false);
 }
 
 /** Ends the repeated removal for a room, e.g. once the user has a fresh token for it. */
