@@ -51,6 +51,7 @@
       "allowToChangeInstallationDirectory": true,
       "artifactName": "Chatward-Setup.exe"
     },
-    "electronVersion": "33.4.11"
+    "electronVersion": "33.4.11",
+    "npmRebuild": false
   }
 }
