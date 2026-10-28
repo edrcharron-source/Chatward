@@ -49,7 +49,10 @@ export const useChat = create<ChatState>(() => ({
 }));
 
 // On logout, drop the cache so the next person on this computer never sees the previous account's messages or drafts.
-onBeforeSignOut(() => useChat.setState({ channels: {}, payloads: {}, typing: {}, drafts: {} }));
+onBeforeSignOut(() => {
+  useChat.setState({ channels: {}, payloads: {}, typing: {}, drafts: {} });
+  catchUpRun.clear();
+});
 
 const channelOf = (id: string) => useChat.getState().channels[id] ?? EMPTY;
 
@@ -71,6 +74,7 @@ export function forgetChatChannels(channelIds: string[]) {
       delete typing[id];
       delete drafts[id];
       catchUpWanted.delete(id);
+      catchUpRun.delete(id);
       olderWanted.delete(id);
     }
     return { channels, payloads, typing, drafts };
