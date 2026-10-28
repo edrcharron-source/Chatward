@@ -10,6 +10,7 @@ import ChannelSettingsDialog from './ChannelSettingsDialog';
 import InvitesDialog from './InvitesDialog';
 import Dialog from './Dialog';
 import ServerSettingsDialog from './ServerSettingsDialog';
+import StatusPicker from './StatusPicker';
 import { errorText, isAdmin } from './util';
 import './servers.css';
 import ProfileTrigger from '../profile/ProfileTrigger';
@@ -22,6 +23,7 @@ export default function ChannelList({ onOpenSettings, onReload }: { onOpenSettin
   const activeServerId = useSession((s) => s.activeServerId);
   const activeChannelId = useSession((s) => s.activeChannelId);
   const voiceOccupants = useSession((s) => s.voiceOccupants);
+  const myStatus = useSession((s) => s.myStatus);
   const unread = useSession((s) => s.unread);
   const joinedVoiceId = useVoice((s) => s.channelId);
   const speaking = useVoice((s) => s.speaking);
@@ -155,10 +157,16 @@ export default function ChannelList({ onOpenSettings, onReload }: { onOpenSettin
       <VoiceDock />
 
       <div className="cw-user-panel">
-        {user && <Avatar user={user} size={32} />}
+        {user && (
+          <span className="cw-avatar-wrap">
+            <Avatar user={user} size={32} />
+            <span className={`cw-dot ${myStatus}`} aria-hidden="true" />
+          </span>
+        )}
         <div className="cw-user-text">
           <strong>{user?.displayName ?? ''}</strong>
           <span className="muted">@{user?.username ?? ''}</span>
+          <StatusPicker />
         </div>
         <button type="button" className="icon" title="Settings" aria-label="Settings" onClick={onOpenSettings}>⚙</button>
       </div>

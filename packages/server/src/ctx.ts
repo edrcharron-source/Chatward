@@ -19,6 +19,8 @@ export interface Ctx {
   sendToUser: (userId: string, frame: ServerFrame) => void;
   /** callbacks fired when a user's last socket closes (e.g. voice cleanup) */
   onDisconnect: ((userId: string) => void)[];
+  /** callbacks fired when a user opens a socket, including a reconnect */
+  onConnect: ((userId: string) => void)[];
   getUser: (userId: string) => User | null;
   getDevices: (userId: string) => DeviceKeys[];
   getMembers: (serverId: string) => Member[];

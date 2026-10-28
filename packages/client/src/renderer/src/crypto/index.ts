@@ -72,9 +72,13 @@ function emptyVault(): Vault {
   return { channels: {}, groups: {}, shared: {}, pool: {} };
 }
 
-/** Each account on this PC has its own device keys and vault. The key is the server address plus the username. */
+/**
+ * Each account on this PC has its own device keys and vault. The key is the server address plus the username.
+ * The server treats usernames case-insensitively ("Ed" and "ed" are one account), so the username is lowercased here
+ * no matter how it was typed or how the server returns it.
+ */
 export function accountKey(serverUrl: string, username: string): string {
-  return `${serverUrl.replace(/\/$/, '')}|${username}`;
+  return `${serverUrl.replace(/\/$/, '')}|${username.toLowerCase()}`;
 }
 
 const deviceStore = (acct: string) => `crypto.device.v2|${acct}`;
@@ -106,22 +110,16 @@ async function useDevice(stored: StoredDevice): Promise<void> {
   device = { deviceId: stored.deviceId, ecdhPublic: stored.ecdhPublic, signPublic: stored.signPublic };
 }
 
-/** Loads this account's device and vault, creating them on first use. The first account to start after an update takes over the legacy device and vault. */
+/** Loads this account's device and vault, creating an empty account on first use. Never reads the legacy device: that one is only adopted after the server confirms it belongs to this account. */
 async function loadAccount(acct: string): Promise<{ stored: StoredDevice; vault: Vault }> {
   const own = await readStored<StoredDevice>(deviceStore(acct));
   if (own) return { stored: own, vault: (await readStored<Vault>(vaultStore(acct))) ?? emptyVault() };
 
-  const legacy = await readStored<StoredDevice>(LEGACY_DEVICE_STORE);
-  const stored = legacy ?? (await newStoredDevice());
-  const legacyVault = legacy ? await readStored<Vault>(LEGACY_VAULT_STORE) : null;
-  const loaded = { stored, vault: legacyVault ?? emptyVault() };
+  const stored = await newStoredDevice();
+  const vault = emptyVault();
   await secureStore().set(deviceStore(acct), JSON.stringify(stored));
-  await secureStore().set(vaultStore(acct), JSON.stringify(loaded.vault));
-  if (legacy) {
-    await secureStore().set(LEGACY_DEVICE_STORE, '');
-    await secureStore().set(LEGACY_VAULT_STORE, '');
-  }
-  return loaded;
+  await secureStore().set(vaultStore(acct), JSON.stringify(vault));
+  return { stored, vault };
 }
 
 /** Load or create this account's device keypairs (stored via window.chatward.secureStore). Registers nothing on the server. */
@@ -139,18 +137,40 @@ export function initDevice(acct: string): Promise<DeviceKeys> {
   });
 }
 
-/** Give the current account a brand-new device and an empty vault. Used when the server says this device id belongs to another account. */
-export function renewDevice(): Promise<DeviceKeys> {
+/** The device and vault from before per-account keys, if this PC still has them. Not used until the server accepts the device. */
+export async function legacyDevice(): Promise<DeviceKeys | null> {
+  const stored = await readStored<StoredDevice>(LEGACY_DEVICE_STORE);
+  return stored ? { deviceId: stored.deviceId, ecdhPublic: stored.ecdhPublic, signPublic: stored.signPublic } : null;
+}
+
+/** Gives the current account the legacy device and vault. Call only after the server accepted the legacy device for this account. */
+export function adoptLegacyDevice(): Promise<DeviceKeys> {
   return serial(async () => {
-    const stored = await newStoredDevice();
+    const stored = await readStored<StoredDevice>(LEGACY_DEVICE_STORE);
+    if (!stored) return getDevice();
+    const legacyVault = (await readStored<Vault>(LEGACY_VAULT_STORE)) ?? emptyVault();
     await secureStore().set(deviceStore(currentAccount()), JSON.stringify(stored));
     await useDevice(stored);
-    vault = emptyVault();
+    vault = legacyVault;
     groupStates.clear();
     aesCache.clear();
     await persistVault();
+    await secureStore().set(LEGACY_DEVICE_STORE, '');
+    await secureStore().set(LEGACY_VAULT_STORE, '');
     return getDevice();
   });
+}
+
+/** On app start: if the server says the legacy device belongs to the active account, adopt it. Any other answer, or no server, leaves the account's own device in place. */
+export async function adoptLegacyIfOwned(): Promise<void> {
+  const legacy = await legacyDevice();
+  if (!legacy) return;
+  try {
+    const { owned } = await api.get<{ owned: boolean }>(`/api/me/devices/${legacy.deviceId}`);
+    if (owned) await adoptLegacyDevice();
+  } catch {
+    // Offline or the check failed: keep the account's own device and try again next start.
+  }
 }
 
 /** Public keys of this device (valid after initDevice). Sent in register/login bodies. */

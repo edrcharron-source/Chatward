@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import type { Channel, Member } from '@chatward/shared';
 import { api } from './api/http';
-import { connectWs, disconnectWs, onFrame } from './api/ws';
+import { connectWs, disconnectWs, onFrame, sendFrame } from './api/ws';
 import { useSession, type ServerBundle } from './state/session';
 import { useSettings, applyTheme } from './state/settings';
 import { useVoice, rekeyActiveCall } from './state/voice';
-import { accountKey, initDevice, syncChannelKeys, handleEnvelope, handleMemberLeave } from './crypto';
+import { accountKey, adoptLegacyIfOwned, initDevice, syncChannelKeys, handleEnvelope, handleMemberLeave } from './crypto';
 import { installNotifications } from './notify/notify';
 import AuthScreen from './components/auth/AuthScreen';
 import ServerSidebar from './components/servers/ServerSidebar';
@@ -93,6 +93,7 @@ function Shell() {
     (async () => {
       const { serverUrl, user } = useSession.getState();
       await initDevice(accountKey(serverUrl, user?.username ?? ''));
+      await adoptLegacyIfOwned();
       await loadServers();
       connectWs();
       stopNotify = installNotifications();
@@ -102,7 +103,10 @@ function Shell() {
           case 'ready': {
             // Every (re)connect: rebuild what may have changed while the socket was down.
             st.setUser(f.user);
-            useSession.setState({ presence: f.presence });
+            // The server counts every new connection as online, so put back the status we picked.
+            const mine = st.myStatus;
+            useSession.setState({ presence: { ...f.presence, [f.user.id]: mine } });
+            if (mine !== 'online') sendFrame({ t: 'presence', status: mine });
             if (seenReady) loadServers().catch((e) => console.error('Could not refresh after reconnect', e));
             seenReady = true;
             break;
@@ -136,7 +140,12 @@ function Shell() {
             if (b) st.upsertServer({ ...b, server: f.server });
             break;
           }
-          case 'server.delete': st.removeServer(f.serverId); break;
+          case 'server.delete': {
+            // the server has already dropped every voice slot, so end our own call in it too
+            if (useVoice.getState().serverId === f.serverId) void useVoice.getState().leave();
+            st.removeServer(f.serverId);
+            break;
+          }
           case 'member.role': {
             const b = st.servers.find((x) => x.server.id === f.serverId);
             if (b) st.upsertServer({ ...b, members: b.members.map((m) => (m.user.id === f.userId ? { ...m, role: f.role } : m)) });
@@ -148,8 +157,21 @@ function Shell() {
             void syncChannelKeys(useSession.getState().servers);
             break;
           }
+          case 'voice.kicked': {
+            // only the call they are in matters; a kick for another channel is stale or already left
+            if (useVoice.getState().channelId !== f.channelId) break;
+            void useVoice.getState().leave()
+              .then(() => useVoice.setState({ notice: 'An admin removed you from the call' }))
+              .catch((e) => console.error(e));
+            break;
+          }
           case 'member.leave': {
-            if (f.userId === st.user?.id) { st.removeServer(f.serverId); break; }
+            if (f.userId === st.user?.id) {
+              // we left (or were kicked), so end any call we had in this server
+              if (useVoice.getState().serverId === f.serverId) void useVoice.getState().leave();
+              st.removeServer(f.serverId);
+              break;
+            }
             const b = st.servers.find((x) => x.server.id === f.serverId);
             if (b) st.upsertServer({ ...b, members: b.members.filter((m) => m.user.id !== f.userId) });
             void handleMemberLeave(f.serverId, f.userId, useSession.getState().servers)

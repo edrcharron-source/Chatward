@@ -1,4 +1,6 @@
 import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
 import type { Express, NextFunction, Request, Response } from 'express';
 import {
   DEFAULT_VOICE_BITRATE_KBPS,
@@ -11,7 +13,8 @@ import {
 } from '@chatward/shared';
 import type { AuthedRequest, Ctx } from '../ctx.js';
 import { newId } from '../db.js';
-import { clearVoiceChannel, kickFromCall, leaveVoice } from './voice.js';
+import { soundsDirOf } from './soundboard.js';
+import { clearVoiceChannel, kickFromCall } from './voice.js';
 
 const { SERVER_NAME_MAX, CHANNEL_NAME_MAX } = LIMITS;
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -254,16 +257,22 @@ export function register(app: Express, ctx: Ctx): void {
   }));
 
   // Owner only. Members are told first, because the delete removes them from the member list.
-  app.delete('/api/servers/:id', ctx.requireAuth, route((req, res) => {
+  app.delete('/api/servers/:id', ctx.requireAuth, route(async (req, res) => {
     const serverId = String(req.params.id);
     const role = ctx.roleIn(serverId, userIdOf(req));
     if (!role) throw new ApiError(404, 'server not found');
     if (role !== 'owner') throw new ApiError(403, 'only the owner can delete a server');
     const members = ctx.db.prepare('SELECT user_id FROM members WHERE server_id=?').all(serverId) as { user_id: string }[];
+    const soundIds = ctx.db.prepare('SELECT id FROM sounds WHERE server_id=?').all(serverId) as { id: string }[];
     const gone: ServerFrame = { t: 'server.delete', serverId };
     ctx.broadcastToServer(serverId, gone);
-    for (const { user_id } of members) leaveVoice(ctx, user_id);
+    for (const { user_id } of members) kickFromCall(ctx, serverId, user_id);
     ctx.db.prepare('DELETE FROM servers WHERE id=?').run(serverId);
+    // Sound rows cascade with the server, but their audio files live on disk and would be left behind.
+    const soundsDir = soundsDirOf(ctx.config.dataDir);
+    await Promise.all(soundIds.map(({ id }) =>
+      fs.promises.rm(path.join(soundsDir, id), { force: true }).catch((err) => console.error(`sound ${id} cleanup failed`, err)),
+    ));
     res.json({ ok: true });
   }));
 
@@ -279,7 +288,7 @@ export function register(app: Express, ctx: Ctx): void {
     const leave: ServerFrame = { t: 'member.leave', serverId, userId: uid };
     ctx.broadcastToServer(serverId, leave);
     ctx.sendToUser(uid, leave);
-    leaveVoice(ctx, uid);
+    kickFromCall(ctx, serverId, uid);
     res.json({ ok: true });
   }));
 
@@ -297,6 +306,28 @@ export function register(app: Express, ctx: Ctx): void {
     if (targetRole === 'owner') bad('the owner role cannot be changed');
     ctx.db.prepare('UPDATE members SET role=? WHERE server_id=? AND user_id=?').run(role, serverId, targetId);
     ctx.broadcastToServer(serverId, { t: 'member.role', serverId, userId: targetId, role });
+    res.json({ ok: true });
+  }));
+
+  // Owner only: hand the server to another member. The old owner becomes an admin.
+  app.post('/api/servers/:id/transfer', ctx.requireAuth, route((req, res) => {
+    const serverId = String(req.params.id);
+    const uid = userIdOf(req);
+    const actorRole = ctx.roleIn(serverId, uid);
+    if (!actorRole) throw new ApiError(404, 'server not found');
+    if (actorRole !== 'owner') throw new ApiError(403, 'only the owner can transfer a server');
+    const targetId = bodyOf(req).userId;
+    if (typeof targetId !== 'string' || !targetId) bad('userId is required');
+    if (targetId === uid) bad('you already own this server');
+    const targetRole = ctx.roleIn(serverId, targetId);
+    if (!targetRole) throw new ApiError(404, 'member not found');
+    ctx.db.transaction(() => {
+      ctx.db.prepare('UPDATE members SET role=? WHERE server_id=? AND user_id=?').run('admin', serverId, uid);
+      ctx.db.prepare('UPDATE members SET role=? WHERE server_id=? AND user_id=?').run('owner', serverId, targetId);
+      ctx.db.prepare('UPDATE servers SET owner_id=? WHERE id=?').run(targetId, serverId);
+    })();
+    ctx.broadcastToServer(serverId, { t: 'member.role', serverId, userId: uid, role: 'admin' });
+    ctx.broadcastToServer(serverId, { t: 'member.role', serverId, userId: targetId, role: 'owner' });
     res.json({ ok: true });
   }));
 

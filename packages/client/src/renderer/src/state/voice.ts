@@ -29,6 +29,8 @@ export interface VoiceState {
   speaking: string[];
   /** bumps on any room change so views re-read participants and tracks */
   version: number;
+  /** a short note shown after a call ends for a reason the user did not choose, e.g. a kick; cleared on the next join */
+  notice: string | null;
   join: (serverId: string, channelId: string) => Promise<void>;
   leave: () => Promise<void>;
   toggleMute: () => void;
@@ -153,7 +155,12 @@ export const useVoice = create<VoiceState>((set, get) => {
         if (current()) set({ speaking: speakingList(speakers.map((p) => p.identity)) });
       })
       .on(RoomEvent.Reconnecting, () => { if (current()) set({ status: 'connecting' }); })
-      .on(RoomEvent.Reconnected, () => { if (current()) set({ status: 'connected' }); })
+      .on(RoomEvent.Reconnected, () => {
+        if (!current()) return;
+        set({ status: 'connected' });
+        // the group may have moved on while the call was reconnecting, which rekeyActiveCall skipped
+        void rekeyActiveCall().catch((e) => console.warn('rekey after reconnect failed', e));
+      })
       .on(RoomEvent.Disconnected, () => {
         if (!current()) return; // our own leave() already cleaned up
         endMeter();
@@ -168,7 +175,7 @@ export const useVoice = create<VoiceState>((set, get) => {
   async function hangUp(): Promise<void> {
     const { room, channelId } = get();
     if (!channelId) return;
-    set({ room: null, channelId: null, serverId: null, status: 'idle', error: null, cameraOn: false, screenOn: false, theaterKey: null, speaking: [] });
+    set({ room: null, channelId: null, serverId: null, status: 'idle', error: null, cameraOn: false, screenOn: false, theaterKey: null, speaking: [], notice: null });
     endMeter();
     closeAudio();
     demoVoice.leave(); // no-op outside a demo call
@@ -187,7 +194,7 @@ export const useVoice = create<VoiceState>((set, get) => {
 
   return {
     channelId: null, serverId: null, status: 'idle', error: null, room: null,
-    muted: false, deafened: false, demoLoopback: true, cameraOn: false, screenOn: false, theaterKey: null, speaking: [], version: 0,
+    muted: false, deafened: false, demoLoopback: true, cameraOn: false, screenOn: false, theaterKey: null, speaking: [], version: 0, notice: null,
 
     join: async (serverId, channelId) => {
       const cur = get();
@@ -251,6 +258,8 @@ export const useVoice = create<VoiceState>((set, get) => {
         await room.localParticipant.publishTrack(mic, { source: Track.Source.Microphone, ...micPublish(bitrate) });
         if (stale()) { abandon(channelId, room, mic); return; }
         set({ status: 'connected' });
+        // a group change during connect was skipped (status was 'connecting'), so check the key once connected
+        void rekeyActiveCall().catch((e) => console.warn('rekey after join failed', e));
         syncMic();
         startMeter();
       } catch (e) {

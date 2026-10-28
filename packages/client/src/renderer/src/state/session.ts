@@ -12,6 +12,8 @@ interface SessionState {
   activeChannelId: string | null;
   /** userId -> presence */
   presence: Record<string, 'online' | 'idle' | 'dnd' | 'offline'>;
+  /** The status this user picked for themselves. Kept for this run only; a restart starts back at online. */
+  myStatus: 'online' | 'idle' | 'dnd';
   /** channelId -> userIds currently in that voice channel */
   voiceOccupants: Record<string, string[]>;
   /** channelId -> unread count (text) */
@@ -28,6 +30,7 @@ interface SessionState {
   removeChannel: (serverId: string, channelId: string) => void;
   setActive: (serverId: string | null, channelId: string | null) => void;
   setPresence: (userId: string, s: SessionState['presence'][string]) => void;
+  setMyStatus: (status: SessionState['myStatus']) => void;
   setVoiceOccupants: (channelId: string, userIds: string[]) => void;
   bumpUnread: (channelId: string) => void;
   clearUnread: (channelId: string) => void;
@@ -41,11 +44,11 @@ export const useSession = create<SessionState>((set, get) => ({
   token: saved.token ?? null,
   user: saved.user ?? null,
   servers: [], activeServerId: null, activeChannelId: null,
-  presence: {}, voiceOccupants: {}, unread: {},
+  presence: {}, myStatus: 'online', voiceOccupants: {}, unread: {},
   setServerUrl: (serverUrl) => { set({ serverUrl }); persist(); },
   setAuth: (token, user) => { set({ token, user }); persist(); },
   setUser: (user) => { set({ user }); persist(); },
-  logout: () => { set({ token: null, user: null, servers: [], activeServerId: null, activeChannelId: null, voiceOccupants: {}, unread: {} }); persist(); },
+  logout: () => { set({ token: null, user: null, servers: [], activeServerId: null, activeChannelId: null, myStatus: 'online', voiceOccupants: {}, unread: {} }); persist(); },
   setServers: (servers) => {
     const s = get();
     const active = servers.find((x) => x.server.id === s.activeServerId) ?? servers[0];
@@ -67,6 +70,7 @@ export const useSession = create<SessionState>((set, get) => ({
   }),
   setActive: (activeServerId, activeChannelId) => set({ activeServerId, activeChannelId }),
   setPresence: (id, st) => set((s) => ({ presence: { ...s.presence, [id]: st } })),
+  setMyStatus: (myStatus) => set((s) => ({ myStatus, presence: s.user ? { ...s.presence, [s.user.id]: myStatus } : s.presence })),
   setVoiceOccupants: (ch, ids) => set((s) => ({ voiceOccupants: { ...s.voiceOccupants, [ch]: ids } })),
   bumpUnread: (ch) => set((s) => ({ unread: { ...s.unread, [ch]: (s.unread[ch] ?? 0) + 1 } })),
   clearUnread: (ch) => set((s) => { const u = { ...s.unread }; delete u[ch]; return { unread: u }; }),

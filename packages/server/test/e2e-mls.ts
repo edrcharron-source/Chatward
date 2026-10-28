@@ -303,6 +303,17 @@ async function main() {
     assert.equal(back.status, 200, 'dave can join again after unban');
     log('unban lets dave rejoin with an invite');
 
+    // Ownership transfer: only the owner can hand it over, and the old owner drops to admin.
+    const notOwner = await api(bob.token, 'POST', `/api/servers/${serverId}/transfer`, { userId: bob.user });
+    assert.equal(notOwner.status, 403, 'a non-owner cannot transfer');
+    const handOver = await api(alice.token, 'POST', `/api/servers/${serverId}/transfer`, { userId: bob.user });
+    assert.equal(handOver.status, 200, 'owner hands the server to bob');
+    const aliceAgain = await api(alice.token, 'POST', `/api/servers/${serverId}/transfer`, { userId: alice.user });
+    assert.equal(aliceAgain.status, 403, 'former owner can no longer transfer');
+    const handBack = await api(bob.token, 'POST', `/api/servers/${serverId}/transfer`, { userId: alice.user });
+    assert.equal(handBack.status, 200, 'new owner can hand it back');
+    log('ownership transfer is owner-only, moves the owner role, and can be handed back');
+
     // 9. A junk Commit at epoch 4 is accepted (the server cannot verify MLS) but nobody can apply it.
     // The stuck device drops it through reset, and a valid Commit then takes its place.
     const junk = await api(bob.token, 'POST', `/api/groups/${CHANNEL}/commits`, {
@@ -334,6 +345,19 @@ async function main() {
     alice.state.set(CHANNEL, healed.state);
     assert.equal(new TextDecoder().decode((await mls.receive(bob.state.get(CHANNEL)!, healed.ciphertext)).plaintext!), 'back in sync');
     log('junk Commit at epoch 4 cannot be applied; reset refused for outsiders and future epochs; after reset a valid Commit moves the group on');
+
+    // Deleting a server removes its soundboard audio from disk, not just the database rows.
+    const doomedId = (await api(alice.token, 'POST', '/api/servers', { name: 'Doomed' })).json.server.id as string;
+    const oggFile = Buffer.concat([Buffer.from('OggS'), Buffer.alloc(16)]);
+    const upload = await fetch(`${BASE}/api/servers/${doomedId}/sounds?name=boop&emoji=x&durationMs=500`, {
+      method: 'POST', headers: { authorization: `Bearer ${alice.token}`, 'content-type': 'audio/ogg' }, body: oggFile,
+    });
+    const soundId = (await upload.json()).sound.id as string;
+    const soundFile = path.join(dataDir, 'sounds', soundId);
+    assert.ok(fs.existsSync(soundFile), 'sound file written for the doomed server');
+    assert.equal((await api(alice.token, 'DELETE', `/api/servers/${doomedId}`)).status, 200);
+    assert.ok(!fs.existsSync(soundFile), 'sound file removed when its server is deleted');
+    log('deleting a server removes its soundboard files from disk');
 
     console.log('\nE2E MLS: all checks passed');
   } catch (err) {

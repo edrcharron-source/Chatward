@@ -138,6 +138,7 @@
 .cw-user-text { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.2; }
 .cw-user-text strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-strong); }
 .cw-user-text span { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cw-status-select { margin-top: 2px; max-width: 100%; font-size: 11px; padding: 1px 4px; background: var(--bg-0); color: var(--text-muted); border: 1px solid var(--border); border-radius: var(--radius-sm); }
 
 /* Member list */
 .cw-members {

@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
-import { LIMITS, type User } from '@chatward/shared';
+import { LIMITS, type DeviceKeys, type User } from '@chatward/shared';
 import { api, ApiError } from '../../api/http';
-import { accountKey, getDevice, initDevice, renewDevice } from '../../crypto';
+import { accountKey, adoptLegacyDevice, getDevice, initDevice, legacyDevice } from '../../crypto';
 import { enterDemo } from '../../demo';
 import { useSession } from '../../state/session';
 import './auth.css';
@@ -41,27 +41,27 @@ export default function AuthScreen() {
     try {
       useSession.getState().setServerUrl(url);
       await initDevice(accountKey(url, name));
-      const send = () => {
-        const device = getDevice();
-        return mode === 'login'
-          ? api.post<{ token: string; user: User }>('/api/auth/login', { username: name, password, device })
-          : api.post<{ token: string; user: User }>('/api/auth/register', {
-              username: name,
-              displayName: displayName.trim(),
-              password,
-              device,
-              inviteCode: inviteCode.trim() || undefined,
-            });
-      };
+      const send = (device: DeviceKeys) => mode === 'login'
+        ? api.post<{ token: string; user: User }>('/api/auth/login', { username: name, password, device })
+        : api.post<{ token: string; user: User }>('/api/auth/register', {
+            username: name,
+            displayName: displayName.trim(),
+            password,
+            device,
+            inviteCode: inviteCode.trim() || undefined,
+          });
+      // An old PC device is only adopted once the server accepts it for this account. If another account owns it, the server refuses and this account keeps its own device.
+      const legacy = await legacyDevice();
       let res: { token: string; user: User };
+      let adopt = legacy !== null;
       try {
-        res = await send();
+        res = await send(legacy ?? getDevice());
       } catch (err) {
-        // This PC's device for the account belongs to another account here. Give this account its own device and retry once.
-        if (!(err instanceof ApiError && err.message === 'device id is already registered')) throw err;
-        await renewDevice();
-        res = await send();
+        if (!legacy || !(err instanceof ApiError && err.message === 'device id is already registered')) throw err;
+        adopt = false;
+        res = await send(getDevice());
       }
+      if (adopt) await adoptLegacyDevice();
       useSession.getState().setAuth(res.token, res.user);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not reach the server.');

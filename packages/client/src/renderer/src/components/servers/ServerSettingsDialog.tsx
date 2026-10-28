@@ -1,12 +1,13 @@
 import { useState, type FormEvent } from 'react';
 import { LIMITS, type Member } from '@chatward/shared';
 import { api } from '../../api/http';
+import { isDemo } from '../../demo';
 import { useSession } from '../../state/session';
 import Dialog from './Dialog';
 import { errorText } from './util';
 
 /**
- * Server-wide settings. Everyone can leave. Admins can rename. The owner can make admins and delete the server.
+ * Server-wide settings. Everyone can leave. Admins can rename. The owner can make admins, hand the server to another member, and delete the server.
  * Removing people is handled elsewhere in the member list.
  */
 export default function ServerSettingsDialog({ serverId, onClose, onReload }: { serverId: string; onClose: () => void; onReload: () => Promise<void> }) {
@@ -15,6 +16,7 @@ export default function ServerSettingsDialog({ serverId, onClose, onReload }: { 
   const [name, setName] = useState(bundle?.server.name ?? '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [transferTo, setTransferTo] = useState('');
 
   if (!bundle) return null;
   const serverName = bundle.server.name;
@@ -57,6 +59,16 @@ export default function ServerSettingsDialog({ serverId, onClose, onReload }: { 
           members: latest.members.map((m) => (m.user.id === member.user.id ? { ...m, role } : m)),
         });
       }
+    });
+  }
+
+  async function transfer() {
+    const target = bundle?.members.find((m) => m.user.id === transferTo);
+    if (!target) return;
+    if (!window.confirm(`Make ${target.user.displayName} the owner of ${serverName}? You will become an admin and cannot undo this yourself.`)) return;
+    await run(async () => {
+      await api.post(`/api/servers/${serverId}/transfer`, { userId: target.user.id });
+      setTransferTo('');
     });
   }
 
@@ -110,16 +122,35 @@ export default function ServerSettingsDialog({ serverId, onClose, onReload }: { 
         </section>
       )}
 
+      {isOwner && (
+        <section aria-label="Transfer ownership">
+          <h3>Transfer ownership</h3>
+          <p className="cw-hint">Give this server to another member. You become an admin, and only the new owner can delete the server or transfer it again.</p>
+          <div className="cw-dialog-actions">
+            <select value={transferTo} disabled={busy || others.length === 0} onChange={(e) => setTransferTo(e.target.value)} aria-label="New owner">
+              <option value="">Choose a member</option>
+              {others.map((m) => (
+                <option key={m.user.id} value={m.user.id}>{m.user.displayName} (@{m.user.username})</option>
+              ))}
+            </select>
+            <button type="button" onClick={() => void transfer()} disabled={busy || !transferTo}>Transfer ownership</button>
+          </div>
+        </section>
+      )}
+
       {error && <p className="cw-error" role="alert">{error}</p>}
 
-      <div className="cw-dialog-actions">
-        {isOwner ? (
-          <button type="button" className="danger" onClick={() => void remove()} disabled={busy}>Delete server</button>
-        ) : (
-          <button type="button" className="danger" onClick={() => void leave()} disabled={busy}>Leave server</button>
-        )}
-      </div>
-      {isOwner && <p className="cw-hint">The owner cannot leave. Deleting the server is the only way to close it.</p>}
+      {/* The offline demo keeps its one server, so the owner gets no delete button there. */}
+      {!(isOwner && isDemo()) && (
+        <div className="cw-dialog-actions">
+          {isOwner ? (
+            <button type="button" className="danger" onClick={() => void remove()} disabled={busy}>Delete server</button>
+          ) : (
+            <button type="button" className="danger" onClick={() => void leave()} disabled={busy}>Leave server</button>
+          )}
+        </div>
+      )}
+      {isOwner && !isDemo() && <p className="cw-hint">The owner cannot leave. Deleting the server is the only way to close it.</p>}
     </Dialog>
   );
 }

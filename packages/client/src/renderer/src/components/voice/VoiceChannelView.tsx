@@ -111,8 +111,15 @@ export default function VoiceChannelView({ channel, theaterOnly = false }: { cha
 
   if (theaterOnly) {
     return (
-      <div style={{ height: '100%', minHeight: 0, padding: 12, boxSizing: 'border-box' }}>
-        {theaterLayout || <div className="muted" style={{ textAlign: 'center', paddingTop: 40 }}>Nobody is sharing a screen right now.</div>}
+      <div style={{ height: '100%', minHeight: 0, padding: 12, boxSizing: 'border-box', display: 'flex', gap: 12 }}>
+        <div style={{ flex: 1, minWidth: 0, minHeight: 0, height: '100%' }}>
+          {theaterLayout || <div className="muted" style={{ textAlign: 'center', paddingTop: 40 }}>Nobody is sharing a screen right now.</div>}
+        </div>
+        {inCall && (
+          <aside style={{ flex: '0 0 260px', minHeight: 0, overflow: 'auto', borderLeft: '1px solid var(--border)' }}>
+            <SoundboardPanel serverId={channel.serverId} channelId={channel.id} />
+          </aside>
+        )}
         {menu.element}
       </div>
     );
