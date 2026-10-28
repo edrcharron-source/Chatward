@@ -12,25 +12,23 @@
     "dist:win": "electron-vite build && electron-builder --win nsis portable --publish never",
     "test:crypto": "esbuild src/renderer/src/crypto/crypto.test.ts --bundle --platform=node --format=esm --outfile=out/test/crypto.test.mjs --log-level=warning && node --test out/test/crypto.test.mjs"
   },
-  "dependencies": {
-    "@chatward/shared": "*",
-    "emoji-picker-element": "^1.26.0",
-    "emoji-picker-element-data": "^1.6.0",
-    "livekit-client": "^2.5.0",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "react-easy-crop": "^5.0.8",
-    "zustand": "^5.0.0"
-  },
   "devDependencies": {
+    "@chatward/shared": "*",
     "@types/react": "^18.3.11",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.2",
     "electron": "^33.0.0",
     "electron-builder": "^25.1.8",
     "electron-vite": "^2.3.0",
+    "emoji-picker-element": "^1.26.0",
+    "emoji-picker-element-data": "^1.6.0",
+    "livekit-client": "^2.5.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-easy-crop": "^5.0.8",
     "typescript": "^5.6.0",
-    "vite": "^5.4.8"
+    "vite": "^5.4.8",
+    "zustand": "^5.0.0"
   },
   "build": {
     "appId": "app.chatward.client",
