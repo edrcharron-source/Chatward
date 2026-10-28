@@ -238,6 +238,18 @@ async function main() {
     bob2.state.set(CHANNEL, got.state);
     log('message round trip: alice to bob second device');
 
+    // `after` pages forward from a known message, oldest first, so a reconnecting client can walk up to the newest.
+    for (let i = 0; i < 4; i++) {
+      const r = await api(alice.token, 'POST', `/api/channels/${CHANNEL}/messages`, { ciphertext: b64(new Uint8Array([i + 1])), keyVersion: 4 });
+      assert.equal(r.status, 201, 'filler message accepted');
+    }
+    const all = (await api(bob2.token, 'GET', `/api/channels/${CHANNEL}/messages`)).json.messages as { id: string }[];
+    const page1 = (await api(bob2.token, 'GET', `/api/channels/${CHANNEL}/messages?after=${all[0].id}&limit=2`)).json.messages as { id: string }[];
+    const page2 = (await api(bob2.token, 'GET', `/api/channels/${CHANNEL}/messages?after=${page1[1].id}&limit=2`)).json.messages as { id: string }[];
+    assert.deepEqual([...page1, ...page2].map((m) => m.id), all.slice(1).map((m) => m.id), 'after pages through every newer message');
+    assert.equal((await api(bob2.token, 'GET', `/api/channels/${CHANNEL}/messages?after=${all[0].id}&before=${all[0].id}`)).status, 400, 'after and before cannot be combined');
+    log('history paging with after walks forward oldest first');
+
     // 5. Kick carol: the server removes her membership, then a remaining device commits the Remove.
     const kick = await api(alice.token, 'DELETE', `/api/servers/${serverId}/members/${carol.user}`);
     assert.equal(kick.status, 200, 'owner kicks carol');

@@ -363,7 +363,13 @@ on('GET', /^\/api\/channels\/([^/]+)\/messages$/, (r) => {
   const ch = requireChannel(r.match[1]);
   const list = world.messages[ch.id] ?? [];
   const before = r.url.searchParams.get('before');
+  const after = r.url.searchParams.get('after');
   const limit = Math.min(50, Number(r.url.searchParams.get('limit')) || 50);
+  if (after) {
+    // Demo ids are "m-<n>" and count up, so compare the number: the cursor may already be deleted.
+    const num = (id: string) => Number(id.split('-').pop());
+    return json({ messages: list.filter((m) => num(m.id) > num(after)).slice(0, limit) });
+  }
   const end = before ? list.findIndex((m) => m.id === before) : list.length;
   return json({ messages: list.slice(Math.max(0, end - limit), Math.max(0, end)) });
 });
