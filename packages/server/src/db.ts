@@ -230,5 +230,9 @@ export function openDb(): DB {
   // When a device last had a socket open. Devices added after this are replayed to it on its next connect.
   const deviceCols = new Set((db.pragma('table_info(devices)') as { name: string }[]).map((c) => c.name));
   if (!deviceCols.has('last_seen')) db.exec('ALTER TABLE devices ADD COLUMN last_seen INTEGER');
+  // The id a client chose for a message it sends. A repeat of the same id from the same author returns the first copy.
+  const messageCols = new Set((db.pragma('table_info(messages)') as { name: string }[]).map((c) => c.name));
+  if (!messageCols.has('client_id')) db.exec('ALTER TABLE messages ADD COLUMN client_id TEXT');
+  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_messages_client ON messages(author_id, client_id) WHERE client_id IS NOT NULL');
   return db;
 }
