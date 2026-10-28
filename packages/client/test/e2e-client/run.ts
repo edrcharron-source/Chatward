@@ -64,8 +64,8 @@ async function main() {
   const bob = new Device('bob');
   let failed = false;
   try {
-    await alice.call('init', { serverUrl: BASE });
-    await bob.call('init', { serverUrl: BASE });
+    await alice.call('init', { serverUrl: BASE, username: 'alice' });
+    await bob.call('init', { serverUrl: BASE, username: 'bob' });
 
     // 1. Device A registers as the first user and creates a server. Its sync creates the channel group.
     await alice.call('register', { username: 'alice' });
@@ -116,6 +116,16 @@ async function main() {
     const bobDecrypt = await bob.call('decrypt', { message: secret });
     assert.equal(bobDecrypt.text, null, 'the kicked bob cannot decrypt the new message');
     log('alice kicks bob; a Remove is committed, and bob cannot decrypt the next message');
+
+    // A second account on the same PC gets its own device, and alice's group state is still there when she switches back.
+    const epochOnPc = (await alice.call('status', { channelId })).epoch;
+    await alice.call('init', { serverUrl: BASE, username: 'carol' });
+    const carolInvite = await alice.call('invite', { serverId });
+    await alice.call('register', { username: 'carol', inviteCode: carolInvite.code });
+    log('a second account on the same PC registers with its own device');
+    await alice.call('init', { serverUrl: BASE, username: 'alice' });
+    assert.equal((await alice.call('status', { channelId })).epoch, epochOnPc, "alice's group state survives switching accounts");
+    log("switching back to the first account on the same PC keeps its group state");
 
     console.log('\nE2E client: all checks passed');
   } catch (err) {

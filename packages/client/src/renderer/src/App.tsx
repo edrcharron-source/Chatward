@@ -5,7 +5,7 @@ import { connectWs, disconnectWs, onFrame } from './api/ws';
 import { useSession, type ServerBundle } from './state/session';
 import { useSettings, applyTheme } from './state/settings';
 import { useVoice } from './state/voice';
-import { initDevice, syncChannelKeys, handleEnvelope, handleMemberLeave } from './crypto';
+import { accountKey, initDevice, syncChannelKeys, handleEnvelope, handleMemberLeave } from './crypto';
 import { installNotifications } from './notify/notify';
 import AuthScreen from './components/auth/AuthScreen';
 import ServerSidebar from './components/servers/ServerSidebar';
@@ -90,7 +90,8 @@ function Shell() {
     let off: (() => void) | undefined;
     let stopNotify: (() => void) | undefined;
     (async () => {
-      await initDevice();
+      const { serverUrl, user } = useSession.getState();
+      await initDevice(accountKey(serverUrl, user?.username ?? ''));
       await loadServers();
       connectWs();
       stopNotify = installNotifications();

@@ -35,15 +35,17 @@ interface Vault {
   pool: Record<string, mls.StoredKeyPackage>;
 }
 
-const DEVICE_STORE = 'crypto.device.v1';
-const VAULT_STORE = 'crypto.vault.v2';
+// Before accounts had their own keys, the PC's single device and vault lived under these two keys.
+const LEGACY_DEVICE_STORE = 'crypto.device.v1';
+const LEGACY_VAULT_STORE = 'crypto.vault.v2';
 /** Refill the single-use KeyPackage pool when the server reports fewer than this. */
 const KEYPACKAGE_LOW_WATER = 5;
 const KEYPACKAGE_BATCH = 10;
 
+let account: string | null = null;
 let device: DeviceKeys | null = null;
 let privates: { ecdh: CryptoKey; sign: CryptoKey } | null = null;
-let vault: Vault = { channels: {}, groups: {}, shared: {}, pool: {} };
+let vault: Vault = emptyVault();
 const aesCache = new Map<string, Promise<CryptoKey>>();
 const groupStates = new Map<string, ClientState>();
 const listeners = new Set<() => void>();
@@ -66,34 +68,88 @@ async function readStored<T>(key: string): Promise<T | null> {
   return raw ? (JSON.parse(raw) as T) : null;
 }
 
-function persistVault(): Promise<void> {
-  return secureStore().set(VAULT_STORE, JSON.stringify(vault));
+function emptyVault(): Vault {
+  return { channels: {}, groups: {}, shared: {}, pool: {} };
 }
 
-async function createDevice(): Promise<StoredDevice> {
+/** Each account on this PC has its own device keys and vault. The key is the server address plus the username. */
+export function accountKey(serverUrl: string, username: string): string {
+  return `${serverUrl.replace(/\/$/, '')}|${username}`;
+}
+
+const deviceStore = (acct: string) => `crypto.device.v2|${acct}`;
+const vaultStore = (acct: string) => `crypto.vault.v2|${acct}`;
+
+function currentAccount(): string {
+  if (account === null) throw new Error('No account is active; call initDevice() first');
+  return account;
+}
+
+function persistVault(): Promise<void> {
+  return secureStore().set(vaultStore(currentAccount()), JSON.stringify(vault));
+}
+
+async function newStoredDevice(): Promise<StoredDevice> {
   const ecdh = await generateEcdh();
   const sign = await generateSigning();
-  const stored: StoredDevice = {
+  return {
     deviceId: crypto.randomUUID(),
     ecdhPublic: toB64(await exportRawPublic(ecdh.publicKey)),
     signPublic: toB64(await exportRawPublic(sign.publicKey)),
     ecdhPrivate: await exportJwk(ecdh.privateKey),
     signPrivate: await exportJwk(sign.privateKey),
   };
-  await secureStore().set(DEVICE_STORE, JSON.stringify(stored));
-  return stored;
 }
 
-/** Load or create this device's keypairs (stored via window.chatward.secureStore). Registers nothing on the server. */
-export function initDevice(): Promise<DeviceKeys> {
+async function useDevice(stored: StoredDevice): Promise<void> {
+  privates = { ecdh: await importEcdhPrivate(stored.ecdhPrivate), sign: await importSignPrivate(stored.signPrivate) };
+  device = { deviceId: stored.deviceId, ecdhPublic: stored.ecdhPublic, signPublic: stored.signPublic };
+}
+
+/** Loads this account's device and vault, creating them on first use. The first account to start after an update takes over the legacy device and vault. */
+async function loadAccount(acct: string): Promise<{ stored: StoredDevice; vault: Vault }> {
+  const own = await readStored<StoredDevice>(deviceStore(acct));
+  if (own) return { stored: own, vault: (await readStored<Vault>(vaultStore(acct))) ?? emptyVault() };
+
+  const legacy = await readStored<StoredDevice>(LEGACY_DEVICE_STORE);
+  const stored = legacy ?? (await newStoredDevice());
+  const legacyVault = legacy ? await readStored<Vault>(LEGACY_VAULT_STORE) : null;
+  const loaded = { stored, vault: legacyVault ?? emptyVault() };
+  await secureStore().set(deviceStore(acct), JSON.stringify(stored));
+  await secureStore().set(vaultStore(acct), JSON.stringify(loaded.vault));
+  if (legacy) {
+    await secureStore().set(LEGACY_DEVICE_STORE, '');
+    await secureStore().set(LEGACY_VAULT_STORE, '');
+  }
+  return loaded;
+}
+
+/** Load or create this account's device keypairs (stored via window.chatward.secureStore). Registers nothing on the server. */
+export function initDevice(acct: string): Promise<DeviceKeys> {
   return serial(async () => {
-    if (!device) {
-      const stored = (await readStored<StoredDevice>(DEVICE_STORE)) ?? (await createDevice());
-      privates = { ecdh: await importEcdhPrivate(stored.ecdhPrivate), sign: await importSignPrivate(stored.signPrivate) };
-      device = { deviceId: stored.deviceId, ecdhPublic: stored.ecdhPublic, signPublic: stored.signPublic };
-      vault = (await readStored<Vault>(VAULT_STORE)) ?? vault;
+    if (acct !== account || !device) {
+      const loaded = await loadAccount(acct);
+      await useDevice(loaded.stored);
+      vault = loaded.vault;
+      account = acct;
+      groupStates.clear();
+      aesCache.clear();
     }
-    return device;
+    return getDevice();
+  });
+}
+
+/** Give the current account a brand-new device and an empty vault. Used when the server says this device id belongs to another account. */
+export function renewDevice(): Promise<DeviceKeys> {
+  return serial(async () => {
+    const stored = await newStoredDevice();
+    await secureStore().set(deviceStore(currentAccount()), JSON.stringify(stored));
+    await useDevice(stored);
+    vault = emptyVault();
+    groupStates.clear();
+    aesCache.clear();
+    await persistVault();
+    return getDevice();
   });
 }
 

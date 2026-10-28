@@ -5,21 +5,23 @@ import { createHash, randomBytes } from 'node:crypto';
 import readline from 'node:readline';
 import { api } from '../../src/renderer/src/api/http';
 import {
-  decryptBlob, decryptMessage, encryptBlob, encryptPayload, getDevice, initDevice, syncChannelKeys,
+  accountKey, decryptBlob, decryptMessage, encryptBlob, encryptPayload, getDevice, initDevice, syncChannelKeys,
 } from '../../src/renderer/src/crypto';
 import { useSession, type ServerBundle } from '../../src/renderer/src/state/session';
 import { secureStoreContents } from './shim';
 
 const PASSWORD = 'correct-horse-1';
+let accountId = '';
 const sha256 = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
 
 interface Message { id: string; channelId: string; authorId: string; keyVersion: number; ciphertext: string }
 interface Attachment { uploadId: string; name: string; mime: string; size: number; key: string; iv: string }
 
 const handlers: Record<string, (args: any) => Promise<unknown>> = {
-  async init({ serverUrl }) {
+  async init({ serverUrl, username }) {
     useSession.setState({ serverUrl });
-    const device = await initDevice();
+    accountId = accountKey(serverUrl, username);
+    const device = await initDevice(accountId);
     return { deviceId: device.deviceId };
   },
 
@@ -55,7 +57,7 @@ const handlers: Record<string, (args: any) => Promise<unknown>> = {
 
   /** Epoch of this device's view of the channel group, read from the vault it persisted. */
   async status({ channelId }) {
-    const vault = JSON.parse(secureStoreContents.get('crypto.vault.v2') ?? '{}');
+    const vault = JSON.parse(secureStoreContents.get(`crypto.vault.v2|${accountId}`) ?? '{}');
     return { epoch: vault.groups?.[channelId]?.epoch ?? null };
   },
 
