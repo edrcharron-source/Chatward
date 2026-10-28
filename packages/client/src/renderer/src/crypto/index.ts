@@ -7,7 +7,7 @@ import type { ClientState } from 'ts-mls';
 import { api, ApiError } from '../api/http';
 import { isDemo } from '../demo';
 import { demoDecode, demoEncode } from '../demo/codec';
-import { useSession, type ServerBundle } from '../state/session';
+import { isLiveChannel, useSession, type ServerBundle } from '../state/session';
 import { openEnvelope, sealEnvelope } from './envelope';
 import * as mls from './mls';
 import {
@@ -418,6 +418,8 @@ function groupOf(channelId: string): ClientState | null {
  * would come back one epoch behind and could never apply our own Commit again.
  */
 async function setGroup(channelId: string, state: ClientState, epoch: number): Promise<void> {
+  // A sync that was already running can finish after the channel was removed. Its group must not come back.
+  if (!isLiveChannel(channelId)) return;
   groupStates.set(channelId, state);
   vault.groups[channelId] = { epoch, state: toB64(mls.encodeGroup(state) as Bytes as Uint8Array<ArrayBuffer>) };
   putKey(channelId, epoch + 1, await mls.historyKey(state));

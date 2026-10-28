@@ -112,6 +112,11 @@ export const useSession = create<SessionState>((set, get) => ({
 }));
 
 /** Pulls unread counts from the server. Covers messages that arrived while the app was closed or disconnected. */
+/** True while the account's server list still holds the channel. A removed, left or deleted channel is not live. */
+export function isLiveChannel(channelId: string): boolean {
+  return useSession.getState().servers.some((b) => b.channels.some((c) => c.id === channelId));
+}
+
 export async function refreshUnread() {
   const { unread } = await api.get<{ unread: Record<string, number> }>('/api/unread');
   const st = useSession.getState();
