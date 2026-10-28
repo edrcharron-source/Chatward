@@ -421,6 +421,16 @@ async function main() {
     assert.ok(!claimAfter.some((k) => k.deviceId === bob2.id), 'removed device is no longer offered for new groups');
     log('a device can be listed and removed, and is then cut off from new keys');
 
+    // A removed device's keys stay in the group's device list, so its old Commits still verify for a peer that restarts.
+    // The device itself can no longer post Commits.
+    const seenAfterDelete = await api(alice.token, 'GET', `/api/groups/${CHANNEL}/devices`);
+    assert.ok(seenAfterDelete.json.devices.some((d: DeviceKeys) => d.deviceId === bob2.id && d.signPublic), 'deleted bob2 is still listed with its keys');
+    const bob2Commit = await api(bob2.token, 'POST', `/api/groups/${CHANNEL}/commits`, {
+      deviceId: bob2.id, epoch: 0, commit: b64(new Uint8Array([1, 2, 3])), members: [], welcomes: [],
+    });
+    assert.equal(bob2Commit.status, 403, 'removed device cannot post a Commit');
+    log('a removed device keeps its keys for old Commits, but cannot post new ones');
+
     console.log('\nE2E MLS: all checks passed');
   } catch (err) {
     failed = true;
