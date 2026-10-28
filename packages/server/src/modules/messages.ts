@@ -26,6 +26,7 @@ interface EnvelopeRow {
 }
 
 const MAX_ENVELOPES_PER_REQUEST = 500;
+const MAX_ATTACHMENTS = 10; // matches the composer's file limit
 const ENVELOPE_FIELD_MAX = 2048;
 const SIGNATURE_MAX = 512;
 
@@ -73,6 +74,10 @@ export function register(app: Express, ctx: Ctx): void {
     'SELECT * FROM messages WHERE channel_id=? AND id<? ORDER BY id DESC LIMIT ?');
   const insertMessage = db.prepare(
     'INSERT INTO messages (id, channel_id, author_id, created_at, key_version, ciphertext) VALUES (?,?,?,?,?,?)');
+  // Only uploads the caller made for this purpose, and not already attached to another message.
+  const attachableUpload = db.prepare(
+    'SELECT 1 FROM uploads WHERE id=? AND owner_id=? AND tracked=1 AND message_id IS NULL');
+  const attachUpload = db.prepare('UPDATE uploads SET message_id=? WHERE id=?');
   const updateMessage = db.prepare(
     'UPDATE messages SET ciphertext=?, key_version=?, edited_at=? WHERE id=?');
   const deleteMessage = db.prepare('DELETE FROM messages WHERE id=?');
@@ -131,9 +136,15 @@ export function register(app: Express, ctx: Ctx): void {
     const userId = (req as AuthedRequest).userId;
     const ch = textChannelFor(userId, req.params.id, res);
     if (!ch) return;
-    const { ciphertext, keyVersion } = (req.body ?? {}) as { ciphertext?: unknown; keyVersion?: unknown };
+    const { ciphertext, keyVersion, attachmentIds = [] } = (req.body ?? {}) as
+      { ciphertext?: unknown; keyVersion?: unknown; attachmentIds?: unknown };
     if (!validCiphertext(ciphertext)) return void bad(res, 'invalid ciphertext');
     if (!validKeyVersion(keyVersion)) return void bad(res, 'invalid keyVersion');
+    if (!Array.isArray(attachmentIds) || attachmentIds.length > MAX_ATTACHMENTS) return void bad(res, 'invalid attachmentIds');
+    if (new Set(attachmentIds).size !== attachmentIds.length) return void bad(res, 'invalid attachmentIds');
+    if (!attachmentIds.every((id) => typeof id === 'string' && ID.test(id) && attachableUpload.get(id, userId))) {
+      return void bad(res, 'invalid attachmentIds');
+    }
 
     const row: MessageRow = {
       id: newId(),
@@ -144,7 +155,10 @@ export function register(app: Express, ctx: Ctx): void {
       key_version: keyVersion,
       ciphertext,
     };
-    insertMessage.run(row.id, row.channel_id, row.author_id, row.created_at, row.key_version, row.ciphertext);
+    db.transaction(() => {
+      insertMessage.run(row.id, row.channel_id, row.author_id, row.created_at, row.key_version, row.ciphertext);
+      for (const id of attachmentIds as string[]) attachUpload.run(row.id, id);
+    })();
     const message = toMessage(row);
     ctx.broadcastToServer(ch.serverId, { t: 'message.new', message });
     res.status(201).json({ message });
