@@ -325,7 +325,9 @@ export const useVoice = create<VoiceState>((set, get) => {
         slowFailures = 0;
         endMeter();
         closeAudio();
-        set({ room: null, status: 'error', error: 'Voice connection lost', speaking: [], cameraOn: false, screenOn: false });
+        // The "not responding" notice says the call is retrying, which stops once the call has dropped.
+        const notice = get().notice === LOOKUP_NOTICE ? null : get().notice;
+        set({ room: null, status: 'error', error: 'Voice connection lost', speaking: [], cameraOn: false, screenOn: false, notice });
         const channelId = get().channelId;
         if (channelId) void api.post('/api/voice/leave', { channelId }).catch(() => {});
       });

@@ -48,10 +48,18 @@ export const useChat = create<ChatState>(() => ({
   setDraft: (channelId, text) => useChat.setState((s) => ({ drafts: { ...s.drafts, [channelId]: text } })),
 }));
 
-// On logout, drop the cache so the next person on this computer never sees the previous account's messages or drafts.
-onBeforeSignOut(() => {
+function clearChatCache() {
   useChat.setState({ channels: {}, payloads: {}, typing: {}, drafts: {} });
+  catchUpWanted.clear();
   catchUpRun.clear();
+  olderWanted.clear();
+}
+
+// On logout, drop the cache so the next person on this computer never sees the previous account's messages or drafts.
+onBeforeSignOut(clearChatCache);
+// logout() runs after the hooks, and a history load can finish in between. Clear again once the session is gone.
+useSession.subscribe((s, prev) => {
+  if (prev.token && !s.token) clearChatCache();
 });
 
 const channelOf = (id: string) => useChat.getState().channels[id] ?? EMPTY;
@@ -257,13 +265,15 @@ export async function catchUp(channelId: string) {
 
 /** Each reconnect starts a new run per channel. An older run that is still retrying gives up once a newer one starts. */
 const catchUpRun = new Map<string, number>();
+// Shared by every channel and never reset, so a run number is never handed out twice, even after a channel's entry is deleted.
+let catchUpSeq = 0;
 
 /**
  * A reconnect's catch-up can fail on a slow or briefly unavailable server. It is tried again with growing waits,
  * and a channel the account no longer has is left alone. A 403 or 404 will not change, so it is not retried.
  */
 async function catchUpWithRetry(channelId: string) {
-  const run = (catchUpRun.get(channelId) ?? 0) + 1;
+  const run = ++catchUpSeq;
   catchUpRun.set(channelId, run);
   const stillWanted = () => catchUpRun.get(channelId) === run && isLiveChannel(channelId);
   for (let attempt = 0; ; attempt++) {

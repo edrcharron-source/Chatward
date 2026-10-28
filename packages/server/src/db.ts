@@ -240,6 +240,11 @@ export function openDb(): DB {
   // The id a client chose for a message it sends. A repeat of the same id from the same author returns the first copy.
   const messageCols = new Set((db.pragma('table_info(messages)') as { name: string }[]).map((c) => c.name));
   if (!messageCols.has('client_id')) db.exec('ALTER TABLE messages ADD COLUMN client_id TEXT');
+  // Voice removal rows: when the removal happened, and whether LiveKit has not yet confirmed it. Rows from before this
+  // existed were only written for unconfirmed removals, so they default to pending.
+  const removalCols = new Set((db.pragma('table_info(voice_removals)') as { name: string }[]).map((c) => c.name));
+  if (!removalCols.has('removed_at')) db.exec('ALTER TABLE voice_removals ADD COLUMN removed_at INTEGER NOT NULL DEFAULT 0');
+  if (!removalCols.has('pending')) db.exec('ALTER TABLE voice_removals ADD COLUMN pending INTEGER NOT NULL DEFAULT 1');
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_messages_client ON messages(author_id, client_id) WHERE client_id IS NOT NULL');
   return db;
 }

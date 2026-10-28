@@ -78,7 +78,7 @@ export const useSession = create<SessionState>((set, get) => ({
   setServerUrl: (serverUrl) => { set({ serverUrl }); persist(); },
   setAuth: (token, user) => { set({ token, user }); persist(); saveToken(token); },
   setUser: (user) => { set({ user }); persist(); },
-  logout: () => { set({ token: null, user: null, servers: [], activeServerId: null, activeChannelId: null, myStatus: 'online', voiceOccupants: {}, unread: {} }); persist(); saveToken(null); },
+  logout: () => { set({ token: null, user: null, servers: [], activeServerId: null, activeChannelId: null, myStatus: 'online', presence: {}, voiceOccupants: {}, unread: {}, theaterChatId: null }); persist(); saveToken(null); },
   setServers: (servers) => {
     const s = get();
     const active = servers.find((x) => x.server.id === s.activeServerId) ?? servers[0];
