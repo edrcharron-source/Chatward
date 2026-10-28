@@ -268,6 +268,9 @@ export function register(app: Express, ctx: Ctx): void {
     if (channel.kind !== 'voice') { res.status(400).json({ error: 'not a voice channel' }); return; }
     const { deviceId } = req as AuthedRequest;
     if (heldByOtherDevice(userId, deviceId)) { res.status(409).json({ error: 'The call is on another device.' }); return; }
+    // Removed from this call and the removal is still being enforced. Putting the slot back would show them in the call
+    // until the next sweep, so refuse. The client then hangs up. A fresh join clears the removal.
+    if (evictions.has(`${channelId}:${userId}`)) { res.status(409).json({ error: 'You were removed from this call.' }); return; }
 
     occupy(ctx, channelId, userId, deviceId);
     res.json({ ok: true });
