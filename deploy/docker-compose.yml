@@ -26,13 +26,16 @@ services:
       PORT: 3000
       DATA_DIR: /data
       UPLOADS_DIR: /data/uploads   # move to a mounted block-storage disk later
+      UPDATES_DIR: /updates        # desktop installer feed, filled by the release workflow (deploy/updates on the host)
+      CHATWARD_VERSION: ${CHATWARD_VERSION:-dev}   # set by deploy/update-cloud.sh
+      MIN_CLIENT_VERSION: ${MIN_CLIENT_VERSION:-0.0.0}   # optional, set in deploy/.env to force clients to update
       LIVEKIT_URL: wss://${DOMAIN:?set DOMAIN in deploy/.env}
       LIVEKIT_API_URL: http://livekit:7880   # the server reaches LiveKit inside Docker, not through the public URL
       LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:?set LIVEKIT_API_KEY in deploy/.env}
       LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:?set LIVEKIT_API_SECRET in deploy/.env}
       NODE_ENV: production
       KLIPY_API_KEY: ${KLIPY_API_KEY:-}
-    volumes: ["chatward-data:/data"]
+    volumes: ["chatward-data:/data", "./updates:/updates:ro"]
     expose: ["3000"]
     restart: unless-stopped
 volumes:
