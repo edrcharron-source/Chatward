@@ -52,7 +52,7 @@ const handlers: Record<string, (args: any) => Promise<unknown>> = {
 
   /** Posts bytes that are not a valid Commit, at this device's current epoch: what a member could send by mistake or on purpose. */
   async junkCommit({ channelId, serverId }) {
-    const vault = JSON.parse(secureStoreContents.get('crypto.vault.v2') ?? '{}');
+    const vault = JSON.parse(secureStoreContents.get(`crypto.vault.v2|${accountId}`) ?? '{}');
     const { servers } = await api.get<{ servers: ServerBundle[] }>('/api/servers');
     const bundle = servers.find((b) => b.server.id === serverId)!;
     const members = bundle.members.flatMap((m) => m.devices.map((d) => d.deviceId));
