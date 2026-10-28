@@ -511,6 +511,26 @@ async function main() {
     assert.equal(afterLeave.status, 403, 'a code is dead once the member has left the owner\'s server');
     log('a reset code is dropped when its member leaves, so it cannot be redeemed afterwards');
 
+    // Bob signs in on a third device while none of his devices are online, so nobody gets a live alert.
+    // When his first device connects again, it is told about that device, but not about the second one it already saw.
+    const bob3Keys = await makeDeviceKeys();
+    await new Promise((r) => setTimeout(r, 20));
+    const bob3Login = await api(null, 'POST', '/api/auth/login', { username: 'bob', password: PASSWORD, device: bob3Keys });
+    assert.equal(bob3Login.status, 200, 'bob signs in on a third device while his other devices are offline');
+    const replayFrames: { t: string; deviceId?: string }[] = [];
+    const bobBack = new WebSocket(`ws://127.0.0.1:${PORT}/ws?token=${encodeURIComponent(bob.token)}`);
+    bobBack.onmessage = (ev) => replayFrames.push(JSON.parse(String(ev.data)));
+    await new Promise<void>((resolve, reject) => {
+      bobBack.onopen = () => resolve();
+      bobBack.onerror = () => reject(new Error('bob could not reopen a socket'));
+    });
+    const replayed = (deviceId: string) => replayFrames.some((f) => f.t === 'device.added' && f.deviceId === deviceId);
+    for (let i = 0; i < 30 && !replayed(bob3Keys.deviceId); i++) await new Promise((r) => setTimeout(r, 100));
+    assert.ok(replayed(bob3Keys.deviceId), 'the device that signed in while bob was offline is announced on his next connect');
+    assert.ok(!replayed(bob2Keys.deviceId), 'a device seen before the last connection is not announced again');
+    bobBack.close();
+    log('a sign-in made while the owner was offline is announced when they next connect');
+
     console.log('\nE2E MLS: all checks passed');
   } catch (err) {
     failed = true;
