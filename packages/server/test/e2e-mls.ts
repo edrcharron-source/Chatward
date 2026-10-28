@@ -4,6 +4,7 @@
 import assert from 'node:assert/strict';
 import { spawn, type ChildProcess } from 'node:child_process';
 import fs from 'node:fs';
+import http from 'node:http';
 import path from 'node:path';
 import * as mls from '../../client/src/renderer/src/crypto/mls';
 import { exportRawPublic, generateEcdh, generateSigning, toB64 } from '../../client/src/renderer/src/crypto/primitives';
@@ -12,6 +13,35 @@ const PORT = 3999;
 const BASE = `http://127.0.0.1:${PORT}`;
 const PASSWORD = 'correct-horse-1';
 const SETUP_CODE = 'e2e-setup-code';
+const LIVEKIT_PORT = 3998;
+// A stand-in for LiveKit's Twirp API, so a voice rejoin can ask whether a user is in a room. Members are "room:identity".
+// mode 'down' answers 500 and 'hang' answers late, to check how a lookup LiveKit cannot answer is reported.
+const fakeLiveKit = { members: new Set<string>(), removals: [] as string[], mode: 'up' as 'up' | 'down' | 'hang' };
+const liveKitServer = http.createServer((req, res) => {
+  let raw = '';
+  req.on('data', (chunk) => { raw += chunk; });
+  req.on('end', () => {
+    const send = (status: number, body: unknown) => {
+      res.writeHead(status, { 'Content-Type': 'application/json' }).end(JSON.stringify(body));
+    };
+    if (fakeLiveKit.mode === 'down') { send(500, { code: 'internal', msg: 'down' }); return; }
+    if (fakeLiveKit.mode === 'hang') { setTimeout(() => send(200, {}), 4_000); return; }
+    const { room, identity } = JSON.parse(raw || '{}') as { room: string; identity: string };
+    const key = `${room}:${identity}`;
+    if (req.url?.endsWith('/GetParticipant')) {
+      if (fakeLiveKit.members.has(key)) send(200, { identity, room });
+      else send(404, { code: 'not_found', msg: 'participant not found' });
+      return;
+    }
+    if (req.url?.endsWith('/RemoveParticipant')) {
+      fakeLiveKit.removals.push(key);
+      fakeLiveKit.members.delete(key);
+      send(200, {});
+      return;
+    }
+    send(404, { code: 'bad_route', msg: 'unknown method' });
+  });
+});
 const serverDir = path.resolve(import.meta.dirname, '..');
 // Under out/ (gitignored) so a failed run leaves nothing to commit.
 const dataDir = path.join(serverDir, 'out', `e2e-data-${Date.now()}`);
@@ -71,7 +101,7 @@ const unb64 = (s: string) => new Uint8Array(Buffer.from(s, 'base64'));
 async function startServer(): Promise<ChildProcess> {
   const child = spawn('node', ['dist/index.js'], {
     cwd: serverDir,
-    env: { ...process.env, DATA_DIR: dataDir, PORT: String(PORT), HOST: '127.0.0.1', SETUP_CODE },
+    env: { ...process.env, DATA_DIR: dataDir, PORT: String(PORT), HOST: '127.0.0.1', SETUP_CODE, LIVEKIT_API_URL: `http://127.0.0.1:${LIVEKIT_PORT}` },
     stdio: 'inherit',
   });
   for (let i = 0; i < 100; i++) {
@@ -146,7 +176,8 @@ async function newDev(name: string, user: { id: string; token: string }, keys: D
 }
 
 async function main() {
-  const server = await startServer();
+  await new Promise<void>((resolve) => liveKitServer.listen(LIVEKIT_PORT, '127.0.0.1', resolve));
+  let server = await startServer();
   let failed = false;
   try {
     // Accounts go through the real API. The first user needs the setup code (no invite) and owns the server.
@@ -506,6 +537,44 @@ async function main() {
     assert.equal((await api(bob.token, 'POST', '/api/voice/rejoin', { channelId: sideVoice })).status, 409, 'a rejoin without a token for that room is refused');
     log('a rejoin into a voice channel the user never got a token for is refused');
 
+    // A server restart clears the voice slot but not the call. The rejoin after it puts the slot back, and a kick after that
+    // must still keep removing bob from the room, because the rejoin starts the repeat for that room.
+    assert.equal((await api(bob.token, 'POST', '/api/voice/token', { channelId: voiceChan })).status, 200, 'bob joins the call');
+    fakeLiveKit.members.add(`${voiceChan}:${bob.user as string}`);
+    const exited = new Promise((resolve) => server.once('exit', resolve));
+    server.kill();
+    await exited;
+    server = await startServer();
+    assert.equal((await api(bob.token, 'POST', '/api/voice/rejoin', { channelId: voiceChan })).status, 200, 'after a restart bob rejoins, since LiveKit still has him');
+    assert.equal((await api(alice.token, 'POST', '/api/voice/kick', { channelId: voiceChan, userId: bob.user })).status, 200, 'alice kicks bob after the restart');
+    assert.equal((await api(bob.token, 'POST', '/api/voice/rejoin', { channelId: voiceChan })).status, 409, 'bob cannot rejoin after the kick');
+    // The kick removes him at once. The repeat fires 20s later, so a second removal shows it kept going.
+    await new Promise((resolve) => setTimeout(resolve, 21_000));
+    const bobRemovals = fakeLiveKit.removals.filter((k) => k === `${voiceChan}:${bob.user as string}`).length;
+    assert.ok(bobRemovals >= 2, `the kick is repeated after a restart and a rejoin (removals: ${bobRemovals})`);
+    log('a kick after a restart and rejoin keeps removing the user from the room');
+
+    // A lookup LiveKit cannot answer is 503 and the client retries. LiveKit saying "not in the room" is 409 with a code.
+    assert.equal((await api(bob.token, 'POST', '/api/voice/token', { channelId: voiceChan })).status, 200, 'bob joins the call again');
+    assert.equal((await api(bob.token, 'POST', '/api/voice/leave', { channelId: voiceChan })).status, 200, 'bob leaves the slot, so the next rejoin must ask LiveKit');
+    fakeLiveKit.members.add(`${voiceChan}:${bob.user as string}`);
+    fakeLiveKit.mode = 'down';
+    const down = await api(bob.token, 'POST', '/api/voice/rejoin', { channelId: voiceChan });
+    assert.equal(down.status, 503, 'a LiveKit error is 503, not a refusal');
+    assert.equal(down.json.code, 'lookup_unavailable', 'the 503 names the reason');
+    fakeLiveKit.mode = 'hang';
+    const slow = await api(bob.token, 'POST', '/api/voice/rejoin', { channelId: voiceChan });
+    assert.equal(slow.status, 503, 'a lookup that takes longer than the timeout is 503');
+    fakeLiveKit.mode = 'up';
+    fakeLiveKit.members.delete(`${voiceChan}:${bob.user as string}`);
+    const gone = await api(bob.token, 'POST', '/api/voice/rejoin', { channelId: voiceChan });
+    assert.equal(gone.status, 409, 'LiveKit says bob is not in the room: 409');
+    assert.equal(gone.json.code, 'not_in_room', 'the 409 carries the not_in_room code');
+    fakeLiveKit.members.add(`${voiceChan}:${bob.user as string}`);
+    assert.equal((await api(bob.token, 'POST', '/api/voice/rejoin', { channelId: voiceChan })).status, 200, 'once LiveKit has bob again, the rejoin works');
+    assert.equal((await api(bob.token, 'POST', '/api/voice/leave', { channelId: voiceChan })).status, 200);
+    log('a rejoin reports a LiveKit failure as 503 and a missing participant as 409 not_in_room');
+
     // Bob can list and remove his own devices. Another user's device is not his to remove.
     const bobDevices = await api(bob.token, 'GET', '/api/me/devices');
     assert.ok(bobDevices.json.devices.some((d: { deviceId: string }) => d.deviceId === bob2.id), 'bob lists his second device');
@@ -578,6 +647,7 @@ async function main() {
     console.error('\nE2E MLS FAILED:', err);
   } finally {
     server.kill();
+    liveKitServer.close();
     fs.rmSync(dataDir, { recursive: true, force: true });
     if (failed) process.exitCode = 1;
   }
