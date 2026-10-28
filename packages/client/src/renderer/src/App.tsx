@@ -13,6 +13,7 @@ import ChannelList from './components/servers/ChannelList';
 import MemberList from './components/servers/MemberList';
 import ChatView from './components/chat/ChatView';
 import VoiceChannelView from './components/voice/VoiceChannelView';
+import TheaterSplit from './components/voice/TheaterSplit';
 import { WatchPartyPanel } from './components/watchparty';
 import SettingsModal from './components/settings/SettingsModal';
 import DemoBanner from './demo/DemoBanner';
@@ -56,6 +57,21 @@ function Shell() {
   const channel = bundle?.channels.find((c) => c.id === activeChannelId);
   const voiceChannelId = useVoice((s) => s.channelId);
   const watchChannelId = channel?.kind === 'voice' ? bundle?.channels.find((c) => c.kind === 'text')?.id : channel?.id;
+  const theaterKey = useVoice((s) => s.theaterKey);
+  const setTheater = useVoice((s) => s.setTheater);
+  // theater mode keeps the call's share on top and a text chat below, so the chat stays usable while a share is featured
+  const callChannel = bundle?.channels.find((c) => c.id === voiceChannelId);
+  const theaterWithChat = theaterKey !== null && callChannel !== undefined && channel?.kind === 'text';
+
+  useEffect(() => {
+    if (!theaterKey) return;
+    // Esc leaves theater mode unless the browser is handling it as a fullscreen exit
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !document.fullscreenElement) setTheater(null);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [theaterKey, setTheater]);
 
   useEffect(() => {
     let off: (() => void) | undefined;
@@ -138,11 +154,18 @@ function Shell() {
         )}
         {/* Voice channels have no message key of their own, so their watch party rides the server's first text channel. */}
         {watchChannelId && watchOpen && <WatchPartyPanel key={watchChannelId} channelId={watchChannelId} />}
-        {channel?.kind === 'voice'
-          ? <VoiceChannelView key={channel.id} channel={channel} />
-          : channel
-            ? <ChatView key={channel.id} channel={channel} />
-            : <div style={{ margin: 'auto' }} className="muted">{bundle ? 'Select a channel' : 'Create or join a server to get started'}</div>}
+        {theaterWithChat && callChannel && channel
+          ? (
+            <TheaterSplit
+              top={<VoiceChannelView key={callChannel.id} channel={callChannel} theaterOnly />}
+              bottom={<ChatView key={channel.id} channel={channel} />}
+            />
+          )
+          : channel?.kind === 'voice'
+            ? <VoiceChannelView key={channel.id} channel={channel} />
+            : channel
+              ? <ChatView key={channel.id} channel={channel} />
+              : <div style={{ margin: 'auto' }} className="muted">{bundle ? 'Select a channel' : 'Create or join a server to get started'}</div>}
       </main>
       {bundle && <MemberList members={bundle.members as Member[]} />}
       {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
