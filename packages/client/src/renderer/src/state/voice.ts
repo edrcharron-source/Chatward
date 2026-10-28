@@ -44,8 +44,11 @@ export interface VoiceState {
 }
 
 // Waits before each retry of a rejoin that failed for a reason other than the server refusing the slot. A rejoin that
-// LiveKit could not answer for, or that LiveKit says is not in the room, is retried on the same schedule before we hang up.
+// LiveKit says is not in the room is retried on this schedule before we hang up.
 const REJOIN_RETRY_MS = [3_000, 6_000, 12_000];
+// LiveKit's admin API failing (503) says nothing about the media, so the call stays up. Retry slowly for about 5 minutes.
+const LOOKUP_RETRY_MS = 30_000;
+const LOOKUP_RETRY_MAX = 10;
 let rejoinRetry: ReturnType<typeof setTimeout> | undefined;
 
 /**
@@ -64,21 +67,24 @@ export function resumeVoiceSlot(attempt = 0): void {
   void api.post('/api/voice/rejoin', { channelId, muted, deafened })
     .catch((e) => {
       console.warn('could not restore voice slot', e);
-      // LiveKit not answering, or not showing us in the room right after a restart or reconnect, may both clear up.
-      const maybeTransient = e instanceof ApiError && (e.status === 503 || (e.status === 409 && e.code === 'not_in_room'));
-      const refused = e instanceof ApiError && !maybeTransient && [403, 404, 409].includes(e.status);
+      const lookupDown = e instanceof ApiError && e.status === 503;
+      const notInRoom = e instanceof ApiError && e.status === 409 && e.code === 'not_in_room';
+      const refused = e instanceof ApiError && !lookupDown && !notInRoom && [403, 404, 409].includes(e.status);
       if (!refused) {
-        // A timeout or network error says nothing about the slot, so try again a few times while the call goes on.
-        const delay = REJOIN_RETRY_MS[attempt];
+        // A timeout or network error says nothing about the slot, and a 503 says nothing about the media, so try again
+        // while the call goes on.
+        const delay = lookupDown
+          ? (attempt < LOOKUP_RETRY_MAX ? LOOKUP_RETRY_MS : undefined)
+          : REJOIN_RETRY_MS[attempt];
         if (delay !== undefined) {
           rejoinRetry = setTimeout(() => {
             if (useVoice.getState().room === room) resumeVoiceSlot(attempt + 1);
           }, delay);
           return;
         }
-        // Out of retries. A timeout or network error keeps the call going, as before. A refusal that may still clear
-        // (LiveKit down, or not in the room) hangs up, since the call is not coming back.
-        if (!maybeTransient) return;
+        // Out of retries. A timeout, network error or 503 keeps the call going. Only "not in the room" hangs up, since
+        // that call is not coming back.
+        if (!notInRoom) return;
       }
       // Skip the leave call: the server has already refused this slot, so it would be refused again.
       const notice = e.status === 409 && e.message.includes('another device')

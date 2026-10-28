@@ -42,9 +42,9 @@ prune_backups() {
   done
 }
 
-# The backup sits on the same disk as the data. Refuse to start if there is not room for a full copy plus 2 GB spare
-# (the spare also covers the image pull and build that follow), checked before the server stops,
-# so a full disk leaves the running server alone.
+# The backup sits on the same disk as the data. Refuse to start if the disk holding backups/ does not have room for
+# a full copy plus 2 GB spare, checked before the server stops, so a full disk leaves the running server alone.
+# The image pull and build that follow use Docker's own disk space, which this check does not measure.
 check_backup_space() {
   local used_kb avail_kb
   used_kb=$(docker run --rm -v "$VOLUME":/data:ro alpine du -sk /data | cut -f1)

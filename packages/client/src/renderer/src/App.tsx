@@ -3,10 +3,10 @@ import type { Channel, Member } from '@chatward/shared';
 import { api, ApiError } from './api/http';
 import { connectWs, disconnectWs, onFrame, sendFrame } from './api/ws';
 import { keepTokenFresh } from './api/token';
-import { refreshUnread, signOut, useSession, type ServerBundle } from './state/session';
+import { isLiveChannel, refreshUnread, signOut, useSession, type ServerBundle } from './state/session';
 import { useSettings, applyTheme } from './state/settings';
 import { useVoice, rekeyActiveCall, resumeVoiceSlot, clearLeftoverVoiceSlot, leaveCallOnExit } from './state/voice';
-import { forgetChatChannels } from './state/chat';
+import { forgetChatChannels, useChat } from './state/chat';
 import { accountKey, adoptLegacyIfOwned, initDevice, syncChannelKeys, handleEnvelope, handleMemberLeave, forgetChannels } from './crypto';
 import { installNotifications } from './notify/notify';
 import AuthScreen from './components/auth/AuthScreen';
@@ -266,6 +266,8 @@ function Shell() {
   async function loadServers() {
     const { servers } = await api.get<{ servers: ServerBundle[] }>('/api/servers');
     useSession.getState().setServers(servers);
+    // Channels removed while we were offline are missing from the new list, so their cached chat is dropped here.
+    forgetChatChannels(Object.keys(useChat.getState().channels).filter((id) => !isLiveChannel(id)));
     void refreshUnread().catch(() => {});
     for (const b of servers) {
       const { channels } = await api.get<{ channels: Record<string, string[]> }>(`/api/servers/${b.server.id}/voice-state`);

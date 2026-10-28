@@ -219,7 +219,20 @@ function broadcastState(ctx: Ctx, channelId: string): void {
   ctx.broadcastToServer(channel.serverId, { t: 'voice.state', serverId: channel.serverId, channelId, userIds });
 }
 
+/** Logs whether LiveKit's API answers with the configured URL and keys. Only logs: a failure does not stop the server. */
+function checkLiveKitApi(ctx: Ctx): void {
+  const { apiUrl } = ctx.config.livekit;
+  roomService(ctx).listRooms().then(
+    () => console.log(`LiveKit API check ok (${apiUrl})`),
+    (err: unknown) => console.error(
+      `LiveKit API check failed (${apiUrl}). Check LIVEKIT_API_URL, LIVEKIT_API_KEY and LIVEKIT_API_SECRET. Rejoins and kicks fail until this works.`,
+      err,
+    ),
+  );
+}
+
 export function register(app: Express, ctx: Ctx): void {
+  checkLiveKitApi(ctx);
   // The slot's device lost its last socket: keep the slot for the grace period, so a quick reconnect keeps the call. A
   // second device staying online does not hold a crashed device's slot. A slot with no device waits for the account's
   // last socket instead, as before device-bound slots.
