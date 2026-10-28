@@ -389,6 +389,8 @@ async function setGroup(channelId: string, state: ClientState, epoch: number): P
   groupStates.set(channelId, state);
   vault.groups[channelId] = { epoch, state: toB64(mls.encodeGroup(state) as Bytes as Uint8Array<ArrayBuffer>) };
   putKey(channelId, epoch + 1, await mls.historyKey(state));
+  // Notify before the vault write, so a failed write still rekeys a live call to the epoch this device already holds.
+  for (const cb of epochListeners) cb();
   await persistVault();
 }
 
@@ -747,6 +749,14 @@ export async function decryptMessage(msg: Message): Promise<MessagePayload | nul
 export function onKeysChanged(cb: () => void): () => void {
   listeners.add(cb);
   return () => { listeners.delete(cb); };
+}
+
+const epochListeners = new Set<() => void>();
+
+/** Called whenever a channel's MLS epoch moves: our own Commit, another device's, a Welcome, or a catch-up. Returns unsubscribe. */
+export function onEpochChange(cb: () => void): () => void {
+  epochListeners.add(cb);
+  return () => { epochListeners.delete(cb); };
 }
 
 export async function encryptBlob(bytes: Uint8Array): Promise<{ blob: Uint8Array; key: string; iv: string }> {
