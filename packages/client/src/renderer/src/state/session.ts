@@ -22,6 +22,10 @@ interface SessionState {
   logout: () => void;
   setServers: (s: ServerBundle[]) => void;
   upsertServer: (b: ServerBundle) => void;
+  /** Drops a server we are no longer in. Moves the view off it if it was open. */
+  removeServer: (serverId: string) => void;
+  /** Drops a channel. Moves the view to the server's first text channel if it was open. */
+  removeChannel: (serverId: string, channelId: string) => void;
   setActive: (serverId: string | null, channelId: string | null) => void;
   setPresence: (userId: string, s: SessionState['presence'][string]) => void;
   setVoiceOccupants: (channelId: string, userIds: string[]) => void;
@@ -49,6 +53,18 @@ export const useSession = create<SessionState>((set, get) => ({
       activeChannelId: s.activeChannelId && active?.channels.some((c) => c.id === s.activeChannelId) ? s.activeChannelId : active?.channels.find((c) => c.kind === 'text')?.id ?? null });
   },
   upsertServer: (b) => set((s) => ({ servers: s.servers.some((x) => x.server.id === b.server.id) ? s.servers.map((x) => (x.server.id === b.server.id ? b : x)) : [...s.servers, b] })),
+  removeServer: (serverId) => set((s) => {
+    const servers = s.servers.filter((b) => b.server.id !== serverId);
+    if (s.activeServerId !== serverId) return { servers };
+    const next = servers[0];
+    return { servers, activeServerId: next?.server.id ?? null, activeChannelId: next?.channels.find((c) => c.kind === 'text')?.id ?? null };
+  }),
+  removeChannel: (serverId, channelId) => set((s) => {
+    const servers = s.servers.map((b) => (b.server.id === serverId ? { ...b, channels: b.channels.filter((c) => c.id !== channelId) } : b));
+    if (s.activeChannelId !== channelId) return { servers };
+    const first = servers.find((b) => b.server.id === serverId)?.channels.find((c) => c.kind === 'text')?.id ?? null;
+    return { servers, activeChannelId: first };
+  }),
   setActive: (activeServerId, activeChannelId) => set({ activeServerId, activeChannelId }),
   setPresence: (id, st) => set((s) => ({ presence: { ...s.presence, [id]: st } })),
   setVoiceOccupants: (ch, ids) => set((s) => ({ voiceOccupants: { ...s.voiceOccupants, [ch]: ids } })),

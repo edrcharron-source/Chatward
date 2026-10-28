@@ -210,3 +210,5 @@
 .cw-invite-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .cw-invite-list li { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .cw-ban-user { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.cw-role-list { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.cw-role-list li { display: flex; align-items: center; justify-content: space-between; gap: 8px; }

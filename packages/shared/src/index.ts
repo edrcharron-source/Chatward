@@ -14,6 +14,8 @@ export const LIMITS = {
   BIO_MAX: 190,
   PRONOUNS_MAX: 40,
   BANNER_MAX_BYTES: 1024 * 1024,
+  SERVER_NAME_MAX: 64,
+  CHANNEL_NAME_MAX: 32,
 } as const;
 
 export const VOICE_BITRATES_KBPS = [8, 16, 32, 64, 96, 128] as const;
@@ -151,6 +153,10 @@ export type ServerFrame =
   | { t: 'key.envelope'; envelope: KeyEnvelope }
   | { t: 'channel.new'; channel: Channel }
   | { t: 'channel.update'; channel: Channel }
+  | { t: 'channel.delete'; serverId: string; channelId: string }
+  | { t: 'server.update'; server: Server }
+  | { t: 'server.delete'; serverId: string }
+  | { t: 'member.role'; serverId: string; userId: string; role: Member['role'] }
   | { t: 'sound.new'; sound: SoundboardSound }
   | { t: 'sound.delete'; serverId: string; soundId: string }
   | { t: 'sound.play'; serverId: string; channelId: string; soundId: string; userId: string }

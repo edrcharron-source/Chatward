@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import type { Channel, User } from '@chatward/shared';
+import { LIMITS, type Channel, type User } from '@chatward/shared';
 import { api } from '../../api/http';
 import { useSession } from '../../state/session';
 import { useVoice } from '../../state/voice';
@@ -9,11 +9,12 @@ import Avatar from './Avatar';
 import ChannelSettingsDialog from './ChannelSettingsDialog';
 import InvitesDialog from './InvitesDialog';
 import Dialog from './Dialog';
+import ServerSettingsDialog from './ServerSettingsDialog';
 import { errorText, isAdmin } from './util';
 import './servers.css';
 import ProfileTrigger from '../profile/ProfileTrigger';
 
-type DialogKind = 'channel' | 'invite' | null;
+type DialogKind = 'channel' | 'invite' | 'server' | null;
 
 export default function ChannelList({ onOpenSettings, onReload }: { onOpenSettings: () => void; onReload: () => Promise<void> }) {
   const user = useSession((s) => s.user);
@@ -64,10 +65,11 @@ export default function ChannelList({ onOpenSettings, onReload }: { onOpenSettin
     <aside className="cw-channels" aria-label="Channels">
       <header className="cw-channels-head">
         <h2>{bundle?.server.name ?? 'Chatward'}</h2>
-        {bundle && admin && (
+        {bundle && (
           <div className="cw-head-actions">
-            <button type="button" className="icon" title="Create channel" aria-label="Create channel" onClick={() => setDialog('channel')}>＋</button>
-            <button type="button" className="icon" title="Invite people" aria-label="Invite people" onClick={() => setDialog('invite')}>✉</button>
+            {admin && <button type="button" className="icon" title="Create channel" aria-label="Create channel" onClick={() => setDialog('channel')}>＋</button>}
+            {admin && <button type="button" className="icon" title="Invite people" aria-label="Invite people" onClick={() => setDialog('invite')}>✉</button>}
+            <button type="button" className="icon" title="Server settings" aria-label="Server settings" onClick={() => setDialog('server')}>⚙</button>
           </div>
         )}
       </header>
@@ -83,17 +85,21 @@ export default function ChannelList({ onOpenSettings, onReload }: { onOpenSettin
                 const count = unread[c.id] ?? 0;
                 const active = c.id === activeChannelId;
                 return (
-                  <button
-                    key={c.id}
-                    type="button"
-                    className={`cw-channel${active ? ' active' : ''}${count > 0 ? ' unread' : ''}`}
-                    aria-current={active ? 'true' : undefined}
-                    onClick={() => openText(c)}
-                  >
-                    <span className="cw-channel-icon" aria-hidden="true">#</span>
-                    <span className="cw-channel-name">{c.name}</span>
-                    {count > 0 && <span className="cw-badge" aria-label={`${count} unread`}>{count > 99 ? '99+' : count}</span>}
-                  </button>
+                  <div key={c.id} className="cw-voice-row">
+                    <button
+                      type="button"
+                      className={`cw-channel${active ? ' active' : ''}${count > 0 ? ' unread' : ''}`}
+                      aria-current={active ? 'true' : undefined}
+                      onClick={() => openText(c)}
+                    >
+                      <span className="cw-channel-icon" aria-hidden="true">#</span>
+                      <span className="cw-channel-name">{c.name}</span>
+                      {count > 0 && <span className="cw-badge" aria-label={`${count} unread`}>{count > 99 ? '99+' : count}</span>}
+                    </button>
+                    {admin && (
+                      <button type="button" className="icon cw-channel-gear" title={`${c.name} settings`} aria-label={`${c.name} settings`} onClick={() => setSettingsChannel(c)}>⚙</button>
+                    )}
+                  </div>
                 );
               })}
             </section>
@@ -166,6 +172,9 @@ export default function ChannelList({ onOpenSettings, onReload }: { onOpenSettin
       {dialog === 'invite' && bundle && (
         <InvitesDialog serverId={bundle.server.id} onClose={() => setDialog(null)} />
       )}
+      {dialog === 'server' && bundle && (
+        <ServerSettingsDialog serverId={bundle.server.id} onClose={() => setDialog(null)} onReload={onReload} />
+      )}
     </aside>
   );
 }
@@ -197,7 +206,7 @@ function CreateChannelDialog({ serverId, onClose, onReload }: { serverId: string
       <form onSubmit={submit}>
         <label>
           Channel name
-          <input value={name} onChange={(e) => setName(e.target.value)} maxLength={64} autoFocus required />
+          <input value={name} onChange={(e) => setName(e.target.value)} maxLength={LIMITS.CHANNEL_NAME_MAX} autoFocus required />
         </label>
         <label>
           Type

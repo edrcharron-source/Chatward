@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import type { Channel, Server } from '@chatward/shared';
+import { LIMITS } from '@chatward/shared';
 import { api } from '../../api/http';
 import { useSession, type ServerBundle } from '../../state/session';
 import Dialog from './Dialog';
@@ -71,7 +72,7 @@ function CreateServerDialog({ onClose, onReload }: { onClose: () => void; onRelo
       <form onSubmit={submit}>
         <label>
           Server name
-          <input value={name} onChange={(e) => setName(e.target.value)} maxLength={64} autoFocus required />
+          <input value={name} onChange={(e) => setName(e.target.value)} maxLength={LIMITS.SERVER_NAME_MAX} autoFocus required />
         </label>
         {error && <p className="cw-error" role="alert">{error}</p>}
         <div className="cw-dialog-actions">
