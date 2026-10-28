@@ -60,7 +60,12 @@ export function register(app: Express, ctx: Ctx): void {
   const recordAck = db.prepare(
     'INSERT INTO mls_group_acks (group_id, device_id, epoch) VALUES (?,?,?) '
     + 'ON CONFLICT(group_id, device_id) DO UPDATE SET epoch=MAX(epoch, excluded.epoch)');
-  const someoneAheadOf = db.prepare('SELECT 1 FROM mls_group_acks WHERE group_id=? AND epoch>? LIMIT 1');
+  // An ack proves a device applied a Commit only if the device is still in the group, and a device's ack of its own
+  // Commit proves nothing about the others. So skip acks from current members that sent a Commit being dropped.
+  const someoneAheadOf = db.prepare(
+    'SELECT 1 FROM mls_group_acks a JOIN mls_group_devices g ON g.group_id=a.group_id AND g.device_id=a.device_id '
+    + 'WHERE a.group_id=? AND a.epoch>? AND a.device_id NOT IN '
+    + '(SELECT sender_device_id FROM mls_commits WHERE group_id=? AND epoch>=?) LIMIT 1');
 
   const devicesOwner = (deviceId: string): string =>
     (db.prepare('SELECT user_id FROM devices WHERE device_id=?').get(deviceId) as { user_id: string }).user_id;
@@ -226,7 +231,7 @@ export function register(app: Express, ctx: Ctx): void {
       if (epoch > current) return { ok: false as const, currentEpoch: current };
       if (epoch < current) {
         // Commits that some device already applied are not junk: dropping them would fork that device off the group.
-        if (someoneAheadOf.get(ch.id, epoch)) return { ok: false as const, appliedBy: true as const, currentEpoch: current };
+        if (someoneAheadOf.get(ch.id, epoch, ch.id, epoch)) return { ok: false as const, appliedBy: true as const, currentEpoch: current };
         dropCommitsFrom.run(ch.id, epoch);
         dropWelcomesAfter.run(ch.id, epoch);
         upsertGroupEpoch.run(ch.id, epoch);

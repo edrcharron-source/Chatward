@@ -340,8 +340,11 @@ async function main() {
     const ahead = await api(alice.token, 'POST', `/api/groups/${CHANNEL}/reset`, { deviceId: alice.id, epoch: 9 });
     assert.equal(ahead.status, 409, 'cannot reset past the current epoch');
     assert.equal(ahead.json.currentEpoch, 5);
+    // Bob sent the junk Commit, so his ack of epoch 5 is his own and must not block the reset.
+    const selfAck = await api(bob.token, 'POST', `/api/groups/${CHANNEL}/epoch`, { deviceId: bob.id, epoch: 5 });
+    assert.equal(selfAck.status, 200, 'bob acks the epoch his own junk Commit made');
     const reset = await api(alice.token, 'POST', `/api/groups/${CHANNEL}/reset`, { deviceId: alice.id, epoch: 4 });
-    assert.equal(reset.status, 200, 'alice drops the junk Commit');
+    assert.equal(reset.status, 200, 'alice drops the junk Commit despite the author\'s own ack');
     assert.equal(reset.json.epoch, 4);
     const afterReset = await api(alice.token, 'GET', `/api/groups/${CHANNEL}/commits?from=4`);
     assert.equal(afterReset.json.epoch, 4);
