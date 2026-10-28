@@ -488,17 +488,29 @@ async function createGroup(channelId: string, members: Member[]): Promise<boolea
  * keep the last state we could apply and ask the server to drop that Commit. The group then moves on from its epoch.
  */
 async function catchUp(channelId: string): Promise<boolean> {
+  let changed = false;
+  // The server returns at most one full chunk of Commits per request. Keep fetching while a full chunk came back and
+  // every Commit in it applied, so a device far behind catches up in one sync.
+  for (;;) {
+    const step = await catchUpChunk(channelId);
+    changed = step.moved || changed;
+    if (!step.more) return changed;
+  }
+}
+
+/** One request's worth of Commits. `more` is true only when the server has more and this chunk applied in full. */
+async function catchUpChunk(channelId: string): Promise<{ moved: boolean; more: boolean }> {
   const stored = vault.groups[channelId];
   let state = groupOf(channelId)!;
   let epoch = stored.epoch;
-  const res = await api.get<{ epoch: number; commits: { epoch: number; commit: string }[] }>(`/api/groups/${channelId}/commits?from=${epoch}`);
+  const res = await api.get<{ epoch: number; commits: { epoch: number; commit: string }[]; more?: boolean }>(`/api/groups/${channelId}/commits?from=${epoch}`);
   if (res.epoch < stored.epoch) {
     // The server is behind us: it dropped Commits we had applied. Our state no longer matches the server, so forget
     // the group and rejoin from a Welcome on the next step. Keys we already hold are kept.
     forgetGroup(channelId);
-    return true;
+    return { moved: true, more: false };
   }
-  if (res.commits.length === 0) return false;
+  if (res.commits.length === 0) return { moved: false, more: false };
   let stuck = false;
   for (const c of res.commits) {
     if (c.epoch !== epoch) break;
@@ -512,7 +524,7 @@ async function catchUp(channelId: string): Promise<boolean> {
     // A Commit removed this device. Nothing after it applies to us, so forget the group. A later add rejoins from a Welcome.
     if (state.groupActiveState.kind === 'removedFromGroup') {
       forgetGroup(channelId);
-      return true;
+      return { moved: true, more: false };
     }
     // Keep this epoch's history key. Messages sent in it are only readable with this key, and setGroup below only
     // stores the final epoch's key.
@@ -521,7 +533,8 @@ async function catchUp(channelId: string): Promise<boolean> {
   const moved = epoch !== stored.epoch;
   if (moved) await setGroup(channelId, state, epoch);
   if (stuck) await dropCommitsFrom(channelId, epoch);
-  return moved;
+  const applied = epoch - stored.epoch === res.commits.length;
+  return { moved, more: !stuck && !!res.more && applied };
 }
 
 function forgetGroup(channelId: string): void {
@@ -683,6 +696,24 @@ export function handleMemberLeave(serverId: string, userId: string, servers: Ser
     }
     // Only a failure schedules a retry. A clean pass here must not cancel a retry owed to another server.
     if (failed) scheduleSyncRetry(true);
+  });
+}
+
+/** Drops the keys and group state of channels that were deleted, along with their server's. They can never be used again. */
+export function forgetChannels(channelIds: string[]): Promise<void> {
+  return serial(async () => {
+    if (isDemo() || !device || !privates) return;
+    let changed = false;
+    for (const channelId of channelIds) {
+      if (!(channelId in vault.channels) && !(channelId in vault.groups) && !(channelId in vault.shared)) continue;
+      delete vault.channels[channelId];
+      delete vault.groups[channelId];
+      delete vault.shared[channelId];
+      groupStates.delete(channelId);
+      for (const key of aesCache.keys()) if (key.startsWith(`${channelId}#`)) aesCache.delete(key);
+      changed = true;
+    }
+    if (changed) await persistVault();
   });
 }
 

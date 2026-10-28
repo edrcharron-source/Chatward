@@ -24,6 +24,16 @@ interface GifPage {
 
 const SEARCH_DEBOUNCE_MS = 300;
 
+/** Host part of a file address, for the log line. Never the full URL. */
+function hostOf(url: string): string {
+  try {
+    const parsed = new URL(url);
+    return parsed.hostname || parsed.protocol;
+  } catch {
+    return 'invalid url';
+  }
+}
+
 function GifPanel({ onPick }: { onPick: (gif: Gif) => void }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<GifResult[]>([]);
@@ -32,6 +42,7 @@ function GifPanel({ onPick }: { onPick: (gif: Gif) => void }) {
   const [hint, setHint] = useState<string | undefined>();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const visible = results.filter((g) => isSafeGifUrl(g.url) && isSafeGifUrl(g.previewUrl));
   // Only the newest request may update state, so a slow old search can't overwrite newer results.
   const latest = useRef(0);
 
@@ -45,6 +56,8 @@ function GifPanel({ onPick }: { onPick: (gif: Gif) => void }) {
       if (pos) params.set('pos', pos);
       const page = await api.get<GifPage>(`/api/gifs/${q ? 'search' : 'trending'}?${params}`);
       if (request !== latest.current) return;
+      const hidden = page.results.filter((g) => !isSafeGifUrl(g.url) || !isSafeGifUrl(g.previewUrl));
+      if (hidden.length > 0) console.warn(`GIF picker hid ${hidden.length} result(s) from hosts not on the allowlist:`, hidden.map((g) => hostOf(g.url)));
       setDisabled(Boolean(page.disabled));
       setHint(page.hint);
       setResults((prev) => (pos ? [...prev, ...page.results] : page.results));
@@ -76,8 +89,11 @@ function GifPanel({ onPick }: { onPick: (gif: Gif) => void }) {
       />
       {disabled && <p className="muted media-note">{hint ?? "GIF search isn't set up on this server yet."}</p>}
       {error && <p className="media-error">{error}</p>}
+      {!loading && results.length > 0 && visible.length === 0 && (
+        <p className="muted media-note">GIFs were found, but their file address isn't on the GIF host allowlist, so none can be shown.</p>
+      )}
       <div className="media-gif-grid">
-        {results.filter((g) => isSafeGifUrl(g.url) && isSafeGifUrl(g.previewUrl)).map((g) => (
+        {visible.map((g) => (
           <button
             key={g.id}
             type="button"
@@ -128,6 +144,6 @@ export function GifPickerButton({ onPick }: { onPick: (gif: Gif) => void }): Rea
 }
 
 export function GifView({ gif }: { gif: Gif }): ReactElement | null {
-  if (!isSafeGifUrl(gif.url)) return null;
+  if (!isSafeGifUrl(gif.url)) return <span className="muted media-gif-blocked">GIF blocked</span>;
   return <img className="media-gif" src={gif.url} alt={gif.title || 'GIF'} loading="lazy" referrerPolicy="no-referrer" />;
 }

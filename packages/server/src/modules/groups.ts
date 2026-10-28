@@ -3,6 +3,7 @@
 import crypto from 'node:crypto';
 import type { Express, Request, Response } from 'express';
 import type { AuthedRequest, Ctx } from '../ctx.js';
+import { perMember } from '../userLimit.js';
 
 const MAX_KEYPACKAGES_PER_REQUEST = 50;
 const MAX_KEYPACKAGE_CHARS = 4096;
@@ -11,6 +12,9 @@ const MAX_COMMIT_CHARS = 32_000;
 const MAX_COMMITS_PER_FETCH = 200;
 /** Tell a device to refill its KeyPackage pool when fewer single-use packages than this remain. */
 const KEYPACKAGE_LOW_WATER = 5;
+// A device gets at most one keypackages.low frame a minute, so repeated claims cannot make its app resync in a loop.
+const LOW_NOTICE_GAP_MS = 60_000;
+const lowNoticeSentAt = new Map<string, number>();
 /** Identifies a stored KeyPackage without sending it back: SHA-256 of its wire string, base64. Clients compute the same. */
 const keyPackageId = (kp: string): string => crypto.createHash('sha256').update(kp).digest('base64');
 
@@ -54,7 +58,6 @@ export function register(app: Express, ctx: Ctx): void {
     'SELECT epoch, sender_device_id, commit_bytes FROM mls_commits WHERE group_id=? AND epoch>=? ORDER BY epoch LIMIT ?');
   const welcomesFor = db.prepare(
     'SELECT epoch, to_device_id, welcome FROM mls_welcomes WHERE group_id=? AND to_device_id IN (SELECT device_id FROM devices WHERE user_id=?) ORDER BY epoch');
-  const groupDevices = db.prepare('SELECT device_id FROM mls_group_devices WHERE group_id=?');
   const dropCommitsFrom = db.prepare('DELETE FROM mls_commits WHERE group_id=? AND epoch>=?');
   const dropWelcomesAfter = db.prepare('DELETE FROM mls_welcomes WHERE group_id=? AND epoch>?');
   // A Commit at epoch e comes with Welcomes at e+1, so these are the Welcomes a reset from `epoch` would drop.
@@ -152,7 +155,7 @@ export function register(app: Express, ctx: Ctx): void {
 
   // Claim one KeyPackage per device of a user who shares a server with us. Single-use packages are consumed;
   // a device with an empty pool falls back to its last-resort package, which is not consumed.
-  app.get('/api/users/:id/keypackages', ctx.requireAuth, (req, res) => {
+  app.get('/api/users/:id/keypackages', ctx.requireAuth, perMember(60_000, 20), (req, res) => {
     const userId = (req as AuthedRequest).userId;
     const targetId = req.params.id;
     if (!sharesServer.get(userId, targetId)) return void res.status(404).json({ error: 'user not found' });
@@ -172,7 +175,9 @@ export function register(app: Express, ctx: Ctx): void {
     })();
     for (const { deviceId } of claimed) {
       const remaining = (availableCount.get(deviceId) as { n: number }).n;
-      if (remaining < KEYPACKAGE_LOW_WATER) {
+      const now = Date.now();
+      if (remaining < KEYPACKAGE_LOW_WATER && now - (lowNoticeSentAt.get(deviceId) ?? 0) >= LOW_NOTICE_GAP_MS) {
+        lowNoticeSentAt.set(deviceId, now);
         ctx.sendToUser(targetId, { t: 'keypackages.low', deviceId, remaining });
       }
     }
@@ -241,6 +246,8 @@ export function register(app: Express, ctx: Ctx): void {
     res.json({
       epoch: current,
       commits: rows.map((r) => ({ epoch: r.epoch, senderDeviceId: r.sender_device_id, commit: r.commit_bytes })),
+      // A full chunk means there may be more Commits after it: the client asks again from the last epoch it applied.
+      more: rows.length === MAX_COMMITS_PER_FETCH,
     });
   });
 

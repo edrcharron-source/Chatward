@@ -98,6 +98,15 @@ function retryPending() {
   }
 }
 
+/** Channels whose catch-up was asked for while a page load or another catch-up was running. */
+const catchUpWanted = new Set<string>();
+
+/** Ends a load and, if a catch-up was asked for meanwhile, runs it now. */
+function endLoad(channelId: string, patch: Partial<ChannelChat> = {}) {
+  patchChannel(channelId, { loading: false, ...patch });
+  if (catchUpWanted.delete(channelId)) void catchUp(channelId).catch(() => {});
+}
+
 export async function loadHistory(channelId: string, mode: 'initial' | 'older' = 'initial') {
   const cur = channelOf(channelId);
   if (cur.loading) return;
@@ -111,27 +120,29 @@ export async function loadHistory(channelId: string, mode: 'initial' | 'older' =
       `/api/channels/${channelId}/messages?limit=${LIMITS.HISTORY_PAGE}${before}`,
     );
     mergeMessages(channelId, messages);
-    patchChannel(channelId, {
-      loaded: true,
-      loading: false,
-      hasMore: messages.length >= LIMITS.HISTORY_PAGE,
-    });
+    endLoad(channelId, { loaded: true, hasMore: messages.length >= LIMITS.HISTORY_PAGE });
     void decryptAll(channelId, messages);
   } catch (e) {
-    patchChannel(channelId, { loading: false });
+    endLoad(channelId);
     throw e;
   }
 }
 
 /**
  * After a reconnect, frames may have been missed. Fetch only what is newer than the newest message we hold, one
- * page at a time, so a gap of any length is filled. Then read the latest page once more: held messages inside
- * that page's range which it no longer returns were deleted while we were away, so they are dropped. Held
- * messages older than that page are not re-checked; a fresh load of the channel picks those up.
+ * page at a time, so a gap of any length is filled. Then read the latest page once more and merge it, so edits
+ * made while we were away are applied. Held messages inside that page's range which it no longer returns were
+ * deleted while we were away, so they are dropped. Held messages older than that page are not re-checked; a
+ * fresh load of the channel picks those up.
  */
 export async function catchUp(channelId: string) {
   const cur = channelOf(channelId);
-  if (cur.loading || !cur.loaded) return;
+  if (!cur.loaded) return;
+  if (cur.loading) {
+    // A load is in flight, so the frames we missed may predate its snapshot. Run again once it ends.
+    catchUpWanted.add(channelId);
+    return;
+  }
 
   patchChannel(channelId, { loading: true });
   try {
@@ -152,13 +163,16 @@ export async function catchUp(channelId: string) {
     const { messages: latest } = await api.get<{ messages: Message[] }>(
       `/api/channels/${channelId}/messages?limit=${LIMITS.HISTORY_PAGE}`,
     );
+    // Merge before the deletion check so edits to held messages land too; the check only removes held ids.
+    mergeMessages(channelId, latest);
+    void decryptAll(channelId, latest);
     // A short page means it holds the whole channel, so every held message is in its range.
     const floor = latest.length < LIMITS.HISTORY_PAGE ? '' : latest.reduce((min, m) => (m.id < min ? m.id : min), latest[0].id);
     const present = new Set(latest.map((m) => m.id));
     removeMessages(channelId, held.filter((id) => id >= floor && !present.has(id)));
-    patchChannel(channelId, { loading: false });
+    endLoad(channelId);
   } catch (e) {
-    patchChannel(channelId, { loading: false });
+    endLoad(channelId);
     throw e;
   }
 }

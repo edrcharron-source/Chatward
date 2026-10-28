@@ -488,6 +488,11 @@ async function main() {
     assert.equal((await api(bob.token, 'POST', '/api/voice/leave', { channelId: voiceChan })).status, 200);
     log('a rejoin after being removed from the call is refused until the user joins again');
 
+    // A rejoin needs a recent token for that room. A voice channel bob never joined is refused, even though he is a member.
+    const sideVoice = (await api(alice.token, 'POST', chanBase, { name: 'side call', kind: 'voice' })).json.channel.id as string;
+    assert.equal((await api(bob.token, 'POST', '/api/voice/rejoin', { channelId: sideVoice })).status, 409, 'a rejoin without a token for that room is refused');
+    log('a rejoin into a voice channel the user never got a token for is refused');
+
     // Bob can list and remove his own devices. Another user's device is not his to remove.
     const bobDevices = await api(bob.token, 'GET', '/api/me/devices');
     assert.ok(bobDevices.json.devices.some((d: { deviceId: string }) => d.deviceId === bob2.id), 'bob lists his second device');

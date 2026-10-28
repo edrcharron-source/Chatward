@@ -6,7 +6,7 @@ import { keepTokenFresh } from './api/token';
 import { refreshUnread, signOut, useSession, type ServerBundle } from './state/session';
 import { useSettings, applyTheme } from './state/settings';
 import { useVoice, rekeyActiveCall, resumeVoiceSlot, clearLeftoverVoiceSlot, leaveCallOnExit } from './state/voice';
-import { accountKey, adoptLegacyIfOwned, initDevice, syncChannelKeys, handleEnvelope, handleMemberLeave } from './crypto';
+import { accountKey, adoptLegacyIfOwned, initDevice, syncChannelKeys, handleEnvelope, handleMemberLeave, forgetChannels } from './crypto';
 import { installNotifications } from './notify/notify';
 import AuthScreen from './components/auth/AuthScreen';
 import ServerSidebar from './components/servers/ServerSidebar';
@@ -50,6 +50,16 @@ export function App() {
       </div>
     </div>
   );
+}
+
+// A burst of keypackages.low frames runs one key sync, a few seconds after the first, instead of one sync per frame.
+let lowKeyPackageSync: ReturnType<typeof setTimeout> | null = null;
+function syncAfterLowKeyPackages(): void {
+  if (lowKeyPackageSync) return;
+  lowKeyPackageSync = setTimeout(() => {
+    lowKeyPackageSync = null;
+    void syncChannelKeys(useSession.getState().servers).catch((e) => console.error(e));
+  }, 5_000);
 }
 
 function Shell() {
@@ -153,6 +163,7 @@ function Shell() {
             // leave the call if it was in the deleted voice channel, since the server has already dropped everyone
             if (useVoice.getState().channelId === f.channelId) void useVoice.getState().leave();
             st.removeChannel(f.serverId, f.channelId);
+            void forgetChannels([f.channelId]).catch((e) => console.error(e));
             // Calls key off the server's first text channel. Deleting that one moves them to the next channel's key.
             // No epoch moves here, so the call is rekeyed explicitly.
             void syncChannelKeys(useSession.getState().servers).then(rekeyActiveCall).catch((e) => console.error(e));
@@ -166,7 +177,9 @@ function Shell() {
           case 'server.delete': {
             // the server has already dropped every voice slot, so end our own call in it too
             if (useVoice.getState().serverId === f.serverId) void useVoice.getState().leave();
+            const channelIds = st.servers.find((b) => b.server.id === f.serverId)?.channels.map((c) => c.id) ?? [];
             st.removeServer(f.serverId);
+            void forgetChannels(channelIds).catch((e) => console.error(e));
             break;
           }
           case 'member.role': {
@@ -225,9 +238,9 @@ function Shell() {
           // A low key-package pool is topped up the same way, rather than waiting for the next full sync.
           case 'group.commit':
           case 'group.welcome':
-          case 'keypackages.low':
             void syncChannelKeys(useSession.getState().servers).catch((e) => console.error(e));
             break;
+          case 'keypackages.low': syncAfterLowKeyPackages(); break;
           case 'key.envelope': void handleEnvelope(f.envelope); break;
           case 'device.added':
             // Flash the taskbar so a background window still gets noticed.
