@@ -33,11 +33,14 @@ export function forgetSound(soundId: string) {
  * unless deafened, through our own speakers as a local monitor.
  */
 export async function playSound(sound: SoundboardSound, channelId: string): Promise<void> {
+  const { channelId: inChannel, deafened, muted } = useVoice.getState();
+  // Muted (or deafened, which mutes) means the call can't hear us, so a clip stays silent too.
+  if (inChannel === channelId && muted) throw new Error('Unmute to play sounds in this call.');
+
   const ctx = audioCtx();
   if (ctx.state === 'suspended') await ctx.resume();
   const buffer = await loadBuffer(sound);
 
-  const { channelId: inChannel, deafened } = useVoice.getState();
   const inThisCall = inChannel === channelId && voiceAudio.mixIn !== null;
 
   const gain = ctx.createGain();
