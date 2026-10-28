@@ -157,6 +157,16 @@ describe('safety number', () => {
     const c = await makeDevice();
     assert.notEqual(await safetyNumber([a, b]), await safetyNumber([a, b, c]));
   });
+
+  it('changes when a server swaps only the ECDH key or the deviceId', async () => {
+    const a = await makeDevice();
+    const b = await makeDevice();
+    const original = await safetyNumber([a, b]);
+    const swappedEcdh = { ...b, ecdhPublic: a.ecdhPublic };
+    const swappedId = { ...b, deviceId: 'other-device' };
+    assert.notEqual(await safetyNumber([a, swappedEcdh]), original);
+    assert.notEqual(await safetyNumber([a, swappedId]), original);
+  });
 });
 
 describe('concat', () => {
