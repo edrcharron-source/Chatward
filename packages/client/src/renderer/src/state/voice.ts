@@ -81,6 +81,9 @@ export async function rekeyActiveCall(): Promise<void> {
   await activeKeyProvider.setKey(keyBuffer(key));
 }
 
+// Bumps on every join and leave. A join still connecting when this has moved on is stale and tears down what it built.
+let joinAttempt = 0;
+
 // Your own speaking state comes from your mic level, so it works without LiveKit's active-speaker data.
 const METER_MS = 100;
 const SPEAK_LEVEL = 0.01;
@@ -159,6 +162,27 @@ export const useVoice = create<VoiceState>((set, get) => {
       });
   }
 
+  /** Ends the current call. State is cleared first so the old room's events are ignored. */
+  async function hangUp(): Promise<void> {
+    const { room, channelId } = get();
+    if (!channelId) return;
+    set({ room: null, channelId: null, serverId: null, status: 'idle', error: null, cameraOn: false, screenOn: false, theaterKey: null, speaking: [] });
+    endMeter();
+    closeAudio();
+    demoVoice.leave(); // no-op outside a demo call
+    if (room) await room.disconnect();
+    if (isDemo()) return;
+    await api.post('/api/voice/leave', { channelId }).catch(() => {});
+  }
+
+  /** A superseded join drops what it built, but leaves the newer call's state and audio alone. */
+  function abandon(channelId: string, room: Room | null, mic: MediaStreamTrack | null): void {
+    mic?.stop();
+    void room?.disconnect();
+    // the token request may have counted us in this channel; skip this if the user is back in it
+    if (get().channelId !== channelId) void api.post('/api/voice/leave', { channelId }).catch(() => {});
+  }
+
   return {
     channelId: null, serverId: null, status: 'idle', error: null, room: null,
     muted: false, deafened: false, demoLoopback: true, cameraOn: false, screenOn: false, theaterKey: null, speaking: [], version: 0,
@@ -166,7 +190,11 @@ export const useVoice = create<VoiceState>((set, get) => {
     join: async (serverId, channelId) => {
       const cur = get();
       if (cur.channelId === channelId && cur.status !== 'error') return;
-      if (cur.channelId) await get().leave();
+      // this join supersedes any join or call still in progress
+      const attempt = ++joinAttempt;
+      const stale = () => attempt !== joinAttempt;
+      await hangUp();
+      if (stale()) return;
       set({ serverId, channelId, status: 'connecting', error: null, cameraOn: false, screenOn: false, speaking: [] });
 
       if (isDemo()) {
@@ -185,15 +213,20 @@ export const useVoice = create<VoiceState>((set, get) => {
         return;
       }
 
+      // Each step checks stale() after its await: a leave or newer join during connect must not leave a live room or mic behind.
       let room: Room | null = null;
+      let mic: MediaStreamTrack | null = null;
       try {
         // Fail closed: never join a call without the channel key.
         const key = await voiceKey(channelId);
+        if (stale()) { abandon(channelId, room, mic); return; }
         if (!key) throw new Error('Channel encryption key is not available yet');
         const { url, token } = await api.post<{ url: string; token: string }>('/api/voice/token', { channelId });
+        if (stale()) { abandon(channelId, room, mic); return; }
 
         const keyProvider = new ExternalE2EEKeyProvider();
         await keyProvider.setKey(keyBuffer(key));
+        if (stale()) { abandon(channelId, room, mic); return; }
         activeKeyProvider = keyProvider;
         activeKeyId = keyId(key);
         const worker = new Worker(new URL('livekit-client/e2ee-worker', import.meta.url), { type: 'module' });
@@ -204,16 +237,23 @@ export const useVoice = create<VoiceState>((set, get) => {
 
         // Playback starts before connect so remote tracks that arrive during connect are heard.
         await startPlayback();
+        if (stale()) { abandon(channelId, room, mic); return; }
         await room.connect(url, token);
+        if (stale()) { abandon(channelId, room, mic); return; }
         await room.setE2EEEnabled(true);
+        if (stale()) { abandon(channelId, room, mic); return; }
 
-        const mic = await openMic();
+        mic = await openMic();
+        if (stale()) { abandon(channelId, room, mic); return; }
         const bitrate = channelBitrate(useSession.getState().servers.flatMap((b) => b.channels).find((c) => c.id === channelId));
         await room.localParticipant.publishTrack(mic, { source: Track.Source.Microphone, ...micPublish(bitrate) });
+        if (stale()) { abandon(channelId, room, mic); return; }
         set({ status: 'connected' });
         syncMic();
         startMeter();
       } catch (e) {
+        // errors from a superseded join belong to it; the newer call owns the state and audio
+        if (stale()) { abandon(channelId, room, mic); return; }
         endMeter();
         closeAudio();
         void room?.disconnect();
@@ -224,16 +264,8 @@ export const useVoice = create<VoiceState>((set, get) => {
     },
 
     leave: async () => {
-      const { room, channelId } = get();
-      if (!channelId) return;
-      // clear state first so the Disconnected handler ignores this room
-      set({ room: null, channelId: null, serverId: null, status: 'idle', error: null, cameraOn: false, screenOn: false, theaterKey: null, speaking: [] });
-      endMeter();
-      closeAudio();
-      demoVoice.leave(); // no-op outside a demo call
-      if (room) await room.disconnect();
-      if (isDemo()) return;
-      await api.post('/api/voice/leave', { channelId }).catch(() => {});
+      ++joinAttempt; // also cancels a join that is still connecting
+      await hangUp();
     },
 
     toggleMute: () => {
