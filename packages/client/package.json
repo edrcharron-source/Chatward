@@ -15,11 +15,14 @@
     "test:demo": "esbuild src/renderer/src/demo/codec.test.ts --bundle --platform=node --format=esm --outfile=out/test/codec.test.mjs --log-level=warning && node --test out/test/codec.test.mjs",
     "test:policy": "esbuild src/main/serverPolicy.test.ts --bundle --platform=node --format=esm --outfile=out/test/policy.test.mjs --log-level=warning && node --test out/test/policy.test.mjs",
     "test:media": "esbuild src/renderer/src/components/media/safeUrls.test.ts --bundle --platform=node --format=esm --outfile=out/test/safeUrls.test.mjs --log-level=warning && node --test out/test/safeUrls.test.mjs",
-    "test:e2e-client": "npm run build -w @chatward/server && esbuild test/e2e-client/device.ts --bundle --platform=node --format=esm --outfile=out/e2e-client/device.mjs --log-level=warning && esbuild test/e2e-client/run.ts --bundle --platform=node --format=esm --outfile=out/e2e-client/run.mjs --external:ts-mls --log-level=warning && node out/e2e-client/run.mjs"
+    "test:e2e-client": "npm run build -w @chatward/server && esbuild test/e2e-client/device.ts --bundle --platform=node --format=esm --outfile=out/e2e-client/device.mjs --log-level=warning && esbuild test/e2e-client/run.ts --bundle --platform=node --format=esm --outfile=out/e2e-client/run.mjs --external:ts-mls --log-level=warning && node out/e2e-client/run.mjs",
+    "visual:capture": "esbuild test/visual/capture.ts --bundle --platform=node --format=esm --outfile=out/visual/capture.mjs --external:playwright-core --external:electron --log-level=warning && node out/visual/capture.mjs",
+    "visual:compare": "esbuild test/visual/compare.ts --bundle --platform=node --format=esm --outfile=out/visual/compare.mjs --external:pngjs --log-level=warning && node out/visual/compare.mjs"
   },
   "devDependencies": {
     "@chatward/shared": "*",
     "@noble/hashes": "2.4.0",
+    "@types/pngjs": "^6.0.5",
     "@types/react": "^18.3.11",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.2",
@@ -29,6 +32,8 @@
     "emoji-picker-element": "^1.26.0",
     "emoji-picker-element-data": "^1.6.0",
     "livekit-client": "^2.5.0",
+    "playwright-core": "1.63.0",
+    "pngjs": "^7.0.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-easy-crop": "^5.0.8",

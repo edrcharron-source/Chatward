@@ -19,7 +19,7 @@ export default function ServerSidebar({ onReload }: { onReload: () => Promise<vo
   }
 
   return (
-    <nav className="cw-servers" aria-label="Servers">
+    <nav className="cw-servers" data-region="servers" aria-label="Servers">
       {servers.map((b) => {
         const active = b.server.id === activeServerId;
         return (

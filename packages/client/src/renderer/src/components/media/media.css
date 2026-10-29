@@ -75,7 +75,7 @@
 .media-link-desc { font-size: 13px; color: var(--text-muted); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .media-link-image { width: 96px; height: 64px; object-fit: cover; border-radius: 6px; flex: none; }
 
-.media-embed iframe { width: 100%; aspect-ratio: 16 / 9; border: 0; border-radius: 8px; background: #000; }
+.media-embed iframe { width: 100%; aspect-ratio: 16 / 9; border: 0; border-radius: 8px; background: var(--media-bg); }
 .media-embed-twitter iframe { aspect-ratio: auto; height: 520px; background: transparent; }
 .media-embed-placeholder {
   display: flex; flex-direction: column; align-items: flex-start; gap: 4px; text-align: left;
