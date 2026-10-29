@@ -1,6 +1,6 @@
 import { useSettings } from '../../state/settings';
-import { SKINS } from '../../skins';
-import { Section, Toggle } from './controls';
+import { SKINS, PLAIN_SKIN } from '../../skins';
+import { Section } from './controls';
 
 const THEMES = [
   { id: 'dark', label: 'Dark' },
@@ -18,6 +18,9 @@ export default function AppearanceTab() {
   const skin = useSettings((s) => s.skin);
   const layout = useSettings((s) => s.layout);
   const set = useSettings((s) => s.set);
+  const choices = [PLAIN_SKIN, ...SKINS];
+  // An unknown id counts as no skin, so it shows as Plain.
+  const current = choices.find((s) => s.id === skin) ?? PLAIN_SKIN;
   return (
     <>
       <Section title="Theme">
@@ -44,13 +47,16 @@ export default function AppearanceTab() {
         </div>
       </Section>
       {SKINS.length > 0 && (
-        <Section title="Skins">
-          {SKINS.map((s) => (
-            <Toggle key={s.id}
-              label={<><span className="skin-swatch" style={{ background: s.swatch }} aria-hidden />{s.label}</>}
-              checked={skin === s.id}
-              onChange={(on) => set({ skin: on ? s.id : '' })} />
-          ))}
+        <Section title="Skin">
+          <label className="setting-row">
+            <span className="setting-text">
+              <span><span className="skin-swatch" style={{ background: current.swatch }} aria-hidden />{current.label}</span>
+              <small className="muted">Changes how the app looks.</small>
+            </span>
+            <select aria-label="Skin" value={current.id} onChange={(e) => set({ skin: e.target.value })}>
+              {choices.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+            </select>
+          </label>
         </Section>
       )}
     </>

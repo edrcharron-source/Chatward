@@ -16,6 +16,9 @@ export const SKINS: SkinInfo[] = [
   { id: 'retro-ascii', label: 'Retro ASCII', swatch: '#ffb000' },
 ];
 
+/** No skin pack at all: the app's original look. Its id is the empty skin setting. */
+export const PLAIN_SKIN: SkinInfo = { id: '', label: 'Original', swatch: '#34c9b4' };
+
 // Packs load on first use, so a skin nobody picks costs nothing.
 const packs = import.meta.glob('./*/skin.css');
 

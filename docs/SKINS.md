@@ -23,7 +23,7 @@ The full plan lives in the project's "Chatward skins plan" doc. This file is the
 
 - Add `packages/client/src/renderer/src/skins/<id>/skin.css`. Every rule starts with `:root[data-skin='<id>']`, so the
   pack does nothing until that skin is chosen.
-- Add one entry to `SKINS` in `skins/index.ts` (label and swatch colour). The Appearance tab shows a Skins section only
+- Add one entry to `SKINS` in `skins/index.ts` (label and swatch colour). The Appearance tab lists them in a Skin dropdown, after Original (no skin), only
   while `SKINS` has entries, so the empty list keeps the Visual check unchanged.
 - The choice is the `skin` setting: one skin at a time, `''` for none, and an unknown id counts as none. It is saved
   locally and never sent to the server. The watch-party popout follows it too.
