@@ -75,7 +75,7 @@ Do this with a second SSH session open, so a mistake can't lock you out.
    ```
    sudo ufw delete <number>
    ```
-   In particular delete any `50000:50100/udp` rule once #286 is deployed and the router forward is swapped.
+   In particular delete any `50000:50100/udp` rule once #299 is deployed and the router forward is swapped.
 7. Turn it on and check:
    ```
    sudo ufw enable
