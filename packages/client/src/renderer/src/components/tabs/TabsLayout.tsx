@@ -150,9 +150,16 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTes
   }
 
   // A click opens just that tab. Shift+click splits the clicked tab with the one already open (in the split view, the
-  // one picked last), so switching tabs never splits by accident.
+  // one picked last), so switching tabs never splits by accident. Shift+click on one side of the split view closes
+  // that side, and the other tab stays open on its own.
   function selectTab(t: TabId, withOpen: boolean) {
     if (withOpen) {
+      if (split && recent.includes(t)) {
+        const other = recent[0] === t ? recent[1] : recent[0];
+        setRecent([other, t]);
+        setSplit(false);
+        return;
+      }
       if (t === recent[0]) return;
       setRecent([t, recent[0]]);
       setSplit(true);
@@ -221,7 +228,7 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTes
         </nav>
         <div className="cw-tabs-tools">
           <button type="button" className={`cw-tool${split ? ' active' : ''}`} aria-pressed={split}
-            title="Show the open tab beside the one before it (or Shift+click a tab)" onClick={() => setSplit((s) => !s)}>
+            title="Show the open tab beside the one before it (or Shift+click a tab; Shift+click a split tab to close it)" onClick={() => setSplit((s) => !s)}>
             <PixelIcon name="theater" size={14} />
             <span>Split</span>
           </button>
