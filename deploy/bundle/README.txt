@@ -2,8 +2,9 @@ Chatward server (PC-only, local test). Not for cloud servers.
 WARNING: do not port-forward this server on your router. It uses plain HTTP, so passwords and login tokens would travel unencrypted to anyone on the internet. Friends outside this PC need the cloud setup below, which uses HTTPS.
 1. Install and start Docker Desktop (docker.com/products/docker-desktop).
 2. Double-click start-server.bat. First run builds the server (a few minutes).
-3. Install Chatward-Setup.exe, open it, register, and you're in. Server address: http://localhost:3000
-   The first account needs the setup code: start-server.bat shows it, and it is also in .env as SETUP_CODE.
+3. Make a sign-up code: open a terminal in this folder and run  chatward invite
+   Install Chatward-Setup.exe, open it, choose Create account and enter the code. Server address: http://localhost:3000
+   The first account owns the server. Run chatward invite again for each extra account (chatward help lists the other commands).
 4. stop-server.bat stops it. Your chats are kept in a Docker volume.
 Optional: put a Klipy API key in .env (copy .env.example) for GIFs, then run start-server.bat again.
 

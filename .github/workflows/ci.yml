@@ -42,7 +42,10 @@ jobs:
       - run: npm ci
       - run: npm run build -w @chatward/shared
       - run: npm run dist:win
-        env: { CHATWARD_BUILD_CHANNEL: test }
+        env:
+          CHATWARD_BUILD_CHANNEL: test
+          # The server a fresh install starts with. Set the repository variable to point builds somewhere else.
+          CHATWARD_DEFAULT_SERVER: ${{ vars.CHATWARD_DEFAULT_SERVER || 'https://chat.lebserver.com' }}
       - name: Name the artifact after the branch and commit
         shell: bash
         run: echo "ARTIFACT_NAME=Chatward-Setup-${GITHUB_REF_NAME//\//-}-${GITHUB_SHA::7}" >> "$GITHUB_ENV"

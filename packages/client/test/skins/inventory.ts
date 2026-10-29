@@ -34,9 +34,6 @@ export const FEATURES: Feature[] = [
 
   { id: 'channel.open-memes', what: 'open another text channel', find: (p) => channels(p).getByText('memes', { exact: true }) },
   { id: 'channel.create', what: 'create a channel (admin)', find: (p) => p.getByRole('button', { name: 'Create channel', exact: true }) },
-  { id: 'channel.invite', what: 'invite people (admin)', find: (p) => p.getByRole('button', { name: 'Invite people', exact: true }) },
-  { id: 'server.create', what: 'create a server', find: (p) => p.getByRole('button', { name: 'Create server', exact: true }) },
-  { id: 'server.join', what: 'join a server with an invite', find: (p) => p.getByRole('button', { name: 'Join with invite', exact: true }) },
   { id: 'server.settings', what: 'open server settings', find: (p) => p.getByRole('button', { name: 'Server settings', exact: true }) },
   { id: 'settings.open', what: 'open app settings', find: (p) => p.getByRole('button', { name: 'Settings', exact: true }) },
   { id: 'settings.close', what: 'close app settings', find: (p) => p.getByRole('button', { name: 'Close settings', exact: true }) },

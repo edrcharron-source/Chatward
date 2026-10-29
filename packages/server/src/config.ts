@@ -15,30 +15,6 @@ function jwtSecret(): string {
   return s;
 }
 
-const SETUP_CODE_FILE = path.join(dataDir, 'setup-code');
-// Same look-alike-free alphabet as the reset codes, so a code copied by hand is unambiguous.
-const SETUP_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-
-/**
- * The code the first account must enter. Set SETUP_CODE in .env to choose it. Otherwise a random one is made the first
- * time it is needed, kept in the data folder until the first account exists, and printed to the server log.
- */
-export function setupCode(): string {
-  const fromEnv = process.env.SETUP_CODE?.trim();
-  if (fromEnv) return fromEnv;
-  if (fs.existsSync(SETUP_CODE_FILE)) return fs.readFileSync(SETUP_CODE_FILE, 'utf8').trim();
-  const chars = [...crypto.randomBytes(12)].map((b) => SETUP_CODE_ALPHABET[b % 32]).join('');
-  const code = `${chars.slice(0, 4)}-${chars.slice(4, 8)}-${chars.slice(8)}`;
-  fs.writeFileSync(SETUP_CODE_FILE, code, { mode: 0o600 });
-  console.log(`First account setup code (enter it when you register the first account): ${code}`);
-  return code;
-}
-
-/** Forgets the generated code once the first account exists. A code set in .env is not touched. */
-export function clearSetupCode(): void {
-  fs.rmSync(SETUP_CODE_FILE, { force: true });
-}
-
 /** LiveKit keys. The dev defaults are public, so production refuses to start with them. */
 function livekitKeys(): { apiKey: string; apiSecret: string } {
   const apiKey = process.env.LIVEKIT_API_KEY ?? 'devkey';
@@ -79,6 +55,8 @@ export const config = {
   updatesDir: path.resolve(process.env.UPDATES_DIR ?? path.join(dataDir, 'updates')),
   /** Set by the update script from the installed release tag. */
   serverVersion: process.env.CHATWARD_VERSION ?? '0.0.0-dev',
+  /** The address people put in the app, shown in the message `chatward invite` prints. */
+  publicUrl: process.env.PUBLIC_URL ?? '',
   /** Clients older than this are blocked until they update. */
   minClientVersion: process.env.MIN_CLIENT_VERSION ?? '0.0.0',
   /**

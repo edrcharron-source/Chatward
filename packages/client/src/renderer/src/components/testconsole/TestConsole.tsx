@@ -81,19 +81,13 @@ export default function TestConsole({ onClose }: { onClose: () => void }): React
     const { devices } = await api.get<{ devices: { deviceId: string }[] }>('/api/me/devices');
     const mine = getDevice().deviceId;
     if (!devices.some((d) => d.deviceId === mine)) throw new Error(`This PC's device ${mine} is not registered to the account`);
-    return `Signed in as ${me.displayName} (@${me.username}). ${devices.length} device(s); this PC is one of them`;
+    return `Signed in as ${me.username}. ${devices.length} device(s); this PC is one of them`;
   };
 
   const checkServers: Check = async () => {
     const res = await api.get<{ servers: { server: { name: string }; channels: unknown[]; members: unknown[] }[] }>('/api/servers');
-    if (res.servers.length === 0) throw new Error('No servers yet. Create one from the sidebar');
+    if (res.servers.length === 0) throw new Error('This account is not in the server');
     return res.servers.map((b) => `${b.server.name}: ${b.channels.length} channels, ${b.members.length} members`).join('; ');
-  };
-
-  const checkInvite: Check = async () => {
-    if (!bundle) throw new Error('Pick a server first');
-    const { code, expiresAt } = await api.post<{ code: string; expiresAt: number }>(`/api/servers/${bundle.server.id}/invites`, {});
-    return `Invite code ${code} (single use, expires ${new Date(expiresAt).toLocaleString()}). Use it to register a second account`;
   };
 
   const checkE2ee: Check = async () => {
@@ -213,8 +207,8 @@ export default function TestConsole({ onClose }: { onClose: () => void }): React
           {quick.map(([area, check]) => (
             <button key={area} type="button" disabled={running !== null} onClick={() => void run(area, check)}>{area}</button>
           ))}
-          <button type="button" disabled={running !== null} onClick={() => void run('Invite', checkInvite)}>Make invite code</button>
         </div>
+        <p className="muted">Sign-up codes for a second test account come from <code>chatward invite</code> on the server.</p>
         <p className="muted">{running ? `Running ${running}…` : `${passes} passed, ${fails} failed`}</p>
         <ol className="cw-test-log">
           {log.map((l) => (

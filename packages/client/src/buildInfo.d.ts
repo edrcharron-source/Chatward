@@ -7,4 +7,6 @@ declare const __CHATWARD_BUILD__: {
   commit: string;
   /** ISO time the build was made. */
   builtAt: string;
+  /** Server address a fresh install starts with, or empty for the local dev server. */
+  defaultServer: string;
 };
