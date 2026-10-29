@@ -76,6 +76,9 @@ fi
 
 # ---- folders ----
 mkdir -p "$DATA_PATH" "$UPLOADS_PATH" "$UPDATES_PATH" "$BACKUP_PATH"
+# umask 077 made any new parent folders root-only; open them up so the admin user (and update-home.sh) can reach the
+# folders inside, which keep their own private modes below.
+for d in "$DATA_PATH" "$UPLOADS_PATH" "$UPDATES_PATH" "$BACKUP_PATH"; do chmod 755 "$(dirname "$d")"; done
 chown "$NODE_UID:$NODE_UID" "$DATA_PATH" "$UPLOADS_PATH"
 chmod 700 "$DATA_PATH" "$UPLOADS_PATH"
 chown "$OWNER" "$UPDATES_PATH" "$BACKUP_PATH"
