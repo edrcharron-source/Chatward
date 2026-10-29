@@ -28,6 +28,7 @@ jobs:
         with: { node-version: 22, cache: npm }
       - run: npm ci
       - run: npm run build -w @chatward/shared
+      - run: npm run test:unit -w @chatward/client
       - run: npm run test:e2e -w @chatward/server
       - run: npm run test:e2e-client -w @chatward/client
   # Unsigned installer for testing, built only after the checks above pass on develop or main (or a manual run).
@@ -42,7 +43,10 @@ jobs:
       - run: npm ci
       - run: npm run build -w @chatward/shared
       - run: npm run dist:win
-        env: { CHATWARD_BUILD_CHANNEL: test }
+        env:
+          CHATWARD_BUILD_CHANNEL: test
+          # The server a fresh install starts with. Set the repository variable to point builds somewhere else.
+          CHATWARD_DEFAULT_SERVER: ${{ vars.CHATWARD_DEFAULT_SERVER || 'https://chat.lebserver.com' }}
       - name: Name the artifact after the branch and commit
         shell: bash
         run: echo "ARTIFACT_NAME=Chatward-Setup-${GITHUB_REF_NAME//\//-}-${GITHUB_SHA::7}" >> "$GITHUB_ENV"

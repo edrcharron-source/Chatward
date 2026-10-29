@@ -36,7 +36,7 @@ export function buildCsp(origin: string | null): string {
     "script-src 'self'",
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob: https://klipy.com https://*.klipy.com",
-    "media-src 'self' blob: data:",
+    "media-src 'self' blob: data: https:",
     `connect-src ${connect.join(' ')}`,
     'frame-src https://www.youtube-nocookie.com https://platform.twitter.com https://twitframe.com https://*.twitter.com https://*.x.com',
     "worker-src 'self' blob:",

@@ -14,6 +14,8 @@ const build = {
   branch: process.env.GITHUB_HEAD_REF || process.env.GITHUB_REF_NAME || git('rev-parse --abbrev-ref HEAD') || 'unknown',
   commit: (process.env.GITHUB_SHA || git('rev-parse HEAD') || 'unknown').slice(0, 7),
   builtAt: new Date().toISOString(),
+  // The server address a fresh install starts with. CI builds for the group's server set CHATWARD_DEFAULT_SERVER.
+  defaultServer: process.env.CHATWARD_DEFAULT_SERVER ?? '',
 };
 const define = { __CHATWARD_BUILD__: JSON.stringify(build) };
 

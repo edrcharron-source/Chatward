@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# The Chatward admin command. Run on the server; install.sh links it to /usr/local/bin/chatward.
+#   chatward invite            make a one-time sign-up code (chatward help lists the rest)
+# It runs the admin tool inside the running server container, which talks to the server through a socket file in the
+# data folder. Using it needs the same access as docker compose: membership of the docker group, or sudo.
+set -euo pipefail
+cd "$(dirname "$(readlink -f "$0")")"
+# The login that ran the command goes into invites.log next to every code it makes.
+exec docker compose exec -T -e CHATWARD_ADMIN="${SUDO_USER:-${USER:-$(id -un)}}" server node packages/server/dist/cli.js "$@"

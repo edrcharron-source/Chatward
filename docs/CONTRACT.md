@@ -5,21 +5,28 @@ All JSON. Errors: `{ "error": "message" }` with 4xx. Types live in `@chatward/sh
 
 ## REST (server owns; client `api/` wraps)
 Auth (module `auth`)
-- POST /api/auth/register {username, displayName, password, inviteCode?, device: DeviceKeys} -> {token, user}
-  First user ever registered needs no invite and is allowed (becomes owner of first server). Later users need a valid invite code.
-- POST /api/auth/login {username, password, device: DeviceKeys} -> {token, user}  (upserts the device keys)
+- POST /api/auth/register {name, password, inviteCode, device: DeviceKeys} -> {token, user}
+  inviteCode is a one-time sign-up code from `chatward invite` (deleted on use). The account joins the one server; the
+  first account ever made owns it. name is the only name (user.displayName always equals user.username). Older apps
+  may send username and displayName instead; displayName is ignored. Password: 8-1024 characters, not a common
+  password, not the name.
+- POST /api/auth/login {name, password, device: DeviceKeys} -> {token, user}  (upserts the device keys; 403 if the account is turned off)
 - GET  /api/me -> {user}
-- PATCH /api/me {displayName} -> {user}
+- PATCH /api/me {bio?, pronouns?, accentColor?, bannerColor?} -> {user}  (the name cannot be changed)
 - PUT  /api/me/avatar (raw image bytes, Content-Type image/png|jpeg|webp, <=AVATAR_MAX_BYTES) -> {user}
 - GET  /api/avatars/:userId -> image bytes (public to authed users)
 
-Servers/channels/invites (module `servers`)
-- POST /api/servers {name} -> {server, channels}   (creates #general text + General voice)
-- GET  /api/servers -> {servers: [{server, channels, members: Member[]}]}
+Server/channels (module `servers`). There is exactly one server; there are no routes to create, join, leave,
+delete or transfer one, and no in-app invites.
+- GET  /api/servers -> {servers: [{server, channels, members: Member[]}]}  (the one server)
 - POST /api/servers/:id/channels {name, kind} (admin) -> {channel}
-- POST /api/servers/:id/invites -> {code, expiresAt}  (admin; 7d, single use by default; body {maxUses?})
-- POST /api/invites/:code/join {} -> {server}
-- DELETE /api/servers/:id/members/:userId (admin) kicks.
+- DELETE /api/servers/:id/members/:userId and POST /api/servers/:id/bans {userId} (admin): turn the account off
+  (signed out everywhere, leaves the server, cannot sign in). GET /api/servers/:id/bans lists turned-off accounts;
+  DELETE /api/servers/:id/bans/:userId turns one back on.
+
+Admin (module `admin`): not HTTP on the network. The server listens on `DATA_DIR/admin.sock` (mode 600) and
+`packages/server/dist/cli.js` (the `chatward` command) talks to it: invite, invites, revoke, users, reset, remove,
+restore, admin, member, invite-log. Sign-up codes and their history are in `DATA_DIR/invites.log`.
 
 Messages + keys (module `messages`)
 - GET  /api/channels/:id/messages?before=<id>&limit=50 -> {messages: Message[]} (newest last)

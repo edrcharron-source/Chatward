@@ -1,8 +1,8 @@
 // End-to-end MLS check against a real server process (real HTTP, real SQLite) using the public API only:
-// register with invites, login for a second device, server and channel creation, kick, and Commit delivery.
+// sign-up codes from the chatward command, login for a second device, channels, removing accounts, and Commit delivery.
 // Run with: npm run test:e2e -w @chatward/server
 import assert from 'node:assert/strict';
-import { spawn, type ChildProcess } from 'node:child_process';
+import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
@@ -12,7 +12,6 @@ import { exportRawPublic, generateEcdh, generateSigning, toB64 } from '../../cli
 const PORT = 3999;
 const BASE = `http://127.0.0.1:${PORT}`;
 const PASSWORD = 'correct-horse-1';
-const SETUP_CODE = 'e2e-setup-code';
 const LIVEKIT_PORT = 3998;
 // A stand-in for LiveKit's Twirp API, so a voice rejoin can ask whether a user is in a room. Members are "room:identity".
 // mode 'down' answers 500 and 'hang' answers late, to check how a lookup LiveKit cannot answer is reported.
@@ -101,7 +100,7 @@ const unb64 = (s: string) => new Uint8Array(Buffer.from(s, 'base64'));
 async function startServer(): Promise<ChildProcess> {
   const child = spawn('node', ['dist/index.js'], {
     cwd: serverDir,
-    env: { ...process.env, DATA_DIR: dataDir, PORT: String(PORT), HOST: '127.0.0.1', SETUP_CODE, LIVEKIT_API_URL: `http://127.0.0.1:${LIVEKIT_PORT}` },
+    env: { ...process.env, DATA_DIR: dataDir, PORT: String(PORT), HOST: '127.0.0.1', LIVEKIT_API_URL: `http://127.0.0.1:${LIVEKIT_PORT}` },
     stdio: 'inherit',
   });
   for (let i = 0; i < 100; i++) {
@@ -112,6 +111,32 @@ async function startServer(): Promise<ChildProcess> {
   }
   throw new Error('server did not start');
 }
+
+/** Runs the chatward admin command against the test server, as the server login "tester". Throws on a non-zero exit. */
+function cli(...args: string[]): string {
+  return execFileSync('node', ['dist/cli.js', ...args], {
+    cwd: serverDir, env: { ...process.env, DATA_DIR: dataDir, CHATWARD_ADMIN: 'tester' }, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+  });
+}
+
+/** The chatward command's output and exit status, for commands expected to fail. */
+function cliFails(...args: string[]): string {
+  try {
+    cli(...args);
+  } catch (err) {
+    return String((err as { stderr?: string }).stderr ?? '');
+  }
+  throw new Error(`chatward ${args.join(' ')} should have failed`);
+}
+
+/** A fresh one-time sign-up code from `chatward invite`. */
+function signupCode(): string {
+  const m = /New sign-up code: ([A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4})/.exec(cli('invite'));
+  assert.ok(m, 'chatward invite prints a code');
+  return m[1];
+}
+
+const inviteLog = () => fs.readFileSync(path.join(dataDir, 'invites.log'), 'utf8');
 
 async function uploadPool(dev: Dev, singleUse: number, replace = false) {
   const items: { kp: string; lastResort?: boolean }[] = [];
@@ -180,43 +205,69 @@ async function main() {
   let server = await startServer();
   let failed = false;
   try {
-    // Accounts go through the real API. The first user needs the setup code (no invite) and owns the server.
+    // Accounts go through the real API with codes from the chatward command. The first account owns the server.
     const aliceKeys = await makeDeviceKeys();
-    const noCode = await api(null, 'POST', '/api/auth/register', {
-      username: 'alice', displayName: 'Alice', password: PASSWORD, device: aliceKeys,
-    });
-    assert.equal(noCode.status, 403, 'first account is refused without a setup code');
+    const noCode = await api(null, 'POST', '/api/auth/register', { name: 'alice', password: PASSWORD, device: aliceKeys });
+    assert.equal(noCode.status, 403, 'sign-up is refused without a code');
     const wrongCode = await api(null, 'POST', '/api/auth/register', {
-      username: 'alice', displayName: 'Alice', password: PASSWORD, device: aliceKeys, setupCode: 'wrong-code',
+      name: 'alice', password: PASSWORD, device: aliceKeys, inviteCode: 'AAAA-BBBB-CCCC',
     });
-    assert.equal(wrongCode.status, 403, 'first account is refused with a wrong setup code');
+    assert.equal(wrongCode.status, 403, 'sign-up is refused with a made-up code');
+    const aliceCode = signupCode();
+    assert.match(cli('invites'), new RegExp(`…${aliceCode.slice(-4)}\\s+tester`), 'the unused code is listed with who made it');
+    for (const [name, password, why] of [['alice', 'short12', 'shorter than 8'], ['alice', 'password123', 'a common password'], ['alicealice', 'AliceAlice', 'the name']]) {
+      const weak = await api(null, 'POST', '/api/auth/register', { name, password, device: aliceKeys, inviteCode: aliceCode });
+      assert.equal(weak.status, 400, `a password that is ${why} is refused`);
+    }
+    // Lowercase, spaces and no dashes still match: codes are typed by hand.
     const reg = (await api(null, 'POST', '/api/auth/register', {
-      username: 'alice', displayName: 'Alice', password: PASSWORD, device: aliceKeys, setupCode: SETUP_CODE,
+      name: 'alice', password: PASSWORD, device: aliceKeys, inviteCode: ` ${aliceCode.toLowerCase().replace(/-/g, ' ')} `,
     })).json;
+    assert.equal(reg.user.username, 'alice');
+    assert.equal(reg.user.displayName, 'alice', 'the name is the display name');
     const alice = await newDev('alice', { id: reg.user.id, token: reg.token }, aliceKeys);
-    const srv = (await api(alice.token, 'POST', '/api/servers', { name: 'S' })).json;
-    const channel = (srv.channels as { id: string; name: string; kind: string }[]).find((c) => c.name === 'general' && c.kind === 'text')!;
-    const serverId: string = srv.server.id;
-    CHANNEL = channel.id;
-    const invite = async (uses: number) => (await api(alice.token, 'POST', `/api/servers/${serverId}/invites`, { maxUses: uses })).json.code as string;
+    const reused = await api(null, 'POST', '/api/auth/register', {
+      name: 'mallory', password: PASSWORD, device: await makeDeviceKeys(), inviteCode: aliceCode,
+    });
+    assert.equal(reused.status, 403, 'a code works once');
+    assert.match(cli('invites'), /No unused codes/, 'a used code is deleted');
+    assert.match(inviteLog(), new RegExp(`created\\s+code …${aliceCode.slice(-4)}\\s+by=tester`), 'the log records who made the code');
+    assert.match(inviteLog(), new RegExp(`used\\s+code …${aliceCode.slice(-4)}\\s+by=tester\\s+account=alice\\s+id=${reg.user.id as string}`), 'the log ties the code to the account');
+    assert.ok(!inviteLog().includes(aliceCode) && !inviteLog().includes(aliceCode.replace(/-/g, '')), 'the log never holds a whole code');
+    log('sign-up needs a one-time code from chatward invite; weak passwords are refused; the code is deleted and logged against the account');
+
+    const servers = (await api(alice.token, 'GET', '/api/servers')).json.servers as { server: { id: string; ownerId: string }; channels: { id: string; name: string; kind: string }[] }[];
+    assert.equal(servers.length, 1, 'there is one server');
+    assert.equal(servers[0].server.ownerId, alice.user, 'the first account owns it');
+    const serverId = servers[0].server.id;
+    CHANNEL = servers[0].channels.find((c) => c.name === 'general' && c.kind === 'text')!.id;
+    assert.equal((await api(alice.token, 'POST', '/api/servers', { name: 'S2' })).status, 404, 'servers cannot be created');
+    assert.equal((await api(alice.token, 'POST', `/api/servers/${serverId}/invites`, { maxUses: 1 })).status, 404, 'in-app invites are gone');
+    log('the first account gets the one server with #general; creating servers and in-app invites are gone');
 
     const bobKeys = await makeDeviceKeys();
     const bobReg = (await api(null, 'POST', '/api/auth/register', {
-      username: 'bob', displayName: 'Bob', password: PASSWORD, device: bobKeys, inviteCode: await invite(1),
+      name: 'bob', password: PASSWORD, device: bobKeys, inviteCode: signupCode(),
     })).json;
     const bob = await newDev('bob', { id: bobReg.user.id, token: bobReg.token }, bobKeys);
-
+    // An older app sends username and a display name; the display name is ignored.
     const carolKeys = await makeDeviceKeys();
     const carolReg = (await api(null, 'POST', '/api/auth/register', {
-      username: 'carol', displayName: 'Carol', password: PASSWORD, device: carolKeys, inviteCode: await invite(1),
+      username: 'carol', displayName: 'Carol C', password: PASSWORD, device: carolKeys, inviteCode: signupCode(),
     })).json;
+    assert.equal(carolReg.user.displayName, 'carol', 'an older app\'s display name is ignored');
     const carol = await newDev('carol', { id: carolReg.user.id, token: carolReg.token }, carolKeys);
+    const members = (await api(bob.token, 'GET', '/api/servers')).json.servers[0].members as unknown[];
+    assert.equal(members.length, 3, 'everyone who signs up is in the server');
+    assert.equal((await api(null, 'POST', '/api/auth/register', {
+      name: 'BOB', password: PASSWORD, device: await makeDeviceKeys(), inviteCode: signupCode(),
+    })).status, 409, 'names are unique regardless of case');
     for (const d of [alice, bob, carol]) await uploadPool(d, 4);
-    // Accounts without a password: registration needs only a username and an invite, and sign-in uses this PC's key.
+    // Accounts without a password: sign-up needs only a name and a code, and sign-in uses this PC's device key.
     const danaKeys = await makeDeviceKeys();
-    const danaReg = await api(null, 'POST', '/api/auth/register', { username: 'dana', device: danaKeys, inviteCode: await invite(3) });
-    assert.equal(danaReg.status, 200, 'registers with only a username and an invite');
-    assert.equal(danaReg.json.user.displayName, 'dana', 'the display name starts as the username');
+    const danaReg = await api(null, 'POST', '/api/auth/register', { name: 'dana', device: danaKeys, inviteCode: signupCode() });
+    assert.equal(danaReg.status, 200, 'signs up with only a name and a code');
+    assert.equal(danaReg.json.user.displayName, 'dana', 'the display name is the name');
     assert.equal(danaReg.json.user.hasPassword, false, 'the account has no password');
     // A proof is a signature over a one-time nonce, made with the device's private key, like the PC does.
     const proofFor = async (deviceId: string) => {
@@ -224,27 +275,28 @@ async function main() {
       const sig = await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, signPrivates.get(deviceId)!, new TextEncoder().encode(`chatward-proof:${nonce}`));
       return { deviceId, nonce, signature: b64(new Uint8Array(sig)) };
     };
-    const danaSignIn = await api(null, 'POST', '/api/auth/login', { username: 'dana', device: danaKeys, proof: await proofFor(danaKeys.deviceId) });
+    const danaSignIn = await api(null, 'POST', '/api/auth/login', { name: 'dana', device: danaKeys, proof: await proofFor(danaKeys.deviceId) });
     assert.equal(danaSignIn.status, 200, 'a linked PC signs in with its key and no password');
     const danaProofOnce = await proofFor(danaKeys.deviceId);
-    await api(null, 'POST', '/api/auth/login', { username: 'dana', device: danaKeys, proof: danaProofOnce });
-    const replay = await api(null, 'POST', '/api/auth/login', { username: 'dana', device: danaKeys, proof: danaProofOnce });
+    assert.equal((await api(null, 'POST', '/api/auth/login', { name: 'dana', device: danaKeys, proof: danaProofOnce })).status, 200);
+    const replay = await api(null, 'POST', '/api/auth/login', { name: 'dana', device: danaKeys, proof: danaProofOnce });
     assert.equal(replay.status, 401, 'a proof cannot be used twice');
-    const noProof = await api(null, 'POST', '/api/auth/login', { username: 'dana', device: danaKeys });
-    assert.equal(noProof.status, 401, 'typing only the username is not enough');
+    const noProof = await api(null, 'POST', '/api/auth/login', { name: 'dana', device: danaKeys });
+    assert.equal(noProof.status, 401, 'typing only the name is not enough');
     const strangerKeys = await makeDeviceKeys();
-    const strangerSignIn = await api(null, 'POST', '/api/auth/login', { username: 'dana', device: strangerKeys, proof: await proofFor(strangerKeys.deviceId) });
+    const strangerSignIn = await api(null, 'POST', '/api/auth/login', { name: 'dana', device: strangerKeys, proof: await proofFor(strangerKeys.deviceId) });
     assert.equal(strangerSignIn.status, 401, 'a PC that is not linked to the account cannot sign in with a proof');
-    const passwordTry = await api(null, 'POST', '/api/auth/login', { username: 'dana', password: PASSWORD, device: danaKeys });
+    const passwordTry = await api(null, 'POST', '/api/auth/login', { name: 'dana', password: PASSWORD, device: danaKeys });
     assert.equal(passwordTry.status, 401, 'an account without a password cannot sign in with one');
-    // Setting the first password from a linked PC; after that the password works like any other account.
+    // The first password is set from a linked PC, and it has to pass the same rules as any other password.
+    const weakFirst = await api(danaSignIn.json.token, 'POST', '/api/me/password', { newPassword: 'password', deviceId: danaKeys.deviceId, proof: await proofFor(danaKeys.deviceId) });
+    assert.equal(weakFirst.status, 400, 'a common first password is refused');
     const setPw = await api(danaSignIn.json.token, 'POST', '/api/me/password', { newPassword: PASSWORD, deviceId: danaKeys.deviceId, proof: await proofFor(danaKeys.deviceId) });
     assert.equal(setPw.status, 200, 'a linked PC can set the first password');
-    const danaPw = await api(null, 'POST', '/api/auth/login', { username: 'dana', password: PASSWORD, device: danaKeys });
-    assert.equal(danaPw.status, 200, 'the new password signs in');
-    log('registered dana with a username only; device-key sign-in, replay, unlinked PC and first password checked');
+    assert.equal((await api(null, 'POST', '/api/auth/login', { name: 'dana', password: PASSWORD, device: danaKeys })).status, 200, 'the new password signs in');
+    log('dana signs up with a name and a code; device-key sign-in, replay, unlinked PC and first password checked');
 
-    log('registered alice (owner), bob and carol through invites; uploaded KeyPackage pools');
+    log('bob and carol signed up into the server; uploaded KeyPackage pools');
     // A replace drops the unclaimed packages the device already had: carol still has 4, not 8.
     await uploadPool(carol, 4, true);
     const carolCount = await api(carol.token, 'GET', `/api/devices/${carol.id}/keypackages/count`);
@@ -361,9 +413,12 @@ async function main() {
     assert.equal((await api(alice.token, 'POST', `/api/channels/${CHANNEL}/messages`, { ciphertext: b64(new Uint8Array([9])), keyVersion: 4, clientId: 'bad id!' })).status, 400, 'malformed clientId refused');
     log('resend with the same clientId is stored once');
 
-    // 5. Kick carol: the server removes her membership, then a remaining device commits the Remove.
+    // 5. Remove carol: her account is turned off and she leaves the server, then a remaining device commits the Remove.
     const kick = await api(alice.token, 'DELETE', `/api/servers/${serverId}/members/${carol.user}`);
-    assert.equal(kick.status, 200, 'owner kicks carol');
+    assert.equal(kick.status, 200, 'owner removes carol');
+    assert.equal((await api(carol.token, 'GET', '/api/me')).status, 401, 'carol is signed out');
+    const carolLogin = await api(null, 'POST', '/api/auth/login', { name: 'carol', password: PASSWORD, device: carolKeys });
+    assert.equal(carolLogin.status, 403, 'a turned-off account cannot sign in');
     const carolLeaf = mls.memberLeaves(alice.state.get(CHANNEL)!).find((m) => m.deviceId === carol.id)!.leafIndex;
     const remove = await mls.removeMembers(alice.state.get(CHANNEL)!, [carolLeaf]);
     const r5 = await postCommit(alice, 3, remove, [alice.id, bob.id, bob2.id], []);
@@ -380,7 +435,7 @@ async function main() {
     const carolPost = await api(carol.token, 'POST', `/api/groups/${CHANNEL}/commits`, {
       deviceId: carol.id, epoch: 4, commit: b64(add1.commit!), members: [], welcomes: [],
     });
-    assert.equal(carolPost.status, 404, 'removed carol cannot commit');
+    assert.equal(carolPost.status, 401, 'removed carol cannot commit');
     const bobRead = await mls.receive(bob.state.get(CHANNEL)!, after.ciphertext);
     assert.equal(new TextDecoder().decode(bobRead.plaintext!), 'secret after kick');
     log('removed carol cannot decrypt or commit; remaining members still can');
@@ -391,48 +446,53 @@ async function main() {
     assert.equal(stale.json.currentEpoch, 4);
     log('stale commit at epoch 0 refused with 409 and currentEpoch 4');
 
-    // 8. Moderation: revoked invites stop working, bans block rejoin until lifted.
-    const revoked = await invite(1);
-    const revokeRes = await api(alice.token, 'DELETE', `/api/servers/${serverId}/invites/${revoked}`);
-    assert.equal(revokeRes.status, 200, 'owner revokes an invite');
-    const listed = (await api(alice.token, 'GET', `/api/servers/${serverId}/invites`)).json.invites as { code: string }[];
-    assert.ok(!listed.some((i) => i.code === revoked), 'revoked invite is no longer listed');
+    // 8. Moderation: revoked codes stop working; turning an account off and on, from the app and from the terminal.
+    const revoked = signupCode();
+    assert.match(cli('revoke', revoked.slice(-4)), /Cancelled/, 'chatward revoke takes the last 4 characters');
+    assert.match(cliFails('revoke', revoked), /no unused code/, 'a revoked code is gone');
     const lateReg = await api(null, 'POST', '/api/auth/register', {
-      username: 'erin', displayName: 'Erin', password: PASSWORD, device: await makeDeviceKeys(), inviteCode: revoked,
+      name: 'erin', password: PASSWORD, device: await makeDeviceKeys(), inviteCode: revoked,
     });
-    assert.equal(lateReg.status, 403, 'revoked invite cannot be redeemed');
-    log('revoked invite listed as gone and refused on register');
+    assert.equal(lateReg.status, 403, 'revoked code cannot be redeemed');
+    assert.match(inviteLog(), new RegExp(`revoked\\s+code …${revoked.slice(-4)}\\s+by=tester`), 'the revoke is logged');
+    log('a revoked code is deleted, logged and refused on sign-up');
 
+    const daveKeys = await makeDeviceKeys();
     const daveReg = (await api(null, 'POST', '/api/auth/register', {
-      username: 'dave', displayName: 'Dave', password: PASSWORD, device: await makeDeviceKeys(), inviteCode: await invite(5),
+      name: 'dave', password: PASSWORD, device: daveKeys, inviteCode: signupCode(),
     })).json;
     const dave = { id: daveReg.user.id as string, token: daveReg.token as string };
+    assert.equal((await api(bob.token, 'POST', `/api/servers/${serverId}/bans`, { userId: dave.id })).status, 403, 'a member cannot remove anyone');
     const banRes = await api(alice.token, 'POST', `/api/servers/${serverId}/bans`, { userId: dave.id });
     assert.equal(banRes.status, 200, 'owner bans dave');
-    const daveServers = (await api(dave.token, 'GET', '/api/servers')).json.servers as { server: { id: string } }[];
-    assert.ok(!daveServers.some((b) => b.server.id === serverId), 'banned dave is removed from the server');
-    const rejoin = await api(dave.token, 'POST', `/api/invites/${await invite(5)}/join`, {});
-    assert.equal(rejoin.status, 403, 'banned dave cannot rejoin with a fresh invite');
+    assert.equal((await api(dave.token, 'GET', '/api/servers')).status, 401, 'banned dave is signed out');
     const bans = (await api(alice.token, 'GET', `/api/servers/${serverId}/bans`)).json.bans as { user: { id: string } }[];
     assert.ok(bans.some((b) => b.user.id === dave.id), 'ban is listed');
-    log('ban removes dave and blocks a fresh invite; ban listed for admins');
-
     const unban = await api(alice.token, 'DELETE', `/api/servers/${serverId}/bans/${dave.id}`);
     assert.equal(unban.status, 200, 'owner lifts the ban');
-    const back = await api(dave.token, 'POST', `/api/invites/${await invite(5)}/join`, {});
-    assert.equal(back.status, 200, 'dave can join again after unban');
-    log('unban lets dave rejoin with an invite');
+    const daveBack = await api(null, 'POST', '/api/auth/login', { name: 'dave', password: PASSWORD, device: daveKeys });
+    assert.equal(daveBack.status, 200, 'dave can sign in again after the unban');
+    assert.equal((await api(daveBack.json.token, 'GET', '/api/servers')).json.servers.length, 1, 'and is back in the server');
+    log('a ban turns the account off and signs it out; lifting it lets dave back in');
 
-    // Ownership transfer: only the owner can hand it over, and the old owner drops to admin.
-    const notOwner = await api(bob.token, 'POST', `/api/servers/${serverId}/transfer`, { userId: bob.user });
-    assert.equal(notOwner.status, 403, 'a non-owner cannot transfer');
-    const handOver = await api(alice.token, 'POST', `/api/servers/${serverId}/transfer`, { userId: bob.user });
-    assert.equal(handOver.status, 200, 'owner hands the server to bob');
-    const aliceAgain = await api(alice.token, 'POST', `/api/servers/${serverId}/transfer`, { userId: alice.user });
-    assert.equal(aliceAgain.status, 403, 'former owner can no longer transfer');
-    const handBack = await api(bob.token, 'POST', `/api/servers/${serverId}/transfer`, { userId: alice.user });
-    assert.equal(handBack.status, 200, 'new owner can hand it back');
-    log('ownership transfer is owner-only, moves the owner role, and can be handed back');
+    assert.match(cli('remove', 'dave'), /turned off/);
+    assert.equal((await api(daveBack.json.token, 'GET', '/api/me')).status, 401, 'chatward remove signs dave out');
+    assert.equal((await api(null, 'POST', '/api/auth/login', { name: 'dave', password: PASSWORD, device: daveKeys })).status, 403);
+    assert.match(cliFails('remove', 'alice'), /owner/, 'the owner cannot be turned off');
+    assert.match(cli('users'), /dave\s+off/, 'chatward users shows dave as off');
+    assert.match(cli('restore', 'dave'), /back on/);
+    assert.equal((await api(null, 'POST', '/api/auth/login', { name: 'dave', password: PASSWORD, device: daveKeys })).status, 200);
+    assert.match(cli('admin', 'dave'), /now an admin/);
+    assert.match(cli('users'), /dave\s+admin\s+.*tester \(code …/, 'chatward users shows the role and who invited dave');
+    assert.match(cli('member', 'dave'), /now a member/);
+    assert.match(cliFails('reset', 'nobody'), /no account is called nobody/);
+    log('chatward remove, restore, admin, member and users work on the running server');
+
+    assert.equal((await api(alice.token, 'POST', `/api/servers/${serverId}/transfer`, { userId: bob.user })).status, 404, 'transfer is gone');
+    assert.equal((await api(bob.token, 'POST', `/api/servers/${serverId}/leave`, {})).status, 404, 'leaving is gone');
+    assert.equal((await api(alice.token, 'DELETE', `/api/servers/${serverId}`)).status, 404, 'deleting the server is gone');
+    assert.equal((await api(alice.token, 'POST', '/api/me/delete', { password: PASSWORD })).status, 409, 'the owner account cannot be deleted');
+    log('transfer, leave and delete server are gone');
 
     // 9. A junk Commit at epoch 4 is accepted (the server cannot verify MLS) but nobody can apply it.
     // The stuck device drops it through reset, and a valid Commit then takes its place.
@@ -442,7 +502,7 @@ async function main() {
     assert.equal(junk.status, 200, 'server accepts a junk Commit it cannot verify');
     await assert.rejects(mls.receive(alice.state.get(CHANNEL)!, new Uint8Array([1, 2, 3, 4])), 'alice cannot apply the junk');
     const carolReset = await api(carol.token, 'POST', `/api/groups/${CHANNEL}/reset`, { deviceId: carol.id, epoch: 4 });
-    assert.equal(carolReset.status, 404, 'removed carol cannot reset the group');
+    assert.equal(carolReset.status, 401, 'removed carol cannot reset the group');
     const otherDevice = await api(alice.token, 'POST', `/api/groups/${CHANNEL}/reset`, { deviceId: bob.id, epoch: 4 });
     assert.equal(otherDevice.status, 403, 'reset needs one of the caller\'s own devices');
     const ahead = await api(alice.token, 'POST', `/api/groups/${CHANNEL}/reset`, { deviceId: alice.id, epoch: 9 });
@@ -487,22 +547,9 @@ async function main() {
     assert.ok(groupDeviceList.json.devices.some((d: DeviceKeys) => d.deviceId === carol.id), 'removed carol is still listed');
     log('removed devices stay in the group device list with their registered keys');
 
-    // Deleting a server removes its soundboard audio from disk, not just the database rows.
-    const doomedId = (await api(alice.token, 'POST', '/api/servers', { name: 'Doomed' })).json.server.id as string;
-    const oggFile = Buffer.concat([Buffer.from('OggS'), Buffer.alloc(16)]);
-    const upload = await fetch(`${BASE}/api/servers/${doomedId}/sounds?name=boop&emoji=x&durationMs=500`, {
-      method: 'POST', headers: { authorization: `Bearer ${alice.token}`, 'content-type': 'audio/ogg' }, body: oggFile,
-    });
-    const soundId = (await upload.json()).sound.id as string;
-    const soundFile = path.join(dataDir, 'sounds', soundId);
-    assert.ok(fs.existsSync(soundFile), 'sound file written for the doomed server');
-    assert.equal((await api(alice.token, 'DELETE', `/api/servers/${doomedId}`)).status, 200);
-    assert.ok(!fs.existsSync(soundFile), 'sound file removed when its server is deleted');
-    log('deleting a server removes its soundboard files from disk');
-
     // Deleting a message frees the uploads attached to it, rows and files, so the quota comes back at once.
-    const upChannels = (await api(alice.token, 'POST', '/api/servers', { name: 'Uploads' })).json;
-    const upChannel = upChannels.channels.find((c: { kind: string }) => c.kind === 'text').id as string;
+    const chanBase = `/api/servers/${serverId}/channels`;
+    const upChannel = (await api(alice.token, 'POST', chanBase, { name: 'uploads', kind: 'text' })).json.channel.id as string;
     const blob = await fetch(`${BASE}/api/uploads?tracked=1`, {
       method: 'POST', headers: { authorization: `Bearer ${alice.token}`, 'content-type': 'application/octet-stream' },
       body: Buffer.alloc(64, 7),
@@ -520,20 +567,15 @@ async function main() {
     log('deleting a message frees its attached uploads from disk');
 
     // A server keeps at least one text channel, since voice calls take their key from the first one.
-    const chanServer = (await api(alice.token, 'POST', '/api/servers', { name: 'Chan' })).json;
-    const chanBase = `/api/servers/${chanServer.server.id as string}/channels`;
-    const onlyText = chanServer.channels.find((c: { kind: string }) => c.kind === 'text').id as string;
-    assert.equal((await api(alice.token, 'DELETE', `${chanBase}/${onlyText}`)).status, 409, 'last text channel is kept');
-    const extraText = (await api(alice.token, 'POST', chanBase, { name: 'extra', kind: 'text' })).json.channel.id as string;
-    assert.equal((await api(alice.token, 'DELETE', `${chanBase}/${onlyText}`)).status, 200, 'a text channel can go while another remains');
-    assert.equal((await api(alice.token, 'DELETE', `${chanBase}/${extraText}`)).status, 409, 'the new last text channel is kept');
+    assert.equal((await api(alice.token, 'DELETE', `${chanBase}/${upChannel}`)).status, 200, 'a text channel can go while another remains');
+    assert.equal((await api(alice.token, 'DELETE', `${chanBase}/${CHANNEL}`)).status, 409, 'the last text channel is kept');
     log('deleting the last text channel is refused');
 
     // A voice slot left by a previous app run must not lock the account out. The startup clear frees it.
-    const voiceChan = chanServer.channels.find((c: { kind: string }) => c.kind === 'voice').id as string;
+    const voiceChan = servers[0].channels.find((c) => c.kind === 'voice')!.id;
     // Alice signs in on a real second device, so the refusal below comes from a different device than the holder.
     const aliceOtherKeys = await makeDeviceKeys();
-    const aliceOther = await api(null, 'POST', '/api/auth/login', { username: 'alice', password: PASSWORD, device: aliceOtherKeys });
+    const aliceOther = await api(null, 'POST', '/api/auth/login', { name: 'alice', password: PASSWORD, device: aliceOtherKeys });
     assert.equal(aliceOther.status, 200, 'alice logs in on a second device');
     assert.equal((await api(alice.token, 'POST', '/api/voice/token', { channelId: voiceChan })).status, 200, 'first join gets a token');
     assert.equal((await api(aliceOther.json.token as string, 'POST', '/api/voice/token', { channelId: voiceChan })).status, 409, 'a second device is refused while the slot is held');
@@ -545,8 +587,6 @@ async function main() {
     log('a leftover voice slot is cleared on startup, and the device holding it can rejoin its own call');
 
     // A second device refused with 409 must not end the call its first device is still in.
-    const chanInvite = (await api(alice.token, 'POST', `/api/servers/${chanServer.server.id as string}/invites`, { maxUses: 1 })).json.code as string;
-    assert.equal((await api(bob.token, 'POST', `/api/invites/${chanInvite}/join`, {})).status, 200, 'bob joins the chan server');
     assert.equal((await api(bob.token, 'POST', '/api/voice/token', { channelId: voiceChan })).status, 200, 'bob joins on his first device');
     assert.equal((await api(bob2.token, 'POST', '/api/voice/token', { channelId: voiceChan })).status, 409, 'bob second device is refused');
     assert.equal((await api(bob2.token, 'POST', '/api/voice/leave', { channelId: voiceChan })).status, 409, 'the refused device cannot leave the call');
@@ -648,32 +688,48 @@ async function main() {
     assert.equal(bob2Commit.status, 401, 'removed device cannot post a Commit (its login is revoked)');
     log('a removed device keeps its keys for old Commits, but cannot post new ones');
 
-    // Reset codes: an owner-issued code dies when its member leaves the owner's server, and is refused after that.
-    const codesId = (await api(alice.token, 'POST', '/api/servers', { name: 'Codes' })).json.server.id as string;
-    const ritaInvite = (await api(alice.token, 'POST', `/api/servers/${codesId}/invites`, { maxUses: 1 })).json.code as string;
+    // Reset codes: from the owner in the app or from chatward reset. A code dies when its account is turned off.
     const ritaReg = (await api(null, 'POST', '/api/auth/register', {
-      username: 'rita', displayName: 'Rita', password: PASSWORD, device: await makeDeviceKeys(), inviteCode: ritaInvite,
+      name: 'rita', password: PASSWORD, device: await makeDeviceKeys(), inviteCode: signupCode(),
     })).json;
-    const issued = await api(alice.token, 'POST', `/api/servers/${codesId}/members/${ritaReg.user.id}/reset-code`, {});
+    const issued = await api(alice.token, 'POST', `/api/servers/${serverId}/members/${ritaReg.user.id}/reset-code`, {});
     assert.equal(issued.status, 200, 'owner issues a reset code');
     const redeemed = await api(null, 'POST', '/api/auth/reset', {
-      username: 'rita', code: issued.json.code, newPassword: 'rita-new-pass-0', device: await makeDeviceKeys(),
+      name: 'rita', code: issued.json.code, newPassword: 'rita-new-pass-0', device: await makeDeviceKeys(),
     });
-    assert.equal(redeemed.status, 200, 'a code redeems while the owner still shares a server with the member');
-    const reissued = await api(alice.token, 'POST', `/api/servers/${codesId}/members/${ritaReg.user.id}/reset-code`, {});
-    // The positive redeem changed rita's password, so her new token is the one that still works.
-    assert.equal((await api(redeemed.json.token, 'POST', `/api/servers/${codesId}/leave`, {})).status, 200, 'rita leaves');
-    const afterLeave = await api(null, 'POST', '/api/auth/reset', {
-      username: 'rita', code: reissued.json.code, newPassword: 'rita-new-pass-1', device: await makeDeviceKeys(),
+    assert.equal(redeemed.status, 200, 'a code from the owner redeems');
+    const fromCli = /reset code for rita: ([A-Z0-9-]{14})/.exec(cli('reset', 'rita'));
+    assert.ok(fromCli, 'chatward reset prints a code');
+    assert.equal((await api(null, 'POST', '/api/auth/reset', {
+      name: 'rita', code: fromCli[1], newPassword: 'password123', device: await makeDeviceKeys(),
+    })).status, 400, 'a reset also refuses a common password');
+    const cliRedeemed = await api(null, 'POST', '/api/auth/reset', {
+      name: 'rita', code: fromCli[1], newPassword: 'rita-new-pass-1', device: await makeDeviceKeys(),
     });
-    assert.equal(afterLeave.status, 403, 'a code is dead once the member has left the owner\'s server');
-    log('a reset code is dropped when its member leaves, so it cannot be redeemed afterwards');
+    assert.equal(cliRedeemed.status, 200, 'a code from chatward reset redeems');
+    const reissued = /reset code for rita: ([A-Z0-9-]{14})/.exec(cli('reset', 'rita'))!;
+    cli('remove', 'rita');
+    const afterRemove2 = await api(null, 'POST', '/api/auth/reset', {
+      name: 'rita', code: reissued[1], newPassword: 'rita-new-pass-2', device: await makeDeviceKeys(),
+    });
+    assert.equal(afterRemove2.status, 403, 'a code is dead once the account is turned off');
+    log('reset codes work from the app and the terminal, and die when the account is turned off');
+
+    // Expired codes are deleted and logged on the next sweep, which chatward invites runs.
+    const shortCode = /New sign-up code: ([A-Z0-9-]{14})/.exec(cli('invite', '--hours', '0.0003'))![1];
+    await new Promise((r) => setTimeout(r, 1500));
+    assert.doesNotMatch(cli('invites'), new RegExp(shortCode.slice(-4)), 'an expired code is not listed');
+    assert.match(inviteLog(), new RegExp(`expired\\s+code …${shortCode.slice(-4)}`), 'the expiry is logged');
+    assert.equal((await api(null, 'POST', '/api/auth/register', {
+      name: 'late', password: PASSWORD, device: await makeDeviceKeys(), inviteCode: shortCode,
+    })).status, 403, 'an expired code is refused');
+    log('an expired code is deleted, logged and refused');
 
     // Bob signs in on a third device while none of his devices are online, so nobody gets a live alert.
     // When his first device connects again, it is told about that device, but not about the second one it already saw.
     const bob3Keys = await makeDeviceKeys();
     await new Promise((r) => setTimeout(r, 20));
-    const bob3Login = await api(null, 'POST', '/api/auth/login', { username: 'bob', password: PASSWORD, device: bob3Keys });
+    const bob3Login = await api(null, 'POST', '/api/auth/login', { name: 'bob', password: PASSWORD, device: bob3Keys });
     assert.equal(bob3Login.status, 200, 'bob signs in on a third device while his other devices are offline');
     const replayFrames: { t: string; deviceId?: string }[] = [];
     const bobBack = new WebSocket(`ws://127.0.0.1:${PORT}/ws?token=${encodeURIComponent(bob.token)}`);

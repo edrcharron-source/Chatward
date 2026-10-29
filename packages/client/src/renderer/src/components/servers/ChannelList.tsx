@@ -7,7 +7,6 @@ import { useMemberMenu } from '../voice/MemberMenu';
 import VoiceDock from '../voice/VoiceDock';
 import Avatar from './Avatar';
 import ChannelSettingsDialog from './ChannelSettingsDialog';
-import InvitesDialog from './InvitesDialog';
 import Dialog from './Dialog';
 import ServerSettingsDialog from './ServerSettingsDialog';
 import StatusPicker from './StatusPicker';
@@ -15,7 +14,7 @@ import { errorText, isAdmin } from './util';
 import './servers.css';
 import ProfileTrigger from '../profile/ProfileTrigger';
 
-type DialogKind = 'channel' | 'invite' | 'server' | null;
+type DialogKind = 'channel' | 'server' | null;
 
 export default function ChannelList({ onOpenSettings, onReload }: { onOpenSettings: () => void; onReload: () => Promise<void> }) {
   const user = useSession((s) => s.user);
@@ -70,7 +69,6 @@ export default function ChannelList({ onOpenSettings, onReload }: { onOpenSettin
         {bundle && (
           <div className="cw-head-actions">
             {admin && <button type="button" className="icon" title="Create channel" aria-label="Create channel" onClick={() => setDialog('channel')}>＋</button>}
-            {admin && <button type="button" className="icon" title="Invite people" aria-label="Invite people" onClick={() => setDialog('invite')}>✉</button>}
             <button type="button" className="icon" title="Server settings" aria-label="Server settings" onClick={() => setDialog('server')}>⚙</button>
           </div>
         )}
@@ -165,7 +163,6 @@ export default function ChannelList({ onOpenSettings, onReload }: { onOpenSettin
         )}
         <div className="cw-user-text">
           <strong>{user?.displayName ?? ''}</strong>
-          <span className="muted">@{user?.username ?? ''}</span>
           <StatusPicker />
         </div>
         <button type="button" className="icon" title="Settings" aria-label="Settings" onClick={onOpenSettings}>⚙</button>
@@ -176,9 +173,6 @@ export default function ChannelList({ onOpenSettings, onReload }: { onOpenSettin
       )}
       {settingsChannel && (
         <ChannelSettingsDialog channel={settingsChannel} onClose={() => setSettingsChannel(null)} onReload={onReload} />
-      )}
-      {dialog === 'invite' && bundle && (
-        <InvitesDialog serverId={bundle.server.id} onClose={() => setDialog(null)} />
       )}
       {dialog === 'server' && bundle && (
         <ServerSettingsDialog serverId={bundle.server.id} onClose={() => setDialog(null)} onReload={onReload} />

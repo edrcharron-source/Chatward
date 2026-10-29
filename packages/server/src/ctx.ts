@@ -67,7 +67,7 @@ export function makeAuth(db: DB) {
       const p = jwt.verify(token, config.jwtSecret) as jwt.JwtPayload;
       const userId = typeof p.sub === 'string' ? p.sub : null;
       if (!userId) return null;
-      if (!db.prepare('SELECT 1 FROM users WHERE id=? AND deleted_at IS NULL').get(userId)) return null;
+      if (!db.prepare('SELECT 1 FROM users WHERE id=? AND deleted_at IS NULL AND disabled_at IS NULL').get(userId)) return null;
       // A password change or reset bumps the version, which signs out every token issued before it.
       // Tokens from before session versions existed carry no `v`, and their account is still at version 0.
       if (sessionVersion(userId) !== (p.v ?? 0)) return null;

@@ -1,76 +1,18 @@
 // Screenshots of the built client in demo mode, for the "looks exactly the same" check (docs/SKINS.md).
 // Run with: npm run visual:capture -w @chatward/client -- <out dir> [app dir]
+// (set CHATWARD_VISUAL_SKIN=<id> to capture a skin; unset captures the plain app, as CI does)
 // The app dir defaults to this package; pass another checkout's packages/client to capture its build instead.
-// On Linux run it under xvfb-run. Every input that could change between runs is pinned: the clock, Math.random,
-// time zone, locale, window size, link previews, and the demo bots' delayed chatter.
+// On Linux run it under xvfb-run. The launch and pinning live in harness.ts, shared with the skin feature check.
 import fs from 'node:fs';
 import path from 'node:path';
-import { createRequire } from 'node:module';
-import { _electron, type ElectronApplication, type Page } from 'playwright-core';
-
-const require = createRequire(import.meta.url);
-const electronPath = require('electron') as unknown as string;
+import type { Page } from 'playwright-core';
+import { DEFAULT_APP_DIR, closePopups, launch, settle } from './harness';
 
 const outDir = path.resolve(process.argv[2] ?? 'out/visual/shots');
-const appDir = path.resolve(process.argv[3] ?? path.join(import.meta.dirname, '../..'));
+const appDir = path.resolve(process.argv[3] ?? DEFAULT_APP_DIR);
 const THEMES = ['dark', 'light'] as const;
-const SIZE = { width: 1280, height: 800 };
-
-// Runs in the page before the app's own code. Timers of 5 s or more are held, which keeps the demo bots from
-// typing or posting mid-capture; nothing the screens below show depends on a timer that long.
-const pinPage = (theme: string) => `(() => {
-  const FIXED = Date.UTC(2026, 0, 15, 18, 0, 0);
-  const RealDate = Date;
-  class FixedDate extends RealDate {
-    constructor(...args) { if (args.length) super(...args); else super(FIXED); }
-    static now() { return FIXED; }
-  }
-  globalThis.Date = FixedDate;
-  let seed = 0x2f6b1d;
-  Math.random = () => {
-    seed = (seed + 0x6d2b79f5) | 0;
-    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-  const realSetTimeout = window.setTimeout.bind(window);
-  window.setTimeout = (fn, ms, ...rest) => (Number(ms) >= 5000 ? 0 : realSetTimeout(fn, ms, ...rest));
-  localStorage.setItem('chatward.settings', JSON.stringify({ theme: ${JSON.stringify(theme)} }));
-})();`;
-
-async function launch(theme: string): Promise<{ app: ElectronApplication; page: Page }> {
-  const userData = fs.mkdtempSync(path.join(fs.realpathSync(process.env.RUNNER_TEMP ?? '/tmp'), 'chatward-visual-'));
-  const app = await _electron.launch({
-    executablePath: electronPath,
-    args: [appDir, `--user-data-dir=${userData}`, '--no-sandbox', '--lang=en-US', '--force-device-scale-factor=1'],
-    env: { ...process.env, TZ: 'UTC', LANG: 'en_US.UTF-8' },
-  });
-  // CI machines have no OS keyring. Stand in for it so demo sign-in can store its keys; nothing here is real.
-  // Link previews are answered with a fixed card instead of the live page.
-  await app.evaluate(({ safeStorage, ipcMain }) => {
-    safeStorage.isEncryptionAvailable = () => true;
-    safeStorage.encryptString = (s: string) => Buffer.from(s);
-    safeStorage.decryptString = (b: Buffer) => b.toString();
-    ipcMain.removeHandler('demo:linkpreview');
-    ipcMain.handle('demo:linkpreview', (_e, url: string) => ({
-      status: 200, body: { url, title: 'Example page', description: 'A fixed preview used for screenshots.', siteName: 'example.com' },
-    }));
-  });
-  const page = await app.firstWindow();
-  await page.context().addInitScript(pinPage(theme));
-  await page.setViewportSize(SIZE);
-  await page.reload();
-  await page.waitForLoadState('load');
-  return { app, page };
-}
-
-async function settle(page: Page) {
-  await page.evaluate(async () => {
-    await document.fonts.ready;
-    await Promise.all([...document.images].map((img) => (img.complete ? null : img.decode().catch(() => null))));
-  });
-  await page.waitForTimeout(400);
-}
+// Set to a skin id (skins/index.ts) to capture that skin instead of the plain app, e.g. CHATWARD_VISUAL_SKIN=retro-ascii.
+const SKIN = process.env.CHATWARD_VISUAL_SKIN ?? '';
 
 async function shot(page: Page, name: string) {
   await settle(page);
@@ -83,14 +25,8 @@ async function shot(page: Page, name: string) {
   console.log(`  ${name}`);
 }
 
-async function closePopups(page: Page) {
-  await page.keyboard.press('Escape');
-  await page.mouse.click(5, SIZE.height - 5);
-  await page.waitForTimeout(150);
-}
-
 async function captureTheme(theme: string) {
-  const { app, page } = await launch(theme);
+  const { app, page } = await launch(theme, appDir, SKIN);
   try {
     const p = (name: string) => `${theme}-${name}`;
     await shot(page, p('auth'));
