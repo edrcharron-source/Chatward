@@ -67,6 +67,9 @@ async function act(page: Page, id: string) {
 // The same walk for every skin: the auth screen, then the chat, its pickers, a member card, server settings and each
 // settings tab. Screens are fingerprinted after the features on them are probed.
 async function walk(page: Page, run: Run, shoot: (name: string) => Promise<void>) {
+  // The first skin starts the app cold, and on a loaded CI runner the sign-in screen can still be moving (fonts
+  // loading) when the first probe's 3s budget runs out. Wait for it to settle first, as every screenshot does.
+  await settle(page);
   await probe(page, 'auth.try-demo', run);
   await controls(page, 'auth', run);
   await shoot('auth');
