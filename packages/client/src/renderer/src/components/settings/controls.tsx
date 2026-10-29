@@ -14,7 +14,7 @@ export function Section({ title, children }: { title: string; children: ReactNod
 }
 
 export function Toggle({ label, hint, checked, onChange }: {
-  label: string; hint?: string; checked: boolean; onChange: (on: boolean) => void;
+  label: ReactNode; hint?: string; checked: boolean; onChange: (on: boolean) => void;
 }) {
   return (
     <label className="setting-row">
