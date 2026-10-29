@@ -1,0 +1,8 @@
+[Unit]
+Description=Chatward dynamic DNS (Cloudflare A record for the home IP)
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=@DEPLOY_DIR@/ddns-update.sh

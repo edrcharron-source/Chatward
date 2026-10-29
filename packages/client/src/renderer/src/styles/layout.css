@@ -22,3 +22,4 @@
 .cw-chat-picker > span { font-size: 12px; }
 .cw-fill { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .cw-main-empty { margin: auto; }
+.cw-main-note { padding: 6px 12px; background: var(--bg-2); }

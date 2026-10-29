@@ -1,0 +1,28 @@
+{
+	# DNS-01 only: the host's nginx keeps port 80, and only 443 is forwarded.
+	auto_https disable_redirects
+	{$ACME_EMAIL:}
+}
+
+{$DOMAIN} {
+	tls {
+		dns cloudflare {env.CF_API_TOKEN}
+	}
+	encode zstd gzip
+	header Strict-Transport-Security "max-age=31536000"
+	# Access log on stdout (journald), for fail2ban or CrowdSec later.
+	log {
+		output stdout
+		format json
+	}
+
+	# LiveKit (voice and video) signalling connects under /rtc
+	handle /rtc* {
+		reverse_proxy livekit:7880
+	}
+
+	# Everything else: the Chatward API, the /ws chat socket and the /updates feed
+	handle {
+		reverse_proxy server:3000
+	}
+}
