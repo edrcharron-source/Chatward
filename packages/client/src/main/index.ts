@@ -10,6 +10,13 @@ import { APP_ORIGIN, buildCsp, loadServerOrigin, saveServerOrigin, serverOrigin 
 // The page is served from app:// (not file://) so its Content-Security-Policy header can name the server.
 protocol.registerSchemesAsPrivileged([{ scheme: 'app', privileges: { standard: true, secure: true, corsEnabled: true } }]);
 
+// A test build installs next to the real app as "Chatward Test", so it keeps its own settings, keys and sign-ins.
+// This runs before anything reads userData.
+if (__CHATWARD_BUILD__.channel === 'test') {
+  app.setName('Chatward Test');
+  app.setPath('userData', join(app.getPath('appData'), 'Chatward Test'));
+}
+
 const KLIPY_KEY_STORE = 'klipyApiKey';
 const rendererDir = join(__dirname, '../renderer');
 // The server the page may connect to. Set by the renderer when the user connects to a server.

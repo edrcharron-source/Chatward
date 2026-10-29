@@ -42,6 +42,7 @@ jobs:
       - run: npm ci
       - run: npm run build -w @chatward/shared
       - run: npm run dist:win
+        env: { CHATWARD_BUILD_CHANNEL: test }
       - name: Name the artifact after the branch and commit
         shell: bash
         run: echo "ARTIFACT_NAME=Chatward-Setup-${GITHUB_REF_NAME//\//-}-${GITHUB_SHA::7}" >> "$GITHUB_ENV"
