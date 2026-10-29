@@ -35,12 +35,15 @@ export function register(app: Express, ctx: Ctx): void {
 
   const insertUpload = db.prepare('INSERT INTO uploads (id, owner_id, size, created_at, tracked) VALUES (?,?,?,?,?)');
   const deleteUpload = db.prepare('DELETE FROM uploads WHERE id=?');
-  const usedBytesFor = db.prepare('SELECT COALESCE(SUM(size), 0) AS used FROM uploads WHERE owner_id=?');
+  // GIFs a person added to a server's GIF library share this quota.
+  const usedBytesFor = db.prepare(`SELECT
+    (SELECT COALESCE(SUM(size), 0) FROM uploads WHERE owner_id=@id) +
+    (SELECT COALESCE(SUM(size), 0) FROM library_gifs WHERE owner_id=@id) AS used`);
   const { uploadQuotaBytes } = ctx.config;
   // Checks the quota and records the upload in one synchronous step, so two uploads from the same person
   // arriving together cannot both squeeze under the limit. Returns false when the upload would go over.
   const reserveUpload = db.transaction((id: string, userId: string, size: number, tracked: number): boolean => {
-    const { used } = usedBytesFor.get(userId) as { used: number };
+    const { used } = usedBytesFor.get({ id: userId }) as { used: number };
     if (uploadQuotaBytes > 0 && used + size > uploadQuotaBytes) return false;
     insertUpload.run(id, userId, size, Date.now(), tracked);
     return true;
@@ -92,7 +95,7 @@ export function register(app: Express, ctx: Ctx): void {
         // Space may be held by uploads whose messages are already gone. Sweep once and try again before refusing.
         await sweep();
         if (!reserveUpload(id, userId, body.length, tracked)) {
-          const { used } = usedBytesFor.get(userId) as { used: number };
+          const { used } = usedBytesFor.get({ id: userId }) as { used: number };
           res.status(413).json({ error: storageFullMessage(used, uploadQuotaBytes) });
           return;
         }

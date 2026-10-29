@@ -15,6 +15,7 @@ import { register as messages } from './modules/messages.js';
 import { register as uploads } from './modules/uploads.js';
 import { register as soundboard } from './modules/soundboard.js';
 import { register as gifs } from './modules/gifs.js';
+import { register as gifLibrary } from './modules/gifLibrary.js';
 import { register as linkpreview } from './modules/linkpreview.js';
 import { register as voice } from './modules/voice.js';
 import { register as groups } from './modules/groups.js';
@@ -124,7 +125,7 @@ app.post('/api/groups/:id/commits', express.json({ limit: '512kb' }));
 app.use(express.json({ limit: '64kb' }));
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
-for (const reg of [auth, servers, messages, uploads, soundboard, gifs, linkpreview, voice, groups, watchparty, vault, jellyfin, updates]) reg(app, ctx);
+for (const reg of [auth, servers, messages, uploads, soundboard, gifs, gifLibrary, linkpreview, voice, groups, watchparty, vault, jellyfin, updates]) reg(app, ctx);
 // Runs after the modules, which add the columns it writes.
 ensureSingleServer(db);
 
