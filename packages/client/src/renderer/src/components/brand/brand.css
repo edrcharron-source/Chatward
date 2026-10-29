@@ -1,0 +1,25 @@
+/* Slim strip at the bottom of the window, styled after the lebai site on lebserver: black, JetBrains Mono, square
+   corners, hard offset shadows and the cream-to-coral wordmark gradient. These are brand colors, so they stay the
+   same in every app theme. JetBrains Mono is used when installed; the CSP blocks Google Fonts, so Consolas covers it. */
+.cw-powered {
+  --leb-line: #26262a; --leb-line2: #3a3a40; --leb-muted: #7c7d84; --leb-mint: #a9dcbf; --leb-rule: #4a342e;
+  flex: none; height: 26px; display: flex; align-items: center; justify-content: center; gap: 10px;
+  background: #000; border-top: 1px dashed var(--leb-line);
+  font: 10px/1 'JetBrains Mono', Consolas, ui-monospace, monospace; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--leb-muted); user-select: none;
+}
+.cw-powered-chip {
+  display: inline-flex; align-items: center; gap: 7px; padding: 3px 8px 3px 7px;
+  background: #111113; border: 1px solid var(--leb-line2); box-shadow: 2px 2px 0 #2b2617;
+}
+.cw-powered-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--leb-mint); animation: cw-powered-blink 2.4s ease-in-out infinite; }
+.cw-powered-name {
+  font-weight: 800; letter-spacing: .3em; margin-right: -.3em;
+  background: linear-gradient(180deg, #fffaf0 0%, #f2dc8f 26%, #f4b98f 58%, #f2a291 90%, #e0968a 100%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+/* bracket end caps, like the telemetry rules on the lebai home page */
+.cw-powered-cap { width: 18px; height: 7px; border: 1px solid var(--leb-rule); border-right: 0; border-bottom: 0; }
+.cw-powered-cap:last-child { border: 1px solid var(--leb-rule); border-left: 0; border-bottom: 0; }
+@keyframes cw-powered-blink { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
+@media (prefers-reduced-motion: reduce) { .cw-powered-dot { animation: none; } }

@@ -24,6 +24,7 @@ import UpdateBanner from './components/updates/UpdateBanner';
 import DeviceAlertBanner from './components/devices/DeviceAlertBanner';
 import { showDeviceAlert } from './state/deviceAlerts';
 import UpdateRequired from './components/updates/UpdateRequired';
+import PoweredBy from './components/brand/PoweredBy';
 import { checkServerVersion, useUpdates } from './state/updates';
 
 export function App() {
@@ -50,6 +51,7 @@ export function App() {
           ? <UpdateRequired serverUrl={serverUrl} minClientVersion={server.minClientVersion} />
           : token ? <Shell /> : <AuthScreen />}
       </div>
+      <PoweredBy />
     </div>
   );
 }
