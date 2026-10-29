@@ -231,7 +231,7 @@ function Tile({ user, joined, local, micOff, speaking, screen, video, onMenu, th
             aria-label={full ? 'Exit fullscreen' : 'Fullscreen'}
             title={full ? 'Exit fullscreen (Esc)' : 'Fullscreen'}
             onClick={() => void toggleFullscreen(frame.current)}
-            style={{ position: 'absolute', top: 6, right: 6, background: 'rgba(0,0,0,.55)', color: '#fff' }}
+            style={{ position: 'absolute', top: 6, right: 6, background: 'var(--overlay-bg)', color: 'var(--overlay-text)' }}
           >
             {full ? '⤡' : '⤢'}
           </button>
@@ -243,7 +243,7 @@ function Tile({ user, joined, local, micOff, speaking, screen, video, onMenu, th
             aria-pressed={theater}
             title={theater ? 'Exit theater mode (Esc)' : 'Theater mode'}
             onClick={onTheater}
-            style={{ position: 'absolute', top: 6, right: 40, background: 'rgba(0,0,0,.55)', color: '#fff' }}
+            style={{ position: 'absolute', top: 6, right: 40, background: 'var(--overlay-bg)', color: 'var(--overlay-text)' }}
           >
             ▭
           </button>

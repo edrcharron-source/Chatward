@@ -64,7 +64,7 @@ export default function ChannelList({ onOpenSettings, onReload }: { onOpenSettin
   }
 
   return (
-    <aside className="cw-channels" aria-label="Channels">
+    <aside className="cw-channels" data-region="channels" aria-label="Channels">
       <header className="cw-channels-head">
         <h2>{bundle?.server.name ?? 'Chatward'}</h2>
         {bundle && (
