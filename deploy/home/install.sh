@@ -132,12 +132,12 @@ Chatward is running.
 $([ -n "$FIRST_CODE" ] && printf '  Sign-up code for the first (owner) account: %s (single use, 48 hours)\nCreate the owner account now. Then make a code for each friend with: chatward invite' "$FIRST_CODE" || echo "Make a sign-up code for each new account with: chatward invite")
 
 Still to do by hand (docs/HOME_SERVER.md):
-  - UniFi port forwards to $LAN_IP: 443/tcp, 7881/tcp, 50000-50100/udp. Nothing else.
+  - UniFi port forwards to $LAN_IP: 443/tcp, 7881/tcp, 7882/udp. Nothing else.
   - A fixed IP for this box in UniFi, so the forwards keep working.
   - Firewall: this script did not change it. Current state:
 MSG
 if command -v ufw >/dev/null; then ufw status verbose | sed 's/^/      /'; else echo "      (ufw not installed)"; fi
 cat <<'MSG'
-    If ufw is active, add:  sudo ufw allow 443/tcp && sudo ufw allow 7881/tcp && sudo ufw allow 50000:50100/udp
+    If ufw is active, add:  sudo ufw allow 443/tcp && sudo ufw allow 7881/tcp && sudo ufw allow 7882/udp
     If it is inactive, leave it: turning it on with a default deny would cut off Samba, Jellyfin and the game servers.
 MSG
