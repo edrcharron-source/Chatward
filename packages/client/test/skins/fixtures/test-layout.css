@@ -1,0 +1,5 @@
+/* A layout skin for the feature check: it moves every panel and changes no control. The check must pass on it. */
+:root[data-skin='test-layout'] .cw-shell {
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  grid-template-areas: 'channels main members servers';
+}
