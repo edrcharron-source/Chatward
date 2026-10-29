@@ -13,6 +13,15 @@ The full plan lives in the project's "Chatward skins plan" doc. This file is the
   `grid-template-areas` on `.cw-shell`; the components stay as they are, so keyboard and screen reader order never change.
 - **Class names** already on components, for effects tokens can't express.
 
+## Adding a skin
+
+- Add `packages/client/src/renderer/src/skins/<id>/skin.css`. Every rule starts with `:root[data-skin='<id>']`, so the
+  pack does nothing until that skin is chosen.
+- Add one entry to `SKINS` in `skins/index.ts` (label and swatch colour). The Appearance tab shows a Skins section only
+  while `SKINS` has entries, so the empty list keeps the Visual check unchanged.
+- The choice is the `skin` setting: one skin at a time, `''` for none, and an unknown id counts as none. It is saved
+  locally and never sent to the server. The watch-party popout follows it too.
+
 ## Proving a change is visual-only
 
 `npm run visual:capture -w @chatward/client -- <out dir> [app dir]` drives the built app in demo mode (under

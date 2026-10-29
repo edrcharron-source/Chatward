@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { bindPlayer, embedSrc, sendCommand, type PlayerEvent } from './youtube';
 import type { PanelToPopout, PopoutToPanel } from './popout';
+import { useSettings, type Settings } from '../../state/settings';
+import { applySkin } from '../../skins';
 import './watchparty.css';
 
 /** The pop-out window's whole UI: the embed the panel tells it to show, and a fullscreen button. */
@@ -10,6 +12,16 @@ export function PopoutPlayer(): ReactElement {
   const opener = window.opener as Window | null;
 
   const send = (msg: PopoutToPanel) => opener?.postMessage(msg, '*');
+
+  // The skin is chosen in the main window, so this one applies the saved setting and follows later changes made there.
+  useEffect(() => {
+    void applySkin(useSettings.getState().skin);
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === 'chatward.settings') void applySkin((JSON.parse(e.newValue ?? '{}') as Partial<Settings>).skin ?? '');
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
 
   useEffect(() => {
     const onMessage = (e: MessageEvent) => {
