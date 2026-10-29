@@ -1,0 +1,65 @@
+# Home server profile (lebserver): Chatward on a home Ubuntu box, reachable from the internet at https://$DOMAIN.
+# Setup: docs/HOME_SERVER.md. First install: sudo ./install.sh. Updates: ./update-home.sh vX.Y.Z.
+# Differences from the cloud profile (deploy/docker-compose.yml):
+#  - Caddy gets its certificate by Cloudflare DNS-01, so port 80 stays with the host's nginx (Pelican panel).
+#  - Caddy publishes 443 on the LAN address only. The Node server publishes no host port (lebai owns 3000 on the host).
+#  - Data lives in bind mounts: database on the NVMe, uploads on the RAID, so backups are plain file copies.
+#  - CPU and memory caps, so a busy call and the box's other services (Ollama, Jellyfin, game servers) leave each other room.
+name: chatward
+x-logging: &logging
+  driver: journald
+  options: { tag: "chatward-{{.Name}}" }
+services:
+  caddy:
+    build: { context: ., dockerfile: Dockerfile.caddy }
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in deploy/home/.env}
+      ACME_EMAIL: ${ACME_EMAIL:-}
+      CF_API_TOKEN: ${CF_API_TOKEN:?set CF_API_TOKEN in deploy/home/.env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    ports: ["${LAN_IP:?set LAN_IP in deploy/home/.env}:443:443"]
+    depends_on: [server, livekit]
+    restart: unless-stopped
+    logging: *logging
+    deploy: { resources: { limits: { cpus: "1", memory: 256M } } }
+  livekit:
+    image: livekit/livekit-server:v1.13.11
+    command: '--config /etc/livekit.yaml --keys "${LIVEKIT_API_KEY:?set LIVEKIT_API_KEY in deploy/home/.env}: ${LIVEKIT_API_SECRET:?set LIVEKIT_API_SECRET in deploy/home/.env}"'
+    volumes: ["./livekit.yaml:/etc/livekit.yaml:ro"]
+    ports: ["7881:7881", "50000-50100:50000-50100/udp"]
+    restart: unless-stopped
+    logging: *logging
+    deploy: { resources: { limits: { cpus: "4", memory: 2G } } }
+  server:
+    build: { context: ../.., dockerfile: deploy/Dockerfile.server }
+    depends_on: [livekit]
+    environment:
+      PORT: 3000
+      DATA_DIR: /data
+      UPLOADS_DIR: /uploads
+      UPDATES_DIR: /updates
+      CHATWARD_VERSION: ${CHATWARD_VERSION:-dev}   # set by update-home.sh
+      MIN_CLIENT_VERSION: ${MIN_CLIENT_VERSION:-0.0.0}
+      LIVEKIT_URL: wss://${DOMAIN:?set DOMAIN in deploy/home/.env}
+      LIVEKIT_API_URL: http://livekit:7880
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:?set LIVEKIT_API_KEY in deploy/home/.env}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:?set LIVEKIT_API_SECRET in deploy/home/.env}
+      NODE_ENV: production
+      TRUST_PROXY: 1
+      KLIPY_API_KEY: ${KLIPY_API_KEY:-}
+      UPLOAD_QUOTA_MB: ${UPLOAD_QUOTA_MB:-5120}   # the RAID has room; 5 GB each by default. 0 = no limit
+      SETUP_CODE: ${SETUP_CODE:-}
+    volumes:
+      - ${DATA_PATH:-/srv/chatward/data}:/data
+      - ${UPLOADS_PATH:-/mnt/storage/chatward/uploads}:/uploads
+      - ${UPDATES_PATH:-/srv/chatward/updates}:/updates:ro
+    expose: ["3000"]
+    restart: unless-stopped
+    logging: *logging
+    deploy: { resources: { limits: { cpus: "2", memory: 1G } } }
+volumes:
+  caddy-data:
+  caddy-config:

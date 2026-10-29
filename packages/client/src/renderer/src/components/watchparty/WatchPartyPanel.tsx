@@ -49,7 +49,12 @@ const remotePlayhead = (s: StampedState, serverNow: number) =>
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : 'Something went wrong.');
 
-export function WatchPartyPanel({ channelId }: { channelId: string }): ReactElement {
+/**
+ * `callChannelId` is the voice channel whose call is watching: the server keeps the snapshot per call and only lets people
+ * in that call change it. Voice channels have no message key of their own, so the state is encrypted with the key of
+ * `keyChannelId`, the call's server's first text channel, the same channel the call's media key comes from.
+ */
+export function WatchPartyPanel({ callChannelId: channelId, keyChannelId }: { callChannelId: string; keyChannelId: string }): ReactElement {
   const me = useSession((s) => s.user?.id ?? null);
   const [remote, setRemote] = useState<StampedState | null>(null);
   const [draft, setDraft] = useState('');
@@ -113,7 +118,7 @@ export function WatchPartyPanel({ channelId }: { channelId: string }): ReactElem
     if (!me) return;
     setError(null);
     try {
-      const { ciphertext, keyVersion } = await encryptPayload(channelId, me, encodeState(next));
+      const { ciphertext, keyVersion } = await encryptPayload(keyChannelId, me, encodeState(next));
       const res = await api.post<{ ts: number }>(`/api/channels/${channelId}/watch`, { ciphertext, keyVersion });
       lastSentTs.current = res.ts;
       accept({ ...next, ts: res.ts });
@@ -160,7 +165,7 @@ export function WatchPartyPanel({ channelId }: { channelId: string }): ReactElem
         if (cancelled) return;
         clockOffset.current = res.serverNow - (before + Date.now()) / 2;
         if (res.state) {
-          const s = await openSnapshot(channelId, res.state);
+          const s = await openSnapshot(keyChannelId, res.state);
           if (cancelled) return;
           undecrypted.current = !s;
           if (s) accept(s);
@@ -176,7 +181,7 @@ export function WatchPartyPanel({ channelId }: { channelId: string }): ReactElem
         return;
       }
       if (f.t !== 'watch.sync' || f.channelId !== channelId || f.ts === lastSentTs.current) return;
-      void openSnapshot(channelId, f).then((s) => {
+      void openSnapshot(keyChannelId, f).then((s) => {
         if (cancelled) return;
         undecrypted.current = !s;
         if (s) accept(s);
@@ -191,7 +196,7 @@ export function WatchPartyPanel({ channelId }: { channelId: string }): ReactElem
       unsubscribe();
       unsubscribeKeys();
     };
-  }, [channelId]);
+  }, [channelId, keyChannelId]);
 
   const videoId = remote?.videoId ?? null;
 

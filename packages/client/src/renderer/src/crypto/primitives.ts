@@ -60,13 +60,19 @@ export function importAesKey(raw: Bytes, extractable = false): Promise<CryptoKey
 }
 
 /** Ciphertext+tag under an explicit IV. */
+// Chromium rejects additionalData: undefined ("Not a BufferSource"), so the field is left out when there is no AAD.
+// Node accepts it, which is why the crypto tests did not catch this; attachments (no AAD) failed in the app.
+function gcmParams(iv: Bytes, aad?: Bytes): AesGcmParams {
+  return aad ? { name: 'AES-GCM', iv, additionalData: aad } : { name: 'AES-GCM', iv };
+}
+
 export async function aesEncryptWith(key: CryptoKey, iv: Bytes, plaintext: Bytes, aad?: Bytes): Promise<Bytes> {
-  return new Uint8Array(await subtle.encrypt({ name: 'AES-GCM', iv, additionalData: aad }, key, plaintext));
+  return new Uint8Array(await subtle.encrypt(gcmParams(iv, aad), key, plaintext));
 }
 
 /** Throws if authentication fails. */
 export async function aesDecryptWith(key: CryptoKey, iv: Bytes, ciphertext: Bytes, aad?: Bytes): Promise<Bytes> {
-  return new Uint8Array(await subtle.decrypt({ name: 'AES-GCM', iv, additionalData: aad }, key, ciphertext));
+  return new Uint8Array(await subtle.decrypt(gcmParams(iv, aad), key, ciphertext));
 }
 
 /** Returns iv || ciphertext+tag with a fresh random IV. */
