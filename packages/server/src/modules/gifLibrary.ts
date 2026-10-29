@@ -68,14 +68,15 @@ export function isKlipyUrl(v: unknown): string | null {
   }
 }
 
-export const libraryGifsDirOf = (dataDir: string) => path.join(dataDir, 'library-gifs');
+// Kept with the chat uploads, so on the home server they land on the big storage drive and stay out of the data backups.
+export const libraryGifsDirOf = (uploadsDir: string) => path.join(uploadsDir, 'library-gifs');
 
 /**
  * A server's shared GIF library. Like soundboard sounds, the files are stored as plain GIFs so the server
  * can hand them to every member; they count toward the uploader's upload quota.
  */
 export function register(app: Express, ctx: Ctx): void {
-  const gifsDir = libraryGifsDirOf(ctx.config.dataDir);
+  const gifsDir = libraryGifsDirOf(ctx.config.uploadsDir);
   fs.mkdirSync(gifsDir, { recursive: true });
   const filePath = (id: string) => path.join(gifsDir, id);
   const { db } = ctx;

@@ -58,7 +58,7 @@ try {
   assert.equal(r1.status, 201);
   const { gif: g1 } = await r1.json() as { gif: { id: string; name: string; tags: string[]; width: number; height: number; ownerId: string } };
   assert.deepEqual([g1.name, g1.tags, g1.width, g1.height, g1.ownerId], ['Bruh', ['reaction', 'meme'], 48, 36, 'u2']);
-  assert.ok(fs.existsSync(path.join(libraryGifsDirOf(dataDir), g1.id)));
+  assert.ok(fs.existsSync(path.join(libraryGifsDirOf(config.uploadsDir), g1.id)));
   assert.equal(frames.at(-1)?.t, 'gif.new');
   log('a member uploads a GIF with a name and tags');
 
@@ -108,7 +108,7 @@ try {
   log('GIFs over 10 MB are refused');
 
   assert.equal((await call('u1', 'DELETE', `/api/library-gifs/${g1.id}`)).status, 200);
-  assert.ok(!fs.existsSync(path.join(libraryGifsDirOf(dataDir), g1.id)));
+  assert.ok(!fs.existsSync(path.join(libraryGifsDirOf(config.uploadsDir), g1.id)));
   assert.equal(frames.at(-1)?.t, 'gif.delete');
   assert.equal((await call('u4', 'GET', `/api/library-gifs/${g1.id}/file`)).status, 404);
   log('an admin deletes it and the file goes away');
