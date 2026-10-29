@@ -57,6 +57,8 @@ services:
       - ${UPLOADS_PATH:-/mnt/storage/chatward/uploads}:/uploads
       - ${UPDATES_PATH:-/srv/chatward/updates}:/updates:ro
     expose: ["3000"]
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
     restart: unless-stopped
     logging: *logging
     deploy: { resources: { limits: { cpus: "2", memory: 1G } } }
