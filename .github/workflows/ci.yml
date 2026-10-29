@@ -28,6 +28,7 @@ jobs:
         with: { node-version: 22, cache: npm }
       - run: npm ci
       - run: npm run build -w @chatward/shared
+      - run: npm run test:unit -w @chatward/client
       - run: npm run test:e2e -w @chatward/server
       - run: npm run test:e2e-client -w @chatward/client
   # Unsigned installer for testing, built only after the checks above pass on develop or main (or a manual run).

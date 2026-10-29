@@ -19,6 +19,7 @@
     "test:e2e-client": "npm run build -w @chatward/server && esbuild test/e2e-client/device.ts --bundle --platform=node --format=esm --outfile=out/e2e-client/device.mjs --log-level=warning && esbuild test/e2e-client/run.ts --bundle --platform=node --format=esm --outfile=out/e2e-client/run.mjs --external:ts-mls --log-level=warning && node out/e2e-client/run.mjs",
     "visual:capture": "esbuild test/visual/capture.ts --bundle --platform=node --format=esm --outfile=out/visual/capture.mjs --external:playwright-core --external:electron --log-level=warning && node out/visual/capture.mjs",
     "visual:compare": "esbuild test/visual/compare.ts --bundle --platform=node --format=esm --outfile=out/visual/compare.mjs --external:pngjs --log-level=warning && node out/visual/compare.mjs",
+    "test:unit": "npm run test:crypto && npm run test:fit && npm run test:demo && npm run test:window && npm run test:policy && npm run test:media",
     "test:skins": "esbuild test/skins/lint.test.ts --bundle --platform=node --format=esm --outfile=out/test/skins-lint.test.mjs --log-level=warning && node --test out/test/skins-lint.test.mjs",
     "skins:parity": "esbuild test/skins/parity.ts --bundle --platform=node --format=esm --outfile=out/skins/parity.mjs --external:playwright-core --external:electron --log-level=warning && node out/skins/parity.mjs",
     "typecheck:test": "tsc -p test/tsconfig.json"
