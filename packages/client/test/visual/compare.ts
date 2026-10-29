@@ -55,6 +55,8 @@ for (const name of before.filter((n) => after.includes(n))) {
 
 if (problems.length) {
   for (const p of problems) console.error(`  DIFF  ${p}`);
+  // In GitHub Actions, also raise each as an annotation so it shows on the pull request's checks page.
+  if (process.env.GITHUB_ACTIONS) for (const p of problems) console.log(`::error title=Screen changed::${p}`);
   console.error(`${problems.length} screen(s) changed. Diff images: ${diffDir}`);
   process.exit(1);
 }
