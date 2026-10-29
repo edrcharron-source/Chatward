@@ -1,11 +1,12 @@
 # LiveKit SFU for the home server. API keys are not stored here: compose passes them from .env with --keys.
 # use_external_ip: LiveKit asks a STUN server for the home's public IP at startup and tells clients to send media there.
-# The router forwards 7881/tcp and 50000-50100/udp to this box. When the home IP changes, ddns-update.sh restarts
+# The router forwards 7881/tcp and 7882/udp to this box. When the home IP changes, ddns-update.sh restarts
 # LiveKit so it learns the new one.
 # Household PCs reach the public IP through the router's NAT loopback (UniFi does this by default).
+# udp_port: all media shares one UDP port (LiveKit tells connections apart by ICE username), so the router forwards a
+# single port instead of a range. A range only helps with hundreds of streams; a household is nowhere near that.
 port: 7880
 rtc:
   tcp_port: 7881
-  port_range_start: 50000
-  port_range_end: 50100
+  udp_port: 7882
   use_external_ip: true
