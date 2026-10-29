@@ -16,8 +16,9 @@ Never forward 22, 80, 3000, 7880, Samba, Jellyfin, Ollama, Grafana or Portainer.
 ## 1. Before you start (once)
 1. **Fixed IP.** In UniFi, Client Devices → the server → Settings → Fixed IP `192.168.1.228`.
 2. **No double NAT.** UniFi → Internet: the WAN IP must match what https://1.1.1.1/cdn-cgi/trace shows as `ip=`.
-3. **Cloudflare token.** Cloudflare → My Profile → API Tokens → Create Token → "Edit zone DNS" template, Zone Resources
-   = Include → Specific zone → `lebserver.com`. Copy the token; it goes in `.env` as `CF_API_TOKEN`. The A record for
+3. **Cloudflare token.** Cloudflare → My Profile → API Tokens → Create Token → "Edit zone DNS" template. Add a second
+   permission Zone → Zone → Read (Caddy and `ddns-update.sh` look the zone up by name), set Zone Resources = Include →
+   Specific zone → `lebserver.com`, no expiry and no IP filter (the home IP changes). Copy the token; it goes in `.env` as `CF_API_TOKEN`. The A record for
    `chat` is created by the install, as DNS only (grey cloud). Do not turn the orange proxy on: it breaks voice.
 4. **Router port forwards** (UniFi → Settings → Routing → Port Forwarding), all to `192.168.1.228`, from any source:
    - `Chatward HTTPS` 443 TCP → 443

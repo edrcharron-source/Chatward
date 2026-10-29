@@ -47,7 +47,7 @@ if [ -z "$(read_env SETUP_CODE)" ]; then
 fi
 if [ -z "$(read_env CF_API_TOKEN)" ]; then
   if [ -t 0 ]; then
-    read -r -s -p "Cloudflare API token (Zone > DNS > Edit on your zone): " TOKEN; echo
+    read -r -s -p "Cloudflare API token (Zone > DNS > Edit and Zone > Zone > Read on your zone): " TOKEN; echo
     [ -n "$TOKEN" ] && set_env CF_API_TOKEN "$TOKEN"
   fi
   [ -n "$(read_env CF_API_TOKEN)" ] || { echo "Put CF_API_TOKEN in deploy/home/.env, then run this again." >&2; exit 1; }
