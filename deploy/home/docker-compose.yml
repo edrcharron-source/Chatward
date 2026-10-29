@@ -51,11 +51,15 @@ services:
       TRUST_PROXY: 1
       KLIPY_API_KEY: ${KLIPY_API_KEY:-}
       UPLOAD_QUOTA_MB: ${UPLOAD_QUOTA_MB:-5120}   # the RAID has room; 5 GB each by default. 0 = no limit
+      JELLYFIN_URL: ${JELLYFIN_URL:-}   # e.g. http://host.docker.internal:8096; blank turns the movie browser off
+      JELLYFIN_API_KEY: ${JELLYFIN_API_KEY:-}
+      JELLYFIN_USER_ID: ${JELLYFIN_USER_ID:-}
       PUBLIC_URL: https://${DOMAIN}   # shown in the message chatward invite prints
     volumes:
       - ${DATA_PATH:-/srv/chatward/data}:/data
       - ${UPLOADS_PATH:-/mnt/storage/chatward/uploads}:/uploads
       - ${UPDATES_PATH:-/srv/chatward/updates}:/updates:ro
+    extra_hosts: ["host.docker.internal:host-gateway"]   # lets the server reach Jellyfin on the host
     expose: ["3000"]
     restart: unless-stopped
     logging: *logging

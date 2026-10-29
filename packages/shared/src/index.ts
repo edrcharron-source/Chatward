@@ -201,3 +201,26 @@ export function compareVersions(a: string, b: string): number {
   }
   return 0;
 }
+
+// Jellyfin library browsing. The Chatward server proxies Jellyfin, so clients never see its address or API key.
+export interface JellyfinItem {
+  id: string;
+  name: string;
+  /** Movie, Series, Season, Episode or Folder (a library view). */
+  kind: string;
+  year: number | null;
+  runtimeSeconds: number | null;
+  overview: string;
+  /** Path to the poster on the Chatward server, or null when the item has none. Needs the Authorization header. */
+  posterUrl: string | null;
+  /** true for things that play (Movie, Episode); false for containers to open with `parentId`. */
+  playable: boolean;
+}
+export interface JellyfinPlayback {
+  /** Master playlist path on the Chatward server. Already carries its own ticket, so a plain <video>/hls.js can load it. */
+  url: string;
+  title: string;
+  durationSeconds: number | null;
+  /** Epoch ms when the ticket stops working. Ask again to continue. */
+  expiresAt: number;
+}

@@ -18,6 +18,7 @@ import VoiceChannelView from './components/voice/VoiceChannelView';
 import TheaterSplit from './components/voice/TheaterSplit';
 import { WatchPartyPanel } from './components/watchparty';
 import SettingsModal from './components/settings/SettingsModal';
+import { JellyfinBrowser, useJellyfinEnabled } from './components/jellyfin/JellyfinBrowser';
 import TestConsole from './components/testconsole/TestConsole';
 import DemoBanner from './demo/DemoBanner';
 import UpdateBanner from './components/updates/UpdateBanner';
@@ -74,6 +75,8 @@ function Shell() {
   const [unreachable, setUnreachable] = useState(false);
   const [watchOpen, setWatchOpen] = useState(false);
   const [testOpen, setTestOpen] = useState(false);
+  const [moviesOpen, setMoviesOpen] = useState(false);
+  const jellyfinEnabled = useJellyfinEnabled();
   const { servers, activeServerId, activeChannelId } = useSession();
   const bundle = servers.find((s) => s.server.id === activeServerId);
   const channel = bundle?.channels.find((c) => c.id === activeChannelId);
@@ -353,6 +356,7 @@ function Shell() {
               </button>
             )}
             <button className="icon" onClick={() => setTestOpen(true)} title="Feature test console (Ctrl+Shift+T)">🧪 Test</button>
+            {jellyfinEnabled && <button className="icon" onClick={() => setMoviesOpen(true)} title="Browse the Jellyfin library">🍿 Movies</button>}
             {channel && (
               <button className="icon" onClick={() => setWatchOpen((o) => !o)} aria-pressed={watchOpen} title="Watch YouTube together">
                 🎬 {watchOpen ? 'Close watch party' : 'Watch together'}
@@ -392,6 +396,7 @@ function Shell() {
         </>}
       </main>
       {bundle && !hideSidebars && <MemberList serverId={bundle.server.id} members={bundle.members as Member[]} />}
+      {moviesOpen && <JellyfinBrowser onClose={() => setMoviesOpen(false)} />}
       {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
       {/* keep voice room mounted even when browsing text channels */}
       {voiceChannelId && null}
