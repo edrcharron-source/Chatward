@@ -31,12 +31,15 @@ export interface Settings {
 
 const LS = 'chatward.settings';
 const defaults = {
-  theme: 'dark' as const, skin: '', layout: 'tabs' as 'tabs' | 'classic', splitRatio: 0.5, inputDeviceId: '', outputDeviceId: '', cameraDeviceId: '',
+  theme: 'dark' as const, skin: 'lebserver', layout: 'tabs' as 'tabs' | 'classic', splitRatio: 0.5, inputDeviceId: '', outputDeviceId: '', cameraDeviceId: '',
   masterVolume: 1, micGain: 1, noiseSuppression: true, echoCancellation: true,
   messageSounds: true, mutedChannels: [] as string[], voiceJoinLeaveSounds: true, soundVolume: 0.6,
   autoLoadEmbeds: false, linkPreviews: true, userVolumes: {} as Record<string, number>, mutedUsers: {} as Record<string, boolean>,
 };
 const saved = (() => { try { return JSON.parse(localStorage.getItem(LS) ?? '{}'); } catch { return {}; } })();
+// Settings saved before the tabs layout existed have no layout. Their empty skin is the old default rather than a
+// choice, so they move to the new default look; a skin someone picked stays.
+if (saved && typeof saved === 'object' && !('layout' in saved) && !saved.skin) delete saved.skin;
 
 export const useSettings = create<Settings>((set, get) => ({
   ...defaults, ...saved,

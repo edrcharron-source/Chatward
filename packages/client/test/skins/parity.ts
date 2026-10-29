@@ -21,8 +21,12 @@ interface Run {
 }
 
 const BASE: TestSkin = { id: 'base' };
-// Skins that must pass: a layout skin that moves every panel and changes nothing else.
-const SKINS: TestSkin[] = [{ id: 'test-layout', css: 'test/skins/fixtures/test-layout.css' }];
+// Skins that must pass: a layout skin that moves every panel and changes nothing else, and the default skin.
+const SKINS: TestSkin[] = [
+  { id: 'test-layout', css: 'test/skins/fixtures/test-layout.css' },
+  // the default look, so it must keep every feature too
+  { id: 'lebserver', css: 'src/renderer/src/skins/lebserver/skin.css' },
+];
 // Skins that must fail: each one drops or hides something the check must notice.
 const BROKEN_SKINS: TestSkin[] = [{ id: 'hides-action', css: 'test/skins/broken/hides-action.css' }];
 
