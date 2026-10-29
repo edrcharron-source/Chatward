@@ -48,10 +48,7 @@ export default function ProfileCard({ user, style }: { user: User; style: React.
           <Avatar user={user} size={72} />
         </div>
         <div className="profile-name">{user.displayName}</div>
-        <div className="profile-handle">
-          {user.username}
-          {user.profile.pronouns && <span className="profile-pronouns"> · {user.profile.pronouns}</span>}
-        </div>
+        {user.profile.pronouns && <div className="profile-handle"><span className="profile-pronouns">{user.profile.pronouns}</span></div>}
         {user.profile.bio && <p className="profile-bio">{user.profile.bio}</p>}
         <div className="profile-since">Member since {memberSince(user.profile.createdAt)}</div>
       </div>

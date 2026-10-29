@@ -5,19 +5,21 @@ import { connectWs, disconnectWs, onFrame, sendFrame } from './api/ws';
 import { keepTokenFresh } from './api/token';
 import { isLiveChannel, refreshUnread, signOut, useSession, type ServerBundle } from './state/session';
 import { useSettings, applyTheme } from './state/settings';
+import { applySkin } from './skins';
 import { useVoice, rekeyActiveCall, resumeVoiceSlot, clearLeftoverVoiceSlot, leaveCallOnExit } from './state/voice';
 import { forgetChatChannels, useChat } from './state/chat';
 import { accountKey, adoptLegacyIfOwned, initDevice, syncChannelKeys, handleEnvelope, handleMemberLeave, forgetChannels } from './crypto';
 import { installNotifications } from './notify/notify';
 import AuthScreen from './components/auth/AuthScreen';
-import ServerSidebar from './components/servers/ServerSidebar';
 import ChannelList from './components/servers/ChannelList';
 import MemberList from './components/servers/MemberList';
 import ChatView from './components/chat/ChatView';
 import VoiceChannelView from './components/voice/VoiceChannelView';
 import TheaterSplit from './components/voice/TheaterSplit';
+import VaultView from './components/vault/VaultView';
 import { WatchPartyPanel } from './components/watchparty';
 import SettingsModal from './components/settings/SettingsModal';
+import { JellyfinBrowser, useJellyfinEnabled } from './components/jellyfin/JellyfinBrowser';
 import TestConsole from './components/testconsole/TestConsole';
 import DemoBanner from './demo/DemoBanner';
 import UpdateBanner from './components/updates/UpdateBanner';
@@ -32,6 +34,7 @@ export function App() {
   const serverUrl = useSession((s) => s.serverUrl);
   const server = useUpdates((s) => s.server);
   const theme = useSettings((s) => s.theme);
+  const skin = useSettings((s) => s.skin);
   useEffect(() => { void checkServerVersion(serverUrl); }, [serverUrl]);
   useEffect(() => {
     applyTheme(theme);
@@ -41,12 +44,13 @@ export function App() {
     mq.addEventListener('change', h);
     return () => mq.removeEventListener('change', h);
   }, [theme]);
+  useEffect(() => { void applySkin(skin); }, [skin]);
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+    <div className="cw-app">
       <UpdateBanner />
       <DeviceAlertBanner />
       <DemoBanner />
-      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+      <div className="cw-app-body">
         {server.kind === 'update-required'
           ? <UpdateRequired serverUrl={serverUrl} minClientVersion={server.minClientVersion} />
           : token ? <Shell /> : <AuthScreen />}
@@ -72,6 +76,9 @@ function Shell() {
   const [unreachable, setUnreachable] = useState(false);
   const [watchOpen, setWatchOpen] = useState(false);
   const [testOpen, setTestOpen] = useState(false);
+  const [moviesOpen, setMoviesOpen] = useState(false);
+  const jellyfinEnabled = useJellyfinEnabled();
+  const [vaultOpen, setVaultOpen] = useState(false);
   const { servers, activeServerId, activeChannelId } = useSession();
   const bundle = servers.find((s) => s.server.id === activeServerId);
   const channel = bundle?.channels.find((c) => c.id === activeChannelId);
@@ -287,7 +294,9 @@ function Shell() {
       if (!stillWanted()) return;
       for (const [cid, ids] of Object.entries(channels)) useSession.getState().setVoiceOccupants(cid, ids);
     }
-    await syncChannelKeys(servers);
+    // Not awaited: catching up MLS groups can take minutes (a Commit post waits up to 90 s), and the app must open meanwhile.
+    // Messages show "Waiting for this channel's key" until the sync lands. A failed sync schedules its own retry.
+    void syncChannelKeys(servers).catch((err) => console.error('Key sync failed', err));
   }
 
   /** Runs a load again with growing waits until it succeeds. A 401 means the session is gone, so it is rethrown and signs out. */
@@ -329,7 +338,7 @@ function Shell() {
 
   if (!ready) {
     return (
-      <div style={{ display: 'grid', placeItems: 'center', alignContent: 'center', gap: 12, height: '100%' }}>
+      <div className="cw-shell-loading">
         {unreachable ? (
           <>
             <div className="muted">Can't reach server, retrying…</div>
@@ -340,18 +349,23 @@ function Shell() {
     );
   }
   return (
-    <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
-      <ServerSidebar onReload={loadServers} />
+    <div className="cw-shell" data-region="shell">
       {!hideSidebars && <ChannelList onOpenSettings={() => setSettingsOpen(true)} onReload={loadServers} />}
-      <main style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+      <main className="cw-main" data-region="main">
         {testOpen ? <TestConsole onClose={() => setTestOpen(false)} /> : <>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '4px 12px', background: 'var(--bg-2)' }}>
+          <div className="cw-main-bar" data-region="main-bar">
             {theaterKey !== null && (
               <button className="icon" onClick={() => setSidebarsCollapsed((c) => !c)} aria-pressed={sidebarsCollapsed}>
                 {sidebarsCollapsed ? 'Show sidebars' : 'Hide sidebars'}
               </button>
             )}
             <button className="icon" onClick={() => setTestOpen(true)} title="Feature test console (Ctrl+Shift+T)">🧪 Test</button>
+            {jellyfinEnabled && <button className="icon" onClick={() => setMoviesOpen(true)} title="Browse the Jellyfin library">🍿 Movies</button>}
+            {bundle && (
+              <button className="icon" onClick={() => setVaultOpen((o) => !o)} aria-pressed={vaultOpen} title="Shared photos and videos">
+                🖼 {vaultOpen ? 'Close Vault' : 'Vault'}
+              </button>
+            )}
             {channel && (
               <button className="icon" onClick={() => setWatchOpen((o) => !o)} aria-pressed={watchOpen} title="Watch YouTube together">
                 🎬 {watchOpen ? 'Close watch party' : 'Watch together'}
@@ -361,22 +375,25 @@ function Shell() {
         {/* Voice channels have no message key of their own, so their watch party rides the server's first text channel. */}
         {watchOpen && (voiceChannelId && watchKeyChannelId
           ? <WatchPartyPanel key={`watch-${voiceChannelId}`} callChannelId={voiceChannelId} keyChannelId={watchKeyChannelId} />
-          : <div className="muted" style={{ padding: '6px 12px', background: 'var(--bg-2)' }}>Join a voice channel to start a watch party.</div>)}
-        {theaterWithChat && callChannel && chatChannel
+          : <div className="cw-main-note muted">Join a voice channel to start a watch party.</div>)}
+        {vaultOpen && bundle
+          ? <VaultView key={bundle.server.id} serverId={bundle.server.id} keyChannelId={textChannels[0]?.id}
+              canModerate={['owner', 'admin'].includes((bundle.members as Member[]).find((m) => m.user.id === useSession.getState().user?.id)?.role ?? '')} />
+          : theaterWithChat && callChannel && chatChannel
           ? (
             <TheaterSplit
               top={<VoiceChannelView key={callChannel.id} channel={callChannel} theaterOnly />}
               bottom={(
                 <>
                   {channel?.kind === 'voice' && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 12px', background: 'var(--bg-2)' }}>
-                      <span className="muted" style={{ fontSize: 12 }}>Chat</span>
+                    <div className="cw-chat-picker">
+                      <span className="muted">Chat</span>
                       <select value={chatChannel.id} onChange={(e) => setChatChannelId(e.target.value)} aria-label="Text channel for chat">
                         {textChannels.map((c) => <option key={c.id} value={c.id}>#{c.name}</option>)}
                       </select>
                     </div>
                   )}
-                  <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+                  <div className="cw-fill">
                     <ChatView key={chatChannel.id} channel={chatChannel} />
                   </div>
                 </>
@@ -387,10 +404,11 @@ function Shell() {
             ? <VoiceChannelView key={channel.id} channel={channel} />
             : channel
               ? <ChatView key={channel.id} channel={channel} />
-              : <div style={{ margin: 'auto' }} className="muted">{bundle ? 'Select a channel' : 'Create or join a server to get started'}</div>}
+              : <div className="cw-main-empty muted">{bundle ? 'Select a channel' : 'Waiting for the server…'}</div>}
         </>}
       </main>
       {bundle && !hideSidebars && <MemberList serverId={bundle.server.id} members={bundle.members as Member[]} />}
+      {moviesOpen && <JellyfinBrowser onClose={() => setMoviesOpen(false)} />}
       {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
       {/* keep voice room mounted even when browsing text channels */}
       {voiceChannelId && null}

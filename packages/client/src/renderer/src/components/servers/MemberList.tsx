@@ -17,12 +17,13 @@ export default function MemberList({ serverId, members }: { serverId: string; me
   const statusOf = (m: Member): Presence => presence[m.user.id] ?? (m.user.id === meId ? 'online' : 'offline');
 
   const myRole = members.find((m) => m.user.id === meId)?.role;
-  // Admins can kick or ban members; only the owner can act on an admin. The server enforces this too.
+  // Admins can remove members; only the owner can act on an admin. The server enforces this too.
   const canActOn = (m: Member) =>
     m.user.id !== meId && (myRole === 'owner' || (myRole === 'admin' && m.role === 'member'));
 
-  async function kick(m: Member) {
-    if (!window.confirm(`Kick ${m.user.displayName} from this server? They can rejoin with a new invite.`)) return;
+  // There is one server, so removing someone turns their account off. Settings lists them to turn back on.
+  async function remove(m: Member) {
+    if (!window.confirm(`Remove ${m.user.displayName}? Their account is turned off: they are signed out everywhere and can't sign in until it is turned back on in Server settings.`)) return;
     setError(null);
     try {
       await api.del(`/api/servers/${serverId}/members/${encodeURIComponent(m.user.id)}`);
@@ -31,20 +32,9 @@ export default function MemberList({ serverId, members }: { serverId: string; me
     }
   }
 
-  async function ban(m: Member) {
-    if (!window.confirm(`Ban ${m.user.displayName}? They are removed and cannot rejoin with any invite until unbanned.`)) return;
-    setError(null);
-    try {
-      await api.post(`/api/servers/${serverId}/bans`, { userId: m.user.id });
-    } catch (err) {
-      setError(errorText(err));
-    }
-  }
-
   const actions = (m: Member): ReactNode => canActOn(m) && (
     <span className="cw-member-actions">
-      <button type="button" onClick={() => void kick(m)}>Kick</button>
-      <button type="button" className="danger" onClick={() => void ban(m)}>Ban</button>
+      <button type="button" className="danger" onClick={() => void remove(m)}>Remove</button>
     </span>
   );
 
@@ -52,7 +42,7 @@ export default function MemberList({ serverId, members }: { serverId: string; me
   const offline = members.filter((m) => statusOf(m) === 'offline');
 
   return (
-    <aside className="cw-members" aria-label="Members">
+    <aside className="cw-members" data-region="members" aria-label="Members">
       {online.length > 0 && <Group title="Online" list={online} statusOf={statusOf} actions={actions} />}
       {offline.length > 0 && <Group title="Offline" list={offline} statusOf={statusOf} actions={actions} />}
       {error && <p className="cw-error" role="alert">{error}</p>}

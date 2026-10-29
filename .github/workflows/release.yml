@@ -5,6 +5,10 @@ on:
       tag: { description: 'Release tag, e.g. v0.1.0', required: true }
 permissions:
   contents: write
+# Two releases at once would race on the server's update feed.
+concurrency:
+  group: release
+  cancel-in-progress: false
 jobs:
   windows-app:
     runs-on: windows-latest
@@ -19,9 +23,13 @@ jobs:
         run: npm version "${TAG#v}" --no-git-tag-version --allow-same-version -w @chatward/client
       - run: npm run build -w @chatward/shared
       - run: npm run dist:win
+        env:
+          CHATWARD_DEFAULT_SERVER: ${{ vars.CHATWARD_DEFAULT_SERVER || 'https://chat.lebserver.com' }}
       - uses: actions/upload-artifact@v4
         with:
           name: win
+          # Only handed to the publish job; the GitHub Release keeps the real copy.
+          retention-days: 1
           path: |
             packages/client/release/*.exe
             packages/client/release/latest.yml
@@ -41,7 +49,7 @@ jobs:
           rm -rf $d/packages/*/node_modules $d/packages/*/dist
           zip -qr chatward-server.zip $d
       - uses: actions/upload-artifact@v4
-        with: { name: server, path: chatward-server.zip }
+        with: { name: server, path: chatward-server.zip, retention-days: 1 }
   publish:
     needs: [windows-app, server-bundle]
     runs-on: ubuntu-latest

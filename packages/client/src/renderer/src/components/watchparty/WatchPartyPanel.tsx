@@ -4,7 +4,7 @@ import { api } from '../../api/http';
 import { onFrame } from '../../api/ws';
 import { decryptMessage, encryptPayload, onKeysChanged } from '../../crypto';
 import { useSession } from '../../state/session';
-import { decodeState, DRIFT_SECONDS, encodeState, playhead, SEEK_SECONDS, type StampedState, type WatchState } from './sync';
+import { decodeState, DRIFT_SECONDS, encodeState, mediaKey, parseVideoUrl, playhead, SEEK_SECONDS, type StampedState, type WatchState } from './sync';
 import { bindPlayer, embedSrc, parseYouTubeUrl, sendCommand, type PlayerEvent } from './youtube';
 import { popoutUrl, type PanelToPopout, type PopoutToPanel } from './popout';
 import './watchparty.css';
@@ -63,6 +63,7 @@ export function WatchPartyPanel({ callChannelId: channelId, keyChannelId }: { ca
   const [popped, setPopped] = useState(false);
 
   const frameRef = useRef<HTMLIFrameElement>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
   const frameWrapRef = useRef<HTMLDivElement>(null);
   const popupRef = useRef<Window | null>(null);
   const readyRef = useRef(false);
@@ -91,7 +92,13 @@ export function WatchPartyPanel({ callChannelId: channelId, keyChannelId }: { ca
 
   /** Drives the embed wherever it is: the panel's iframe, or the pop-out window's. */
   const command = (func: string, args: unknown[] = []) => {
-    if (popupRef.current) postToPopout({ kind: 'command', func, args });
+    const video = videoRef.current;
+    if (video) {
+      if (func === 'seekTo') video.currentTime = args[0] as number;
+      else if (func === 'playVideo') void video.play().catch(() => {});
+      else if (func === 'pauseVideo') video.pause();
+      else if (func === 'setPlaybackRate') video.playbackRate = args[0] as number;
+    } else if (popupRef.current) postToPopout({ kind: 'command', func, args });
     else sendCommand(frameRef.current, func, args);
   };
 
@@ -103,7 +110,7 @@ export function WatchPartyPanel({ callChannelId: channelId, keyChannelId }: { ca
   };
 
   const applyRemote = (s: StampedState | null) => {
-    if (!s?.videoId || !readyRef.current) return;
+    if (!s || !mediaKey(s) || !readyRef.current) return;
     const now = performance.now();
     const target = remotePlayhead(s, serverNow());
     const current = local.current ? playhead(local.current, now) : target;
@@ -141,12 +148,12 @@ export function WatchPartyPanel({ callChannelId: channelId, keyChannelId }: { ca
     const now = performance.now();
     const prev = local.current;
     local.current = { position: e.currentTime, at: now, playing: e.playing, rate: e.rate };
-    const videoId = remoteRef.current?.videoId;
-    if (!prev || !videoId || now < suppressUntil.current) return;
+    const cur = remoteRef.current;
+    if (!prev || !mediaKey(cur) || now < suppressUntil.current) return;
 
     const seeked = Math.abs(e.currentTime - playhead(prev, now)) > SEEK_SECONDS;
     if (seeked || e.playing !== prev.playing || e.rate !== prev.rate) {
-      void publish({ videoId, playing: e.playing, position: e.currentTime, rate: e.rate });
+      void publish({ videoId: cur!.videoId, url: cur!.url, playing: e.playing, position: e.currentTime, rate: e.rate });
     }
   };
 
@@ -199,11 +206,14 @@ export function WatchPartyPanel({ callChannelId: channelId, keyChannelId }: { ca
   }, [channelId, keyChannelId]);
 
   const videoId = remote?.videoId ?? null;
+  const fileUrl = remote?.url ?? null;
+  const active = mediaKey(remote);
 
   // Re-bind whenever the embed is (re)mounted: a new video, or it moving between the panel and the pop-out window.
   useEffect(() => {
     readyRef.current = false;
     local.current = null;
+    if (fileUrl) return bindVideo();
     if (!videoId) return;
     if (popped) {
       postToPopout({ kind: 'load', videoId });
@@ -212,7 +222,24 @@ export function WatchPartyPanel({ callChannelId: channelId, keyChannelId }: { ca
     const frame = frameRef.current;
     if (!frame) return;
     return bindPlayer(frame, (e) => onPlayerEvent.current(e));
-  }, [videoId, channelId, popped]);
+  }, [videoId, fileUrl, channelId, popped]);
+
+  /** Reports a <video> element's state like the YouTube embed does, so the rest of the sync logic is shared. */
+  const bindVideo = () => {
+    const video = videoRef.current;
+    if (!video) return;
+    const info = () =>
+      onPlayerEvent.current({ kind: 'info', currentTime: video.currentTime, playing: !video.paused && !video.ended, rate: video.playbackRate });
+    const ready = () => onPlayerEvent.current({ kind: 'ready' });
+    const events = ['play', 'pause', 'seeked', 'ratechange'] as const;
+    events.forEach((n) => video.addEventListener(n, info));
+    video.addEventListener('loadedmetadata', ready);
+    if (video.readyState >= 1) ready();
+    return () => {
+      events.forEach((n) => video.removeEventListener(n, info));
+      video.removeEventListener('loadedmetadata', ready);
+    };
+  };
 
   // A remote change, or our own publish echoed back into state, is applied here.
   useEffect(() => {
@@ -224,7 +251,7 @@ export function WatchPartyPanel({ callChannelId: channelId, keyChannelId }: { ca
     const timer = setInterval(() => {
       const s = remoteRef.current;
       const l = local.current;
-      if (!s?.videoId || !s.playing || !readyRef.current || !l) return;
+      if (!s || !mediaKey(s) || !s.playing || !readyRef.current || !l) return;
       const now = performance.now();
       if (now < suppressUntil.current) return;
       const expected = remotePlayhead(s, serverNow());
@@ -235,20 +262,22 @@ export function WatchPartyPanel({ callChannelId: channelId, keyChannelId }: { ca
 
   const submit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    const rate = remoteRef.current?.rate ?? 1;
     const link = parseYouTubeUrl(draft);
-    if (!link) {
-      setError("That doesn't look like a YouTube link.");
+    const file = link ? null : parseVideoUrl(draft);
+    if (!link && !file) {
+      setError("That doesn't look like a YouTube link or an https video file link.");
       return;
     }
     setDraft('');
-    void publish({ videoId: link.videoId, playing: true, position: link.start, rate: remoteRef.current?.rate ?? 1 });
+    void publish(link ? { videoId: link.videoId, playing: true, position: link.start, rate } : { videoId: null, url: file, playing: true, position: 0, rate });
   };
 
   const togglePlay = () => {
     const s = remoteRef.current;
-    if (!s?.videoId) return;
+    if (!mediaKey(s) || !s) return;
     const position = local.current ? playhead(local.current, performance.now()) : s.position;
-    void publish({ videoId: s.videoId, playing: !s.playing, position, rate: s.rate });
+    void publish({ videoId: s.videoId, url: s.url, playing: !s.playing, position, rate: s.rate });
   };
 
   /** Brings the embed back into the panel and closes the pop-out. Closing the pop-out window itself lands here too. */
@@ -279,7 +308,7 @@ export function WatchPartyPanel({ callChannelId: channelId, keyChannelId }: { ca
     stopping.current = true;
     local.current = null;
     readyRef.current = false;
-    void publish({ videoId: null, playing: false, position: 0, rate: 1 });
+    void publish({ videoId: null, url: null, playing: false, position: 0, rate: 1 });
   };
 
   // Messages from the pop-out: it says hello on load, relays player events, and says closed when it goes away.
@@ -312,8 +341,8 @@ export function WatchPartyPanel({ callChannelId: channelId, keyChannelId }: { ca
 
   // The party ending, from Stop here or from another member, closes the pop-out too.
   useEffect(() => {
-    if (!videoId && popupRef.current) dock();
-  }, [videoId]);
+    if ((!videoId || fileUrl) && popupRef.current) dock();
+  }, [videoId, fileUrl]);
 
   // Leaving the panel, or the app closing, takes the pop-out with it.
   useEffect(() => {
@@ -329,31 +358,35 @@ export function WatchPartyPanel({ callChannelId: channelId, keyChannelId }: { ca
     <section className="watch-party" aria-label="Watch party">
       <header className="watch-party-head">
         <span>Watch party</span>
-        {videoId && (
+        {active && (
           <span className="watch-party-head-actions">
-            {!popped && <button type="button" onClick={popOut}>Pop out</button>}
+            {!fileUrl && !popped && <button type="button" onClick={popOut}>Pop out</button>}
             <button type="button" className="watch-party-stop" onClick={stop}>Stop</button>
           </span>
         )}
       </header>
 
-      {videoId ? (
+      {active ? (
         <>
-          {popped ? (
+          {popped && !fileUrl ? (
             <div className="watch-party-popped">
               <p>Playing in a separate window. Closing that window brings the player back here.</p>
               <button type="button" onClick={dock}>Bring back</button>
             </div>
           ) : (
             <div className="watch-party-frame" ref={frameWrapRef}>
+              {fileUrl ? (
+                <video key={fileUrl} ref={videoRef} src={fileUrl} controls playsInline preload="metadata" />
+              ) : (
               <iframe
-                key={videoId}
+                key={videoId ?? ""}
                 ref={frameRef}
-                src={embedSrc(videoId)}
+                src={embedSrc(videoId ?? "")}
                 title="Watch party video"
                 allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
                 allowFullScreen
               />
+              )}
             </div>
           )}
           <div className="watch-party-bar">
@@ -363,18 +396,18 @@ export function WatchPartyPanel({ callChannelId: channelId, keyChannelId }: { ca
           </div>
         </>
       ) : (
-        <p className="watch-party-empty">Paste a YouTube link to watch together in sync.</p>
+        <p className="watch-party-empty">Paste a YouTube link or an https video file (mp4/webm) link to watch together in sync.</p>
       )}
 
       <form className="watch-party-form" onSubmit={submit}>
         <input
           type="url"
-          aria-label="YouTube link"
+          aria-label="YouTube or video file link"
           placeholder="https://www.youtube.com/watch?v=…"
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
         />
-        <button type="submit" disabled={!draft.trim()}>{videoId ? 'Change video' : 'Start'}</button>
+        <button type="submit" disabled={!draft.trim()}>{active ? 'Change video' : 'Start'}</button>
       </form>
       {error && <p role="alert" className="watch-party-error">{error}</p>}
     </section>

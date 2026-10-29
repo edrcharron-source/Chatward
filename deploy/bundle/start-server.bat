@@ -17,4 +17,5 @@ if errorlevel 1 (
 )
 echo.
 echo Chatward server is running. Open the Chatward app and use the server address http://localhost:3000
+echo Make a sign-up code for each account (the first one owns the server): chatward invite
 pause

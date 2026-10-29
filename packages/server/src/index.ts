@@ -5,7 +5,7 @@ import express from 'express';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import type { Channel, DeviceKeys, Member, User } from '@chatward/shared';
-import { config, setupCode } from './config.js';
+import { config } from './config.js';
 import { openDb } from './db.js';
 import { makeAuth, type Ctx } from './ctx.js';
 import { attachWs } from './ws.js';
@@ -19,8 +19,12 @@ import { register as linkpreview } from './modules/linkpreview.js';
 import { register as voice } from './modules/voice.js';
 import { register as groups } from './modules/groups.js';
 import { register as watchparty } from './modules/watchparty.js';
+import { register as jellyfin } from './modules/jellyfin.js';
+import { register as vault } from './modules/vault.js';
 import { register as updates } from './modules/updates.js';
 import { startDiskCheck } from './diskCheck.js';
+import { ensureSingleServer } from './singleServer.js';
+import { startAdminSocket } from './modules/admin.js';
 
 // Log instead of exiting, so one bad request or a failed async task cannot take down every voice call and open socket.
 process.on('uncaughtException', (err) => { console.error('Uncaught exception:', err); });
@@ -120,7 +124,9 @@ app.post('/api/groups/:id/commits', express.json({ limit: '512kb' }));
 app.use(express.json({ limit: '64kb' }));
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
-for (const reg of [auth, servers, messages, uploads, soundboard, gifs, linkpreview, voice, groups, watchparty, updates]) reg(app, ctx);
+for (const reg of [auth, servers, messages, uploads, soundboard, gifs, linkpreview, voice, groups, watchparty, vault, jellyfin, updates]) reg(app, ctx);
+// Runs after the modules, which add the columns it writes.
+ensureSingleServer(db);
 
 app.use((_req, res) => res.status(404).json({ error: 'not found' }));
 app.use((err: Error & { type?: string }, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
@@ -132,9 +138,9 @@ app.use((err: Error & { type?: string }, _req: express.Request, res: express.Res
 
 const server = http.createServer(app);
 attachWs(server, ctx);
-// A fresh server needs its setup code before the first account, so make it (and print it) at startup.
+startAdminSocket(ctx);
 const { n: accountCount } = db.prepare('SELECT COUNT(*) AS n FROM users WHERE deleted_at IS NULL').get() as { n: number };
-if (accountCount === 0) setupCode();
+if (accountCount === 0) console.log('No accounts yet. Run `chatward invite` on this machine to make the first sign-up code.');
 server.listen(config.port, config.host, () => {
   console.log(`Chatward server listening on http://${config.host}:${config.port}`);
   startDiskCheck();

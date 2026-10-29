@@ -226,7 +226,7 @@ on('POST', /^\/api\/me\/delete$/, (r) => {
   const body = (r.body ?? {}) as Record<string, unknown>;
   if (typeof body.password !== 'string' || body.password === '') throw new HttpError(403, 'password is incorrect');
   // Same rule as the server: an owner must hand off or delete their servers first.
-  if (world.server.ownerId === YOU_ID) throw new HttpError(409, `transfer or delete your servers first: ${world.server.name}`);
+  if (world.server.ownerId === YOU_ID) throw new HttpError(409, 'the owner account cannot be deleted');
   // Nothing is really deleted here. The caller signs out, and the next entry into demo mode starts a fresh world.
   return json({ ok: true });
 });
@@ -377,7 +377,9 @@ on('PATCH', /^\/api\/servers\/([^/]+)\/members\/([^/]+)$/, (r) => {
 });
 on('DELETE', /^\/api\/servers\/([^/]+)\/members\/([^/]+)$/, (r) => {
   serverGuard(r.match[1]);
-  demoTarget(YOU_ID, r.match[2]);
+  // As on the real server, removing someone turns their account off, so they show under Removed accounts.
+  const { user } = demoTarget(YOU_ID, r.match[2]);
+  world.bans = [...world.bans.filter((b) => b.user.id !== user.id), { user, bannedAt: Date.now() }];
   removeDemoMember(r.match[2]);
   return json({ ok: true });
 });

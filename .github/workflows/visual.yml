@@ -1,0 +1,36 @@
+name: Visual
+# Builds the pull request and its base branch, screenshots both in demo mode, and fails if any screen changed.
+# A pull request that is meant to change the look (a new skin, a restyle) gets the "visual-change" label: the check
+# then passes and the before, after and diff screenshots are still uploaded for review. See docs/SKINS.md.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+jobs:
+  screenshots:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npm run build -w @chatward/shared && npm run build -w @chatward/client
+      - name: Build the base branch
+        run: |
+          git fetch --no-tags --depth=1 origin ${{ github.event.pull_request.base.sha }}
+          git worktree add "$RUNNER_TEMP/base" ${{ github.event.pull_request.base.sha }}
+          cd "$RUNNER_TEMP/base"
+          npm ci --ignore-scripts
+          npm run build -w @chatward/shared && npm run build -w @chatward/client
+      - name: Capture
+        run: |
+          xvfb-run -a npm run visual:capture -w @chatward/client -- "$RUNNER_TEMP/shots/before" "$RUNNER_TEMP/base/packages/client"
+          xvfb-run -a npm run visual:capture -w @chatward/client -- "$RUNNER_TEMP/shots/after"
+      - name: Compare
+        continue-on-error: ${{ contains(github.event.pull_request.labels.*.name, 'visual-change') }}
+        run: npm run visual:compare -w @chatward/client -- "$RUNNER_TEMP/shots/before" "$RUNNER_TEMP/shots/after" "$RUNNER_TEMP/shots/diff"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: screenshots
+          path: ${{ runner.temp }}/shots
+          if-no-files-found: ignore
