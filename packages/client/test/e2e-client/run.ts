@@ -1,13 +1,12 @@
 // Two-device end-to-end test of the real client crypto. Starts the built server, runs two device processes
 // (device.ts), and drives them over JSON lines. Run with: npm run test:e2e-client -w @chatward/client
 import assert from 'node:assert/strict';
-import { spawn, type ChildProcess } from 'node:child_process';
+import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline';
 
 const PORT = 3998;
-const SETUP_CODE = 'e2e-setup-code';
 const BASE = `http://127.0.0.1:${PORT}`;
 const here = import.meta.dirname;
 const serverDir = path.resolve(here, '../../../server');
@@ -45,7 +44,7 @@ async function startServer(): Promise<ChildProcess> {
   fs.mkdirSync(dataDir, { recursive: true });
   const child = spawn('node', ['dist/index.js'], {
     cwd: serverDir,
-    env: { ...process.env, DATA_DIR: dataDir, PORT: String(PORT), HOST: '127.0.0.1', SETUP_CODE },
+    env: { ...process.env, DATA_DIR: dataDir, PORT: String(PORT), HOST: '127.0.0.1' },
     stdio: 'inherit',
   });
   for (let i = 0; i < 100; i++) {
@@ -59,6 +58,17 @@ async function startServer(): Promise<ChildProcess> {
 
 const log = (msg: string) => console.log(`  ok  ${msg}`);
 
+/** Runs the chatward admin command against the test server. */
+const chatward = (...args: string[]): string =>
+  execFileSync('node', ['dist/cli.js', ...args], { cwd: serverDir, env: { ...process.env, DATA_DIR: dataDir }, encoding: 'utf8' });
+
+/** A one-time sign-up code from `chatward invite`. */
+function invite(): { code: string } {
+  const m = /New sign-up code: ([A-Z0-9-]{14})/.exec(chatward('invite'));
+  if (!m) throw new Error('chatward invite printed no code');
+  return { code: m[1] };
+}
+
 async function main() {
   const server = await startServer();
   const alice = new Device('alice');
@@ -71,20 +81,19 @@ async function main() {
     await alice.call('init', { serverUrl: BASE, username: 'alice' });
     await bob.call('init', { serverUrl: BASE, username: 'bob' });
 
-    // 1. Device A registers as the first user and creates a server. Its sync creates the channel group.
-    await alice.call('register', { username: 'alice', setupCode: SETUP_CODE });
-    const { serverId, channelId } = await alice.call('createServer', { name: 'S' });
+    // 1. Device A signs up first, so it gets the server. Its sync creates the channel group.
+    await alice.call('register', { username: 'alice', inviteCode: invite().code });
+    const { serverId, channelId } = await alice.call('server');
     await alice.call('sync');
     assert.equal((await alice.call('status', { channelId })).epoch, 1, 'alice creates the group at epoch 1');
-    log('alice registers, creates the server, and the channel group is created (epoch 1)');
+    log('alice signs up first, gets the server, and the channel group is created (epoch 1)');
 
     // 2. A sends a message before bob exists. Bob must read it later from history.
     await alice.call('send', { channelId, text: 'hello from alice' });
     log('alice sends a message before bob joins');
 
-    // 3. Bob joins through an invite, receives the Welcome, and reads A's older message via history sharing.
-    const { code } = await alice.call('invite', { serverId });
-    const { userId: bobId } = await bob.call('register', { username: 'bob', inviteCode: code });
+    // 3. Bob signs up with a code, receives the Welcome, and reads A's older message via history sharing.
+    const { userId: bobId } = await bob.call('register', { username: 'bob', inviteCode: invite().code });
     await bob.call('sync'); // uploads bob's KeyPackages; no group yet
     await alice.call('sync'); // adds bob with a Commit and Welcome, then shares history keys with him
     await bob.call('sync'); // joins from the Welcome and accepts the history envelopes
@@ -92,7 +101,7 @@ async function main() {
     assert.equal((await bob.call('status', { channelId })).epoch, 2, 'bob joined at epoch 2');
     const bobSees = (await bob.call('read', { channelId })).texts;
     assert.ok(bobSees.includes('hello from alice'), `bob reads alice's older message: ${JSON.stringify(bobSees)}`);
-    log('bob joins through an invite and a Welcome, and reads the older message through history sharing');
+    log('bob signs up with a code, joins from a Welcome, and reads the older message through history sharing');
 
     // 4. B replies and A decrypts it.
     await bob.call('send', { channelId, text: 'hi from bob' });
@@ -118,7 +127,7 @@ async function main() {
     assert.equal(got.sha256, sent.sha256, 'attachment bytes match');
     log('a 5 MB attachment round-trips through encryptBlob and decryptBlob');
 
-    // 5. A kicks B. A remaining device commits the Remove, and B can no longer decrypt A's next message.
+    // 5. A removes B, which turns his account off. A remaining device commits the Remove, and B can no longer decrypt A's next message.
     const epochBefore = (await alice.call('status', { channelId })).epoch;
     await alice.call('kick', { serverId, userId: bobId });
     await alice.call('sync');
@@ -131,10 +140,11 @@ async function main() {
     assert.equal(bobDecrypt.text, null, 'the kicked bob cannot decrypt the new message');
     log('alice kicks bob; a Remove is committed, and bob cannot decrypt the next message');
 
-    // 5b. Alice re-invites bob. His device still holds the group state from before the kick. He must rejoin from the new
-    // Welcome, not replay the Commits he missed (which would fail and make him ask the server to drop the re-add).
-    const reinvite = await alice.call('invite', { serverId });
-    await bob.call('joinInvite', { code: reinvite.code });
+    // 5b. Bob's account is turned back on and he signs in again. His device still holds the group state from before the
+    // kick. He must rejoin from the new Welcome, not replay the Commits he missed (which would fail and make him ask the
+    // server to drop the re-add).
+    chatward('restore', 'bob');
+    await bob.call('login', { username: 'bob' });
     await alice.call('sync'); // re-adds bob's device with a Commit and a Welcome
     await bob.call('sync'); // bob joins from the Welcome
     const aliceEpochAfterReadd = (await alice.call('status', { channelId })).epoch;
@@ -147,13 +157,13 @@ async function main() {
     await alice.call('sync');
     const aliceBack = (await alice.call('read', { channelId })).texts;
     assert.ok(aliceBack.includes('bob is back'), `alice reads bob after he rejoins: ${JSON.stringify(aliceBack)}`);
-    log('bob is re-invited after a kick; he rejoins from the Welcome and both sides read each other again');
+    log('bob is turned back on after a kick; he rejoins from the Welcome and both sides read each other again');
 
-    // 5c. Bob leaves and rejoins while alice is offline, so no Remove is ever committed. Bob's device keeps its group
+    // 5c. Bob is removed and restored while alice is offline, so no Remove is ever committed. Bob's device keeps its group
     // state across the leave. Rejoining from the new Welcome must still work, or bob is locked out of the channel.
     await alice.call('kick', { serverId, userId: bobId });
-    const leaveReinvite = await alice.call('invite', { serverId });
-    await bob.call('joinInvite', { code: leaveReinvite.code });
+    chatward('restore', 'bob');
+    await bob.call('login', { username: 'bob' });
     await alice.call('sync'); // alice commits the add for bob's device
     await bob.call('sync'); // bob joins from the Welcome, or applies the Commits he has not seen
     const aliceEpochAfterLeave = (await alice.call('status', { channelId })).epoch;
@@ -173,7 +183,7 @@ async function main() {
     const erin = new Device('erin');
     removed.push(erin);
     await erin.call('init', { serverUrl: BASE, username: 'erin' });
-    const erinInvite = await alice.call('invite', { serverId });
+    const erinInvite = invite();
     const { userId: erinId } = await erin.call('register', { username: 'erin', inviteCode: erinInvite.code });
     await erin.call('sync'); // uploads erin's KeyPackages
     await alice.call('sync'); // commit: add erin
@@ -190,7 +200,7 @@ async function main() {
     // 5d. Dave's KeyPackage upload reaches the server, but its reply is lost. Alice then adds dave using one of the packages
     // the server now holds. Dave must still join from that Welcome, so his device has to have saved the private parts first.
     await bob.call('init', { serverUrl: BASE, username: 'dave' });
-    const daveInvite = await alice.call('invite', { serverId });
+    const daveInvite = invite();
     await bob.call('register', { username: 'dave', inviteCode: daveInvite.code });
     await bob.call('dropNextKeyPackageReply');
     await bob.call('sync'); // the upload lands on the server; the failure is logged and retried later
@@ -211,7 +221,7 @@ async function main() {
     // 5e. Frank's device is added while alice's Commit reply is lost. The Commit did reach the server, so alice must
     // recognise it as her own and move on to the new epoch instead of stalling behind it.
     await bob.call('init', { serverUrl: BASE, username: 'frank' });
-    const frankInvite = await alice.call('invite', { serverId });
+    const frankInvite = invite();
     await bob.call('register', { username: 'frank', inviteCode: frankInvite.code });
     await bob.call('sync');
     await alice.call('dropNextCommitReply');
@@ -227,7 +237,7 @@ async function main() {
     // 5f. Grace's device is added, and alice's Commit is held back so she gets no answer and gives up on it. The Commit
     // then reaches the server late. Alice must adopt the step she kept, not replay her own Commit and get stuck.
     await bob.call('init', { serverUrl: BASE, username: 'grace' });
-    const graceInvite = await alice.call('invite', { serverId });
+    const graceInvite = invite();
     await bob.call('register', { username: 'grace', inviteCode: graceInvite.code });
     await bob.call('sync');
     const epochBeforeGrace = (await alice.call('status', { channelId })).epoch;
@@ -244,29 +254,30 @@ async function main() {
     assert.ok(graceSees.includes('hello grace'), `grace reads after a late Commit: ${JSON.stringify(graceSees)}`);
     log('alice\'s Commit arrives after she gave up on it; she adopts the step she kept and grace can read');
 
-    // 5g. Alice creates a server, and the Commit that creates its group is held back, so she gives up on it. Nobody
-    // else is in the group yet, so no Welcome will ever come. When the Commit reaches the server late, alice must adopt
-    // the group from the step she kept instead of waiting forever.
-    const late = await alice.call('createServer', { name: 'Late' });
+    // 5g. Alice adds a channel, and the Commit that creates its group is held back, so she gives up on it. No Welcome
+    // will ever come for her own group. When the Commit reaches the server late, alice must adopt the group from the
+    // step she kept instead of waiting forever.
+    const late = await alice.call('createChannel', { serverId, name: 'late' });
     await alice.call('holdNextCommit');
     await alice.call('sync'); // the group-creating Commit gets no answer and is kept
     assert.equal((await alice.call('status', { channelId: late.channelId })).epoch, null, 'alice has no group while the create Commit is held');
     await alice.call('sendHeldCommit'); // the create Commit reaches the server late
     await alice.call('sync');
-    assert.equal((await alice.call('status', { channelId: late.channelId })).epoch, 1, 'alice adopts her late create Commit at epoch 1');
+    assert.ok((await alice.call('status', { channelId: late.channelId })).epoch >= 1, 'alice adopts her late create Commit');
     await alice.call('send', { channelId: late.channelId, text: 'creator after a late create' });
     const lateSees = (await alice.call('read', { channelId: late.channelId })).texts;
     assert.ok(lateSees.includes('creator after a late create'), `alice reads after adopting a late create: ${JSON.stringify(lateSees)}`);
     log('alice\'s create Commit arrives after she gave up on it; she adopts the group and reads her channel');
 
     // Ten devices join a channel that already has a group. They are added four at a time, one Commit per batch, so no
-    // Commit grows past the server's body limit. Alice's Commits (1 -> 4) go out in three batches.
-    const big = await alice.call('createServer', { name: 'Big' });
+    // Commit grows past the server's body limit. Alice's Commits go out in three batches.
+    const big = await alice.call('createChannel', { serverId, name: 'big' });
     await alice.call('sync');
+    const bigStart = (await alice.call('status', { channelId: big.channelId })).epoch as number;
     // Each crowd member is its own device process, so alice keeps her session token.
     for (let i = 0; i < 10; i++) {
       const username = `pal${i}`;
-      const { code } = await alice.call('invite', { serverId: big.serverId });
+      const { code } = invite();
       const pal = new Device(username);
       crowd.push(pal);
       await pal.call('init', { serverUrl: BASE, username });
@@ -274,7 +285,7 @@ async function main() {
       await pal.call('sync'); // uploads this device's KeyPackages; the group already exists, so it does not wait for a Welcome
     }
     await alice.call('sync');
-    assert.equal((await alice.call('status', { channelId: big.channelId })).epoch, 4, 'ten devices are added in three Commits');
+    assert.equal((await alice.call('status', { channelId: big.channelId })).epoch, bigStart + 3, 'ten devices are added in three Commits');
     await alice.call('send', { channelId: big.channelId, text: 'hello crowd' });
     for (const pal of crowd) {
       await pal.call('sync'); // joins from the Welcome
@@ -286,7 +297,7 @@ async function main() {
     // A second account on the same PC gets its own device, and alice's group state is still there when she switches back.
     const epochOnPc = (await alice.call('status', { channelId })).epoch;
     await alice.call('init', { serverUrl: BASE, username: 'carol' });
-    const carolInvite = await alice.call('invite', { serverId });
+    const carolInvite = invite();
     await alice.call('register', { username: 'carol', inviteCode: carolInvite.code });
     log('a second account on the same PC registers with its own device');
     await alice.call('init', { serverUrl: BASE, username: 'alice' });

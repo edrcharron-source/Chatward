@@ -11,9 +11,16 @@
 	encode zstd gzip
 	header Strict-Transport-Security "max-age=31536000"
 	# Access log on stdout (journald), for fail2ban or CrowdSec later.
+	# The /ws and /rtc URLs carry a session token in the query string, so it is dropped before the line is written.
 	log {
 		output stdout
-		format json
+		format filter {
+			wrap json
+			request>uri query {
+				delete token
+				delete access_token
+			}
+		}
 	}
 
 	# LiveKit (voice and video) signalling connects under /rtc

@@ -98,6 +98,18 @@ export function openDb(): DB {
     size INTEGER NOT NULL,
     created_at INTEGER NOT NULL
   );
+  CREATE TABLE IF NOT EXISTS vault_items (
+    id TEXT PRIMARY KEY,
+    server_id TEXT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+    owner_id TEXT NOT NULL REFERENCES users(id),
+    channel_id TEXT NOT NULL,
+    key_version INTEGER NOT NULL,
+    ciphertext TEXT NOT NULL,
+    size INTEGER NOT NULL,
+    thumb_size INTEGER NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_vault_server ON vault_items(server_id, created_at DESC);
   CREATE TABLE IF NOT EXISTS sounds (
     id TEXT PRIMARY KEY,
     server_id TEXT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
@@ -164,6 +176,15 @@ export function openDb(): DB {
     last_read_id TEXT NOT NULL,
     PRIMARY KEY (user_id, channel_id)
   );
+  -- Sign-up codes made with the chatward command on the server. Only the hash is stored, and a code's row is deleted
+  -- as soon as it is used, revoked or expired. invites.log in the data folder keeps the history.
+  CREATE TABLE IF NOT EXISTS signup_codes (
+    code_hash TEXT PRIMARY KEY,
+    label TEXT NOT NULL,
+    created_by TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL
+  );
   -- Users removed from a voice call whose removal was still being enforced when its window ended. Rejoin is refused
   -- until a fresh join token for the room clears the row.
   CREATE TABLE IF NOT EXISTS voice_removals (
@@ -223,6 +244,11 @@ export function openDb(): DB {
   // Deleted accounts keep their row so old messages still point at a user. This marks them as gone.
   if (!userCols.has('deleted_at')) db.exec('ALTER TABLE users ADD COLUMN deleted_at INTEGER');
   // Bumped on every password change or reset. Tokens carry the version they were issued at, so older ones stop working.
+  // Set while an account is turned off (chatward remove). It cannot sign in until chatward restore clears it.
+  if (!userCols.has('disabled_at')) db.exec('ALTER TABLE users ADD COLUMN disabled_at INTEGER');
+  // Who made the sign-up code an account was created with (a login on the server), and that code's last 4 characters.
+  if (!userCols.has('invited_by')) db.exec('ALTER TABLE users ADD COLUMN invited_by TEXT');
+  if (!userCols.has('invite_label')) db.exec('ALTER TABLE users ADD COLUMN invite_label TEXT');
   if (!userCols.has('session_version')) db.exec('ALTER TABLE users ADD COLUMN session_version INTEGER NOT NULL DEFAULT 0');
   // Upload cleanup: `tracked` marks uploads from clients that report which message they were attached to.
   // Older uploads stay tracked=0 and are never swept, since the server cannot see inside message ciphertext.

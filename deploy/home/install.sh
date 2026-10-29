@@ -4,10 +4,10 @@
 # Safe to run again: it keeps an existing .env and data, and only fills in what is missing.
 #
 # 1. Checks Docker, the LAN address and that port 443 is free there.
-# 2. Creates .env (mode 600) with random LiveKit keys and a setup code, and asks for the Cloudflare token.
+# 2. Creates .env (mode 600) with random LiveKit keys, and asks for the Cloudflare token.
 # 3. Creates the data folders (database on the NVMe, uploads and backups on the RAID).
 # 4. Points the DNS record at this home (ddns-update.sh) and installs the 5-minute DDNS timer.
-# 5. Builds and starts the stack, waits for HTTPS, and prints the setup code.
+# 5. Builds and starts the stack, waits for HTTPS, links the chatward admin command, and prints a first sign-up code.
 # It does not touch the firewall or the router: it prints what to add (see docs/HOME_SERVER.md).
 set -Eeuo pipefail
 umask 077
@@ -41,10 +41,6 @@ chown "$OWNER" .env
 chmod 600 .env
 [ -n "$(read_env LIVEKIT_API_KEY)" ] || set_env LIVEKIT_API_KEY "API$(rand 12)"
 [ -n "$(read_env LIVEKIT_API_SECRET)" ] || set_env LIVEKIT_API_SECRET "$(rand 48)"
-if [ -z "$(read_env SETUP_CODE)" ]; then
-  C=$(head -c 1024 /dev/urandom | tr -dc 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789' | head -c 12)
-  set_env SETUP_CODE "${C:0:4}-${C:4:4}-${C:8:4}"
-fi
 if [ -z "$(read_env CF_API_TOKEN)" ]; then
   if [ -t 0 ]; then
     read -r -s -p "Cloudflare API token (Zone > DNS > Edit and Zone > Zone > Read on your zone): " TOKEN; echo
@@ -119,13 +115,21 @@ for _ in $(seq 1 45); do
   sleep 4
 done
 
+# ---- admin command ----
+ln -sf "$DEPLOY_DIR/chatward" /usr/local/bin/chatward
+echo "==> Linked the admin command: chatward help"
+# Only a server with no accounts yet gets a code here; the account made with it owns the server.
+FIRST_CODE=""
+if docker compose exec -T server node packages/server/dist/cli.js users 2>/dev/null | grep -q '^No accounts yet'; then
+  FIRST_CODE=$(SUDO_USER="$OWNER" ./chatward invite | sed -n 's/^New sign-up code: \([A-Z0-9-]*\).*/\1/p' || true)
+fi
+
 cat <<MSG
 
 Chatward is running.
   Address for the app:  https://$DOMAIN
   HTTPS from the LAN:   $([ "$https" = 1 ] && echo ok || echo "not yet; check: docker compose logs caddy")
-  First account setup code: $(read_env SETUP_CODE)
-Register the first (owner) account now, before you share the address.
+$([ -n "$FIRST_CODE" ] && printf '  Sign-up code for the first (owner) account: %s (single use, 48 hours)\nCreate the owner account now. Then make a code for each friend with: chatward invite' "$FIRST_CODE" || echo "Make a sign-up code for each new account with: chatward invite")
 
 Still to do by hand (docs/HOME_SERVER.md):
   - UniFi port forwards to $LAN_IP: 443/tcp, 7881/tcp, 50000-50100/udp. Nothing else.

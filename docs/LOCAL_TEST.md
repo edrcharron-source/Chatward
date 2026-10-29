@@ -12,13 +12,14 @@ You only need **Docker Desktop**. No Git, no Node, no coding tools.
 
 ## Using it
 - Open Chatward. The server address is already `http://localhost:3000`.
-- Click **Register**. The first account needs the **Setup code** instead of an invite. Open the `.env` file in the `chatward-server` folder, copy the value after `SETUP_CODE=`, and paste it there. (`start-server.bat` also shows it in its window on the first run.) Create a server, then make an invite code from the server menu for everyone else.
+- Make a sign-up code: open a terminal in the `chatward-server` folder (Shift + right-click → **Open in Terminal**) and run `chatward invite`.
+- Click **Create account**, enter that code, a name and a password. The first account owns the server. Run `chatward invite` again for each extra account.
 - Voice, screen share and the soundboard work from the voice channel. Use headphones to avoid echo.
 
 ## Testing with a second "person" on the same PC
 Run the app a second time with its own profile: press Win+R and paste
 `"%LOCALAPPDATA%\Programs\Chatward\Chatward.exe" --user-data-dir=%TEMP%\chatward2`
-then register with the invite code. (If it can't find the file, right-click the Chatward shortcut → Properties and copy its path.)
+then create an account with a fresh code from `chatward invite`. (If it can't find the file, right-click the Chatward shortcut → Properties and copy its path.)
 
 ## GIFs (optional)
 Get a free API key from klipy.com, copy `.env.example` to `.env` in the server folder, paste the key after `KLIPY_API_KEY=`, and run `start-server.bat` again.

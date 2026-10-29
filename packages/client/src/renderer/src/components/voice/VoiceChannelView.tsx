@@ -11,6 +11,43 @@ import { useMemberMenu } from './MemberMenu';
 import SoundboardPanel from '../soundboard/SoundboardPanel';
 
 const NOBODY: string[] = [];
+const GRID_GAP = 12;
+
+/** Columns that show `count` tiles at the largest 16:9 picture that fits a `width` x `height` area. */
+function gridColumns(count: number, width: number, height: number): number {
+  let best = 1;
+  let bestArea = -1;
+  for (let cols = 1; cols <= count; cols++) {
+    const rows = Math.ceil(count / cols);
+    const cellW = (width - (cols - 1) * GRID_GAP) / cols;
+    const cellH = (height - (rows - 1) * GRID_GAP) / rows;
+    // the picture keeps 16:9 inside its cell, so this is the area it actually covers
+    const w = Math.min(cellW, (cellH * 16) / 9);
+    const area = w * ((w * 9) / 16);
+    if (area > bestArea) {
+      best = cols;
+      bestArea = area;
+    }
+  }
+  return best;
+}
+
+/** The content box of an element, kept current as it resizes. Zero until the first measure. */
+function useContentSize<T extends HTMLElement>(): [RefObject<T>, { width: number; height: number }] {
+  const ref = useRef<T>(null);
+  const [size, setSize] = useState({ width: 0, height: 0 });
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const observer = new ResizeObserver(([entry]) => {
+      const { width, height } = entry.contentRect;
+      setSize((s) => (s.width === width && s.height === height ? s : { width, height }));
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+  return [ref, size];
+}
 
 /** What a tile can show: a LiveKit track, or a local MediaStream in demo mode. */
 type Feed = Track | MediaStream;
@@ -70,6 +107,7 @@ export default function VoiceChannelView({ channel, theaterOnly = false }: { cha
   const occupants = useSession((s) => s.voiceOccupants[channel.id]) ?? NOBODY;
   const members = useSession((s) => s.servers.find((b) => b.server.id === channel.serverId)?.members);
   const menu = useMemberMenu();
+  const [stageRef, stage] = useContentSize<HTMLDivElement>();
 
   const users = new Map((members ?? []).map((m) => [m.user.id, m.user]));
   const feeds = demo && inCall ? demoVoice.snapshot() : null;
@@ -159,14 +197,19 @@ export default function VoiceChannelView({ channel, theaterOnly = false }: { cha
       )}
 
       <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
-        <div style={{ flex: 1, minWidth: 0, overflow: 'auto', padding: 16 }}>
+        <div ref={stageRef} style={{ flex: 1, minWidth: 0, overflow: 'auto', padding: 16 }}>
           {entries.length === 0
             ? <div className="muted" style={{ margin: 'auto', textAlign: 'center', paddingTop: 40 }}>Nobody is in this voice channel yet.</div>
-            : theaterLayout || (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 12 }}>
-                {specs.map((s) => <Fragment key={s.key}>{renderTile(s)}</Fragment>)}
-              </div>
-            )}
+            : theaterLayout || (() => {
+              // the tiles share the whole stage: the grid picks the column count that gives the biggest pictures
+              const cols = gridColumns(specs.length, stage.width, stage.height);
+              const rows = Math.ceil(specs.length / cols);
+              return (
+                <div style={{ display: 'grid', gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`, gridTemplateRows: `repeat(${rows}, minmax(0, 1fr))`, gap: GRID_GAP, height: '100%' }}>
+                  {specs.map((s) => <Fragment key={s.key}>{renderTile(s, { cell: true })}</Fragment>)}
+                </div>
+              );
+            })()}
         </div>
         {inCall && (
           <aside style={{ flex: '0 0 260px', minHeight: 0, overflow: 'auto', borderLeft: '1px solid var(--border)' }}>
@@ -193,26 +236,31 @@ interface TileProps {
   theater?: boolean;
   /** grow to fill the space it is given instead of keeping 16:9 */
   fill?: boolean;
+  /** a grid cell: fill the cell, letterboxing the picture, and keep the speaking ring */
+  cell?: boolean;
   /** toggles theater mode for this share */
   onTheater?: () => void;
 }
 
-function Tile({ user, joined, local, micOff, speaking, screen, video, onMenu, theater = false, fill = false, onTheater }: TileProps) {
+function Tile({ user, joined, local, micOff, speaking, screen, video, onMenu, theater = false, fill = false, cell = false, onTheater }: TileProps) {
   const name = user?.displayName ?? user?.username ?? 'Unknown';
   const frame = useRef<HTMLDivElement>(null);
   const full = useFullscreen(frame);
   const expanded = full || fill;
+  const grows = fill || cell;
 
   return (
-    <div className="card" data-speaking={speaking || undefined} onContextMenu={onMenu} style={{ padding: 8, display: 'flex', flexDirection: 'column', gap: 8, ...(fill ? { flex: 1, minHeight: 0, minWidth: 0 } : {}) }}>
+    <div className="card" data-speaking={speaking || undefined} onContextMenu={onMenu} style={{ padding: 8, display: 'flex', flexDirection: 'column', gap: 8, ...(grows ? { flex: 1, minHeight: 0, minWidth: 0 } : {}) }}>
       <div
         ref={frame}
         onDoubleClick={screen ? () => void toggleFullscreen(frame.current) : undefined}
         style={{
-          position: 'relative', aspectRatio: expanded ? undefined : '16 / 9', borderRadius: full ? 0 : 8, overflow: 'hidden',
-          background: 'var(--bg-0)', display: 'grid', placeItems: 'center',
+          position: 'relative', aspectRatio: expanded || cell ? undefined : '16 / 9', borderRadius: full ? 0 : 8, overflow: 'hidden',
+          // the single cell is pinned to the frame's size; an auto-sized cell grows to the video's own height in a
+          // wide frame (theater mode), and the overflow clip then cuts off the top and bottom of the share
+          background: 'var(--bg-0)', display: 'grid', gridTemplate: 'minmax(0, 1fr) / minmax(0, 1fr)', placeItems: 'center',
           boxShadow: speaking && !expanded ? '0 0 0 2px var(--ok)' : 'none', transition: 'box-shadow .12s',
-          ...(full ? { width: '100%', height: '100%' } : fill ? { flex: 1, minHeight: 0 } : {}),
+          ...(full ? { width: '100%', height: '100%' } : grows ? { flex: 1, minHeight: 0 } : {}),
         }}
       >
         {video
@@ -229,7 +277,7 @@ function Tile({ user, joined, local, micOff, speaking, screen, video, onMenu, th
             aria-label={full ? 'Exit fullscreen' : 'Fullscreen'}
             title={full ? 'Exit fullscreen (Esc)' : 'Fullscreen'}
             onClick={() => void toggleFullscreen(frame.current)}
-            style={{ position: 'absolute', top: 6, right: 6, background: 'rgba(0,0,0,.55)', color: '#fff' }}
+            style={{ position: 'absolute', top: 6, right: 6, background: 'var(--overlay-bg)', color: 'var(--overlay-text)' }}
           >
             {full ? '⤡' : '⤢'}
           </button>
@@ -241,7 +289,7 @@ function Tile({ user, joined, local, micOff, speaking, screen, video, onMenu, th
             aria-pressed={theater}
             title={theater ? 'Exit theater mode (Esc)' : 'Theater mode'}
             onClick={onTheater}
-            style={{ position: 'absolute', top: 6, right: 40, background: 'rgba(0,0,0,.55)', color: '#fff' }}
+            style={{ position: 'absolute', top: 6, right: 40, background: 'var(--overlay-bg)', color: 'var(--overlay-text)' }}
           >
             ▭
           </button>

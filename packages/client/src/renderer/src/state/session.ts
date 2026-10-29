@@ -2,6 +2,11 @@ import { create } from 'zustand';
 import type { Channel, Member, Server, User } from '@chatward/shared';
 import { api } from '../api/http';
 
+/** The address a fresh install starts with. Test runs outside the app have no build info, so they get none. */
+function defaultServer(): string {
+  return typeof __CHATWARD_BUILD__ === 'undefined' ? '' : __CHATWARD_BUILD__.defaultServer;
+}
+
 export interface ServerBundle { server: Server; channels: Channel[]; members: Member[] }
 
 interface SessionState {
@@ -69,7 +74,7 @@ const saved = (() => { try { return JSON.parse(localStorage.getItem(LS) ?? '{}')
 let legacyToken: string | null = typeof saved.token === 'string' ? saved.token : null;
 
 export const useSession = create<SessionState>((set, get) => ({
-  serverUrl: saved.serverUrl ?? 'http://localhost:3000',
+  serverUrl: saved.serverUrl ?? (defaultServer() || 'http://localhost:3000'),
   token: null,
   user: saved.user ?? null,
   servers: [], activeServerId: null, activeChannelId: null,

@@ -16,7 +16,6 @@ export default function AccountTab() {
   const setUser = useSession((s) => s.setUser);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const [name, setName] = useState(user?.displayName ?? '');
   const [status, setStatus] = useState<Status | null>(null);
   const [busy, setBusy] = useState(false);
   const [deletePassword, setDeletePassword] = useState('');
@@ -51,26 +50,6 @@ export default function AccountTab() {
   useEffect(() => () => { if (source) URL.revokeObjectURL(source); }, [source]);
 
   if (!user) return null;
-
-  async function saveName(e: FormEvent) {
-    e.preventDefault();
-    const displayName = name.trim();
-    if (!displayName) {
-      setStatus({ ok: false, text: 'Display name cannot be empty.' });
-      return;
-    }
-    setBusy(true);
-    try {
-      const res = await api.patch<{ user: User }>('/api/me', { displayName });
-      setUser(res.user);
-      setName(res.user.displayName);
-      setStatus({ ok: true, text: 'Display name saved.' });
-    } catch (err) {
-      setStatus({ ok: false, text: errorText(err) });
-    } finally {
-      setBusy(false);
-    }
-  }
 
   async function deleteAccount(e: FormEvent) {
     e.preventDefault();
@@ -133,14 +112,10 @@ export default function AccountTab() {
 
   return (
     <>
-      <Section title="Display name">
-        <form className="setting-row" onSubmit={saveName}>
-          <label className="field grow">
-            <span>Shown to your friends. You log in with <strong>{user.username}</strong>.</span>
-            <input value={name} onChange={(e) => setName(e.target.value)} maxLength={64} />
-          </label>
-          <button type="submit" className="primary" disabled={busy || name.trim() === user.displayName}>Save</button>
-        </form>
+      <Section title="Name">
+        <p className="setting-row">
+          You are <strong>{user.username}</strong> to everyone here, and it is also what you log in with. Names can't be changed yet.
+        </p>
       </Section>
 
       <Section title="Profile picture">

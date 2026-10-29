@@ -1,35 +1,3 @@
-/* Server rail */
-.cw-servers {
-  width: 72px;
-  flex: none;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 0;
-  background: var(--bg-0);
-  overflow-y: auto;
-}
-
-.cw-server-icon {
-  width: 48px;
-  height: 48px;
-  padding: 0;
-  display: grid;
-  place-items: center;
-  border-radius: 16px;
-  background: var(--bg-2);
-  font-weight: 600;
-  transition: border-radius .15s, background .15s;
-  position: relative;
-}
-
-.cw-server-icon:hover { border-radius: 12px; background: var(--accent-tint); color: var(--accent); }
-.cw-server-icon.active { border-radius: 12px; background: var(--accent); color: var(--accent-text); }
-.cw-server-icon.add { color: var(--ok); font-size: 22px; }
-.cw-server-icon.join { font-size: 18px; }
-.cw-server-icon:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-
 /* Channel column */
 .cw-channels {
   width: 240px;
@@ -47,7 +15,7 @@
   gap: 6px;
   padding: 14px 14px 12px;
   border-bottom: 1px solid var(--border);
-  box-shadow: 0 1px 0 rgba(0,0,0,.04);
+  box-shadow: var(--shadow-header);
 }
 
 .cw-channels-head h2 {
@@ -104,7 +72,7 @@
   padding: 0 5px;
   border-radius: 9px;
   background: var(--danger);
-  color: #fff;
+  color: var(--danger-text);
   font-size: 11px;
   font-weight: 700;
   line-height: 18px;
@@ -193,7 +161,7 @@
 .cw-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .cw-hint { margin: 0; font-size: 13px; color: var(--text-muted); }
 .cw-invite-code {
-  font-family: ui-monospace, Consolas, monospace;
+  font-family: var(--font-digits);
   font-size: 18px;
   padding: 12px;
   border-radius: 8px;

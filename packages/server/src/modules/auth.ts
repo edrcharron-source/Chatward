@@ -6,8 +6,11 @@ import { hash, verify } from '@node-rs/argon2';
 import rateLimit from 'express-rate-limit';
 import { LIMITS, type DeviceKeys } from '@chatward/shared';
 import type { AuthedRequest, Ctx } from '../ctx.js';
-import { clearSetupCode, setupCode } from '../config.js';
 import { newId } from '../db.js';
+import { codeHash, newCode } from '../codes.js';
+import { PASSWORD_MAX, passwordProblem } from '../passwords.js';
+import { logInvite, takeSignupCode } from '../signupCodes.js';
+import { createMainServer, mainServerId } from '../singleServer.js';
 import { endAccountCall, endCallOnDevice, endCallOnOtherDevices, forgetUserRemovals } from './voice.js';
 import {
   ApiError,
@@ -18,47 +21,25 @@ import {
   ISSUER_OWNS_SHARED_SERVER,
   peerIds,
   pruneResetCodes,
-  redeemInvite,
   removeMember,
   route,
+  takeLegacyInvite,
   userIdOf,
 } from './servers.js';
 
 const USERNAME_RE = new RegExp(`^[A-Za-z0-9_.-]{${LIMITS.USERNAME_MIN},${LIMITS.USERNAME_MAX}}$`);
 const DEVICE_ID_RE = /^[A-Za-z0-9_-]{8,64}$/;
 const BASE64_RE = /^[A-Za-z0-9+/]+={0,2}$/;
-const PASSWORD_MAX = 1024;
 const RESET_CODE_MS = 24 * 60 * 60_000;
-// No look-alike characters (0/O, 1/I), so a code read aloud or copied by hand is unambiguous.
-const RESET_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-const DISPLAY_NAME_MAX = 32;
 const EXT_BY_MIME: Record<string, string> = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' };
 const PNG_SIG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
-function validPassword(v: unknown): string {
-  if (typeof v !== 'string' || v.length < LIMITS.PASSWORD_MIN || v.length > PASSWORD_MAX) {
-    bad(`password must be ${LIMITS.PASSWORD_MIN}-${PASSWORD_MAX} characters`);
-  }
+/** A new password for the account called `name`. See passwords.ts for the rules. */
+function validPassword(v: unknown, name: string): string {
+  if (typeof v !== 'string') bad(`password must be at least ${LIMITS.PASSWORD_MIN} characters`);
+  const problem = passwordProblem(v, name);
+  if (problem) bad(problem);
   return v;
-}
-
-/** 12 characters (60 bits) shown as XXXX-XXXX-XXXX. The 32-character alphabet divides 256 evenly, so no bias. */
-function newResetCode(): string {
-  const chars = [...crypto.randomBytes(12)].map((b) => RESET_CODE_ALPHABET[b % 32]).join('');
-  return `${chars.slice(0, 4)}-${chars.slice(4, 8)}-${chars.slice(8)}`;
-}
-
-/** Codes are compared by hash, so the database never holds a usable code. */
-function codeHash(code: string): string {
-  return crypto.createHash('sha256').update(code.toUpperCase().replace(/[^A-Z0-9]/g, '')).digest('hex');
-}
-
-/** Compares a typed setup code with the real one. Case, spaces and dashes don't matter, as with reset codes. */
-function setupCodeMatches(given: string): boolean {
-  const normalize = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]/g, '');
-  const expected = Buffer.from(normalize(setupCode()));
-  const actual = Buffer.from(normalize(given));
-  return actual.length === expected.length && crypto.timingSafeEqual(actual, expected);
 }
 
 /** Uncompressed P-256 point (65 bytes, leading 0x04), base64. */
@@ -186,6 +167,20 @@ function recordLoginFailure(username: string): void {
   loginGuards.set(key, guard);
 }
 
+/**
+ * Makes a one-time password reset code for `userId`, replacing any earlier one. `issuerId` must own the server, or
+ * the code stops working. Shown once; only its hash is kept, and it expires after 24 hours.
+ */
+export function issueResetCode(ctx: Ctx, userId: string, issuerId: string): { code: string; expiresAt: number } {
+  const code = newCode();
+  const expiresAt = Date.now() + RESET_CODE_MS;
+  ctx.db
+    .prepare(`INSERT INTO password_resets (user_id, issued_by, code_hash, expires_at) VALUES (?, ?, ?, ?)
+      ON CONFLICT(user_id) DO UPDATE SET issued_by = excluded.issued_by, code_hash = excluded.code_hash, expires_at = excluded.expires_at`)
+    .run(userId, issuerId, codeHash(code), expiresAt);
+  return { code, expiresAt };
+}
+
 function mustUser(ctx: Ctx, userId: string) {
   const user = ctx.getUser(userId);
   if (!user) throw new ApiError(401, 'unauthorized');
@@ -241,66 +236,75 @@ export function register(app: Express, ctx: Ctx): void {
   // Timing equaliser: unknown usernames still pay one argon2 verify.
   const dummyHash = hash(crypto.randomBytes(16).toString('hex'));
 
+  // Creates an account with a one-time sign-up code from `chatward invite`. The account gets one name, used to sign in
+  // and shown to everyone, and joins the server. The first account ever made owns it.
   app.post('/api/auth/register', route(async (req, res) => {
     const body = bodyOf(req);
-    const username = typeof body.username === 'string' ? body.username : '';
-    if (!USERNAME_RE.test(username)) {
-      bad(`username must be ${LIMITS.USERNAME_MIN}-${LIMITS.USERNAME_MAX} letters, digits, dots, dashes or underscores`);
+    // Older apps send the name as `username` and a separate display name, which is ignored now.
+    const raw = typeof body.name === 'string' ? body.name : body.username;
+    const name = typeof raw === 'string' ? raw.trim() : '';
+    if (!USERNAME_RE.test(name)) {
+      bad(`name must be ${LIMITS.USERNAME_MIN}-${LIMITS.USERNAME_MAX} letters, digits, dots, dashes or underscores`);
     }
-    const displayName = cleanText(body.displayName, DISPLAY_NAME_MAX, 'display name');
-    const password = validPassword(body.password);
+    const password = validPassword(body.password, name);
     const device = parseDevice(body.device);
-    const inviteCode = typeof body.inviteCode === 'string' ? body.inviteCode : null;
-    const givenSetupCode = typeof body.setupCode === 'string' ? body.setupCode : '';
+    const given = typeof body.inviteCode === 'string' ? body.inviteCode.trim() : '';
+    if (!given) throw new ApiError(403, 'a sign-up code is required');
     const id = newId();
     const passwordHash = await hash(password);
 
-    let firstAccount = false;
-    const joinedServerId = ctx.db.transaction((): string | null => {
-      // Deleted accounts stay as tombstones, so only live accounts count. Otherwise deleting the last one locks registration.
-      const { n } = ctx.db.prepare('SELECT COUNT(*) AS n FROM users WHERE deleted_at IS NULL').get() as { n: number };
-      const first = n === 0;
-      firstAccount = first;
-      // The first account owns the server, so anyone who reaches a fresh server first would take it. The setup code stops that.
-      if (first && !givenSetupCode.trim()) throw new ApiError(403, 'a setup code is required for the first account');
-      if (first && !setupCodeMatches(givenSetupCode)) throw new ApiError(403, 'setup code is incorrect');
-      if (!first && !inviteCode) throw new ApiError(403, 'an invite code is required');
+    const result = ctx.db.transaction(() => {
+      let serverId = mainServerId(ctx.db);
+      // The code is deleted here, in the same transaction as the account. A failed sign-up rolls the delete back.
+      const code = takeSignupCode(ctx.db, given);
+      if (!code && !(serverId && takeLegacyInvite(ctx, given, serverId))) {
+        throw new ApiError(403, 'sign-up code is invalid, used or expired');
+      }
       try {
         ctx.db
-          .prepare('INSERT INTO users (id, username, display_name, password_hash, created_at) VALUES (?, ?, ?, ?, ?)')
-          .run(id, username, displayName, passwordHash, Date.now());
+          .prepare(`INSERT INTO users (id, username, display_name, password_hash, created_at, invited_by, invite_label)
+            VALUES (?, ?, ?, ?, ?, ?, ?)`)
+          .run(id, name, name, passwordHash, Date.now(), code?.createdBy ?? null, code?.label ?? null);
       } catch (err) {
-        if ((err as { code?: string }).code === 'SQLITE_CONSTRAINT_UNIQUE') throw new ApiError(409, 'username is taken');
+        if ((err as { code?: string }).code === 'SQLITE_CONSTRAINT_UNIQUE') throw new ApiError(409, 'that name is taken');
         throw err;
       }
       upsertDevice(ctx, id, device);
-      if (first || !inviteCode) return null;
-      const joined = redeemInvite(ctx, inviteCode, id);
-      if (!joined) throw new ApiError(403, 'invite is invalid or expired');
-      return joined.serverId;
+      if (serverId) {
+        ctx.db.prepare("INSERT INTO members (server_id, user_id, role, joined_at) VALUES (?, ?, 'member', ?)")
+          .run(serverId, id, Date.now());
+      } else {
+        serverId = createMainServer(ctx.db, id);
+      }
+      return { serverId, code };
     })();
 
-    if (firstAccount) clearSetupCode();
-    if (joinedServerId) announceJoin(ctx, joinedServerId, id);
+    if (result.code) {
+      logInvite(ctx.config.dataDir, 'used', result.code.label, { by: result.code.createdBy, account: name, id, from: req.ip ?? 'unknown' });
+    }
+    announceJoin(ctx, result.serverId, id);
     res.json({ token: ctx.signToken(id, device.deviceId), user: mustUser(ctx, id) });
   }));
 
   app.post('/api/auth/login', route(async (req, res) => {
     const body = bodyOf(req);
-    const username = typeof body.username === 'string' ? body.username : '';
+    const raw = typeof body.name === 'string' ? body.name : body.username;
+    const username = typeof raw === 'string' ? raw.trim() : '';
     const password = typeof body.password === 'string' && body.password.length <= PASSWORD_MAX ? body.password : '';
     const device = parseDevice(body.device);
     if (username) assertLoginAllowed(username);
     const row = username
-      ? (ctx.db.prepare('SELECT id, password_hash FROM users WHERE username=? AND deleted_at IS NULL').get(username) as
-          { id: string; password_hash: string } | undefined)
+      ? (ctx.db.prepare('SELECT id, password_hash, disabled_at FROM users WHERE username=? AND deleted_at IS NULL').get(username) as
+          { id: string; password_hash: string; disabled_at: number | null } | undefined)
       : undefined;
     const ok = password !== '' && (await verify(row?.password_hash ?? (await dummyHash), password));
     if (!row || !ok) {
       if (username) recordLoginFailure(username);
-      throw new ApiError(401, 'invalid username or password');
+      throw new ApiError(401, 'invalid name or password');
     }
     loginGuards.delete(loginGuardKey(username));
+    // Only said after the right password, so it does not tell strangers which names exist.
+    if (row.disabled_at !== null) throw new ApiError(403, 'this account has been turned off, ask the server owner');
     const newDevice = isNewDevice(ctx, row.id, device.deviceId);
     if (ctx.db.transaction(() => upsertDevice(ctx, row.id, device))()) broadcastDevices(ctx, row.id);
     if (newDevice) announceNewDevice(ctx, row.id, device.deviceId);
@@ -316,7 +320,7 @@ export function register(app: Express, ctx: Ctx): void {
     if (!row) throw new ApiError(401, 'unauthorized');
     const current = typeof body.currentPassword === 'string' && body.currentPassword.length <= PASSWORD_MAX ? body.currentPassword : '';
     if (current === '' || !(await verify(row.password_hash, current))) throw new ApiError(403, 'current password is wrong');
-    const newPassword = validPassword(body.newPassword);
+    const newPassword = validPassword(body.newPassword, mustUser(ctx, uid).username);
     if (newPassword === current) bad('the new password must be different from the current one');
     const deviceId = callerDevice(ctx, req, body, uid);
     const passwordHash = await hash(newPassword);
@@ -343,25 +347,21 @@ export function register(app: Express, ctx: Ctx): void {
     if (actorRole !== 'owner') throw new ApiError(403, 'only the owner can issue reset codes');
     if (targetId === uid) bad('use Change password to change your own password');
     if (!ctx.roleIn(serverId, targetId)) throw new ApiError(404, 'member not found');
-    const code = newResetCode();
-    const expiresAt = Date.now() + RESET_CODE_MS;
-    ctx.db
-      .prepare(`INSERT INTO password_resets (user_id, issued_by, code_hash, expires_at) VALUES (?, ?, ?, ?)
-        ON CONFLICT(user_id) DO UPDATE SET issued_by = excluded.issued_by, code_hash = excluded.code_hash, expires_at = excluded.expires_at`)
-      .run(targetId, uid, codeHash(code), expiresAt);
-    res.json({ code, expiresAt });
+    res.json(issueResetCode(ctx, targetId, uid));
   }));
 
   // Redeems an owner-issued code and sets a new password. The code is single-use: the DELETE below
   // only succeeds once, and the whole change rolls back if the device cannot be registered.
   app.post('/api/auth/reset', route(async (req, res) => {
     const body = bodyOf(req);
-    const username = typeof body.username === 'string' ? body.username : '';
+    const raw = typeof body.name === 'string' ? body.name : body.username;
+    const username = typeof raw === 'string' ? raw.trim() : '';
     const code = typeof body.code === 'string' ? body.code : '';
-    const newPassword = validPassword(body.newPassword);
+    const newPassword = validPassword(body.newPassword, username);
     const device = parseDevice(body.device);
     const user = username
-      ? (ctx.db.prepare('SELECT id FROM users WHERE username=?').get(username) as { id: string } | undefined)
+      ? (ctx.db.prepare('SELECT id FROM users WHERE username=? AND deleted_at IS NULL AND disabled_at IS NULL').get(username) as
+          { id: string } | undefined)
       : undefined;
     const passwordHash = await hash(newPassword);
     const newDevice = user ? isNewDevice(ctx, user.id, device.deviceId) : false;
@@ -432,14 +432,12 @@ export function register(app: Express, ctx: Ctx): void {
     ctx.revokeSockets(uid, deviceId);
   }));
 
-  // Each field is optional; a missing field keeps its current value.
+  // Each field is optional; a missing field keeps its current value. The name is not one of them: it is what the
+  // app's stored keys are filed under, so it stays fixed. Older apps may still send displayName; it is ignored.
   app.patch('/api/me', ctx.requireAuth, route((req, res) => {
     const uid = userIdOf(req);
     const body = bodyOf(req);
     const cur = mustUser(ctx, uid);
-    const displayName = body.displayName === undefined
-      ? cur.displayName
-      : cleanText(body.displayName, DISPLAY_NAME_MAX, 'display name');
     const bio = body.bio === undefined ? cur.profile.bio : freeText(body.bio, LIMITS.BIO_MAX, 'bio', true);
     const pronouns = body.pronouns === undefined
       ? cur.profile.pronouns
@@ -447,21 +445,20 @@ export function register(app: Express, ctx: Ctx): void {
     const accentColor = body.accentColor === undefined ? cur.profile.accentColor : colorOrNull(body.accentColor, 'accent color');
     const bannerColor = body.bannerColor === undefined ? cur.profile.bannerColor : colorOrNull(body.bannerColor, 'banner color');
     ctx.db
-      .prepare('UPDATE users SET display_name=?, bio=?, pronouns=?, accent_color=?, banner_color=? WHERE id=?')
-      .run(displayName, bio, pronouns, accentColor, bannerColor, uid);
+      .prepare('UPDATE users SET bio=?, pronouns=?, accent_color=?, banner_color=? WHERE id=?')
+      .run(bio, pronouns, accentColor, bannerColor, uid);
     broadcastUser(ctx, uid);
     res.json({ user: mustUser(ctx, uid) });
   }));
 
-  // Deletes the caller's account. Owners must hand off or delete their servers first. The row stays as a
+  // Deletes the caller's account. The owner's account cannot be deleted. The row stays as a
   // tombstone so old messages still point at a user; everything personal is wiped.
   app.post('/api/me/delete', ctx.requireAuth, sensitiveLimit, route(async (req, res) => {
     const uid = userIdOf(req);
     await requirePassword(ctx, uid, bodyOf(req).password);
 
-    const owned = ctx.db.prepare('SELECT name FROM servers WHERE owner_id=?').all(uid) as { name: string }[];
-    if (owned.length > 0) {
-      throw new ApiError(409, `transfer or delete your servers first: ${owned.map((s) => s.name).join(', ')}`);
+    if (ctx.db.prepare('SELECT 1 FROM servers WHERE owner_id=?').get(uid)) {
+      throw new ApiError(409, 'the owner account cannot be deleted');
     }
 
     // Read before the wipe: the broadcasts below still need the servers the user is in.

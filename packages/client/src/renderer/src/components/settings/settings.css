@@ -57,12 +57,13 @@
 .swatch-dark { background: linear-gradient(135deg, #313338 50%, #1e1f22 50%); }
 .swatch-light { background: linear-gradient(135deg, #ffffff 50%, #e3e5e8 50%); }
 .swatch-system { background: linear-gradient(135deg, #ffffff 50%, #1e1f22 50%); }
+.skin-swatch { display: inline-block; width: 24px; height: 16px; margin-right: 8px; vertical-align: middle; border-radius: 4px; border: 1px solid var(--border); }
 
 .meter { height: 8px; background: var(--bg-0); border-radius: 4px; overflow: hidden; }
 .meter > div { height: 100%; width: 0; background: var(--ok); transition: width .05s linear; }
 .video-preview {
   width: 100%; max-width: 360px; aspect-ratio: 16 / 9; object-fit: cover;
-  background: #000; border-radius: var(--radius);
+  background: var(--media-bg); border-radius: var(--radius);
 }
 
 .crop-box { display: flex; flex-direction: column; gap: 12px; }
@@ -72,7 +73,7 @@
 
 .safety-number {
   padding: 10px 12px; background: var(--bg-0); border-radius: 8px;
-  font-family: ui-monospace, Consolas, monospace; letter-spacing: .04em; line-height: 1.7;
+  font-family: var(--font-digits); letter-spacing: .04em; line-height: 1.7;
   white-space: pre-wrap; word-break: break-word;
 }
 .ok-text { color: var(--ok); }
