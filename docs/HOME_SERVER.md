@@ -33,24 +33,49 @@ git clone https://github.com/edrcharron-source/Chatward.git /opt/chatward
 cd /opt/chatward && git checkout <release tag or branch>
 sudo ./deploy/home/install.sh
 ```
-It asks for the Cloudflare token, writes `deploy/home/.env` (mode 600) with random voice keys and a setup code, creates
-the folders, sets the DNS record, installs `chatward-ddns.timer`, builds and starts the stack, and prints the setup code.
-Register the owner account with that code right away, before sharing the address.
+It asks for the Cloudflare token, writes `deploy/home/.env` (mode 600) with random voice keys, creates the folders, sets
+the DNS record, installs `chatward-ddns.timer`, builds and starts the stack, links the `chatward` admin command into
+`/usr/local/bin`, and prints a first sign-up code. Create the owner account with that code right away: the first account
+made with a code owns the server.
 
 The install does **not** change the firewall. It prints `ufw status`. If ufw is active, add the three Chatward rules it
 shows; if it is inactive, leave it off. Note that Docker publishes ports through its own iptables rules, so the router
 forwards are what actually gate the internet.
 
 ## 3. Check it with the test console
-1. Install the Windows app, set the server to `https://chat.lebserver.com`, and register with the setup code.
-2. Create a server, open the **🧪 Test** button at the top right (or Ctrl+Shift+T).
+1. Install the Windows app, choose **Create account**, and enter the sign-up code (the server is filled in as
+   `https://chat.lebserver.com`; **Change** under the password edits it).
+2. Open the **🧪 Test** button at the top right (or Ctrl+Shift+T).
 3. **Run all**: connection, account, servers, encrypted text, encrypted upload, GIFs, link previews (it also checks a LAN
    address is refused), soundboard, voice state. Everything should say PASS.
-4. Make an invite code, register a second account on another PC (ideally one outside the house, e.g. on a phone hotspot),
+4. Run `chatward invite`, create a second account with that code on another PC (ideally one outside the house, e.g. on a phone hotspot),
    and on both: join voice, turn the camera on, share a screen, then paste a YouTube link into the watch party. The live
    socket frames list shows the other PC's actions as they arrive.
 
-## 4. Day to day
+## 4. Accounts
+Chatward is one server for the whole group. Everyone who signs up is in every channel. Accounts are managed from the
+box with the `chatward` command (`chatward help` lists everything). It talks to the running server through a socket
+file in the data folder, so it only works for someone who can already SSH in and use Docker.
+
+| Task | Command |
+|---|---|
+| Let someone in | `chatward invite` prints a one-time code (48 hours; `--hours N` to change). Send them the code. |
+| See unused codes / cancel one | `chatward invites` · `chatward revoke ABCD` (last 4 characters, or the whole code) |
+| Who made which account | `chatward invite-log` (also `/srv/chatward/data/invites.log`) and `chatward users` |
+| Forgotten password | `chatward reset NAME` prints a one-time reset code; they use **Forgot password?** |
+| Remove someone | `chatward remove NAME` signs them out everywhere and stops sign-in; `chatward restore NAME` undoes it |
+| Admins | `chatward admin NAME` / `chatward member NAME` |
+
+A code is deleted the moment an account is created with it, and when it expires or is revoked. `invites.log` is only
+ever added to: one line per code made, used, revoked or expired, with the login that made it, and for a used code the
+account name, id and address it signed up from. It shows only the last 4 characters of a code.
+
+Passwords need 8 or more characters, can be anything (spaces too), and may not be one of the ~13,000 most common
+passwords or the account's own name. Sign-in locks a name for 30 seconds after 10 wrong passwords, growing to 15
+minutes, and each address gets 40 attempts per 15 minutes. The app stays signed in for 30 days at a time and renews
+itself while open.
+
+## 5. Day to day
 | Task | Command (in `/opt/chatward`) |
 |---|---|
 | Update | `git fetch --tags && git checkout vX.Y.Z && ./deploy/home/update-home.sh` (backs up the data folder first) |
@@ -65,7 +90,7 @@ happens first.
 ## Files
 | Path | Holds |
 |---|---|
-| `/srv/chatward/data` (NVMe) | `chatward.db`, `jwt-secret`, avatars, banners, sounds |
+| `/srv/chatward/data` (NVMe) | `chatward.db`, `jwt-secret`, `invites.log`, `admin.sock`, avatars, banners, sounds |
 | `/mnt/storage/chatward/uploads` (RAID) | encrypted attachments |
 | `/mnt/storage/chatward/backups` (RAID) | `update-home.sh` backups, newest 5 |
 | `/srv/chatward/updates` | desktop installer feed (`latest.yml`, `Chatward-Setup.exe`) |

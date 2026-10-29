@@ -51,7 +51,7 @@ services:
       TRUST_PROXY: 1
       KLIPY_API_KEY: ${KLIPY_API_KEY:-}
       UPLOAD_QUOTA_MB: ${UPLOAD_QUOTA_MB:-5120}   # the RAID has room; 5 GB each by default. 0 = no limit
-      SETUP_CODE: ${SETUP_CODE:-}
+      PUBLIC_URL: https://${DOMAIN}   # shown in the message chatward invite prints
     volumes:
       - ${DATA_PATH:-/srv/chatward/data}:/data
       - ${UPLOADS_PATH:-/mnt/storage/chatward/uploads}:/uploads

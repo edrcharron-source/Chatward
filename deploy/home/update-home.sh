@@ -61,6 +61,8 @@ for _ in $(seq 1 30); do
   if docker compose exec -T server node -e "fetch('http://localhost:3000/api/health').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))" >/dev/null 2>&1; then
     echo "Chatward server $VERSION is up at https://$DOMAIN"
     [ -f "$ARCHIVE" ] && echo "Backup: $ARCHIVE"
+    # Installs from before the chatward command existed do not have it linked yet.
+    command -v chatward >/dev/null || echo "Link the admin command once with: sudo ln -s $(pwd)/chatward /usr/local/bin/chatward"
     trap - ERR
     exit 0
   fi
