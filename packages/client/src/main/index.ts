@@ -44,6 +44,21 @@ function writeStore(s: Record<string, string>) {
   renameSync(tmp, file);
 }
 
+// The test build keeps its own userData folder, so on first run it has none of the keys the installed Chatward made.
+// Copy those once, replacing any fresh keys this build made meanwhile (still encrypted; safeStorage decrypts them for the same Windows user), or every channel stays locked.
+const IMPORT_MARKER = 'imported.from.chatward';
+function importKeysFromInstalledApp() {
+  if (__CHATWARD_BUILD__.channel !== 'test') return;
+  const own = readStore();
+  if (own[IMPORT_MARKER]) return;
+  const installed = readStoreFile(join(app.getPath('appData'), 'Chatward', 'secure-store.json'));
+  if (installed) {
+    for (const [k, v] of Object.entries(installed)) if (k.startsWith('crypto.')) own[k] = v;
+  }
+  own[IMPORT_MARKER] = '1';
+  writeStore(own);
+}
+
 const readSecret = (key: string): string | null => {
   const v = readStore()[key];
   if (!v) return null;
@@ -158,6 +173,7 @@ app.whenReady().then(() => {
   sendReferrerForYouTube();
   setupUpdater();
 
+  importKeysFromInstalledApp();
   ipcMain.handle('secure:get', (_e, key: string) => readSecret(key));
   // Demo-only internet access. Both run here so the renderer's CSP and CORS never apply.
   ipcMain.handle('demo:linkpreview', (_e, url: string) => fetchLinkPreview(String(url)));
