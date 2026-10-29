@@ -1,5 +1,6 @@
 // Screenshots of the built client in demo mode, for the "looks exactly the same" check (docs/SKINS.md).
 // Run with: npm run visual:capture -w @chatward/client -- <out dir> [app dir]
+// (set CHATWARD_VISUAL_SKIN=<id> to capture a skin; unset captures the plain app, as CI does)
 // The app dir defaults to this package; pass another checkout's packages/client to capture its build instead.
 // On Linux run it under xvfb-run. Every input that could change between runs is pinned: the clock, Math.random,
 // time zone, locale, window size, link previews, and the demo bots' delayed chatter.
@@ -14,6 +15,8 @@ const electronPath = require('electron') as unknown as string;
 const outDir = path.resolve(process.argv[2] ?? 'out/visual/shots');
 const appDir = path.resolve(process.argv[3] ?? path.join(import.meta.dirname, '../..'));
 const THEMES = ['dark', 'light'] as const;
+// Set to a skin id (skins/index.ts) to capture that skin instead of the plain app, e.g. CHATWARD_VISUAL_SKIN=retro-ascii.
+const SKIN = process.env.CHATWARD_VISUAL_SKIN ?? '';
 const SIZE = { width: 1280, height: 800 };
 
 // Runs in the page before the app's own code. Timers of 5 s or more are held, which keeps the demo bots from
@@ -35,7 +38,7 @@ const pinPage = (theme: string) => `(() => {
   };
   const realSetTimeout = window.setTimeout.bind(window);
   window.setTimeout = (fn, ms, ...rest) => (Number(ms) >= 5000 ? 0 : realSetTimeout(fn, ms, ...rest));
-  localStorage.setItem('chatward.settings', JSON.stringify({ theme: ${JSON.stringify(theme)} }));
+  localStorage.setItem('chatward.settings', JSON.stringify({ theme: ${JSON.stringify(theme)}, skin: ${JSON.stringify(SKIN)} }));
 })();`;
 
 async function launch(theme: string): Promise<{ app: ElectronApplication; page: Page }> {
