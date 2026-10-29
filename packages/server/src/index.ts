@@ -90,6 +90,27 @@ app.disable('x-powered-by');
 // Behind Caddy (TRUST_PROXY=1 in deploy/docker-compose.yml), trust its X-Forwarded-For so the login rate limit sees real client IPs.
 if (config.trustProxy) app.set('trust proxy', 1);
 app.use(helmet());
+// The desktop app's page is served from app://chatward, so every API call is cross-origin and needs CORS. Only the app's
+// own origin is allowed (plus localhost pages during development); other web pages still cannot call the API.
+const APP_ORIGIN = 'app://chatward';
+const DEV_ORIGIN = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && (origin === APP_ORIGIN || (process.env.NODE_ENV !== 'production' && DEV_ORIGIN.test(origin)))) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+    // Lets the page read the bytes of avatars, uploads and sounds, which helmet otherwise marks same-origin.
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    if (req.method === 'OPTIONS') {
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE');
+      res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+      res.setHeader('Access-Control-Max-Age', '600');
+      res.status(204).end();
+      return;
+    }
+  }
+  next();
+});
 // Sign-in, register and reset share one per-IP limit. Refresh runs on its own, so a household that signs in and
 // renews together does not use up the sign-in allowance.
 app.use('/api/auth', rateLimit({ windowMs: 15 * 60_000, limit: 40, standardHeaders: true, skip: (req) => req.path === '/refresh' }));
