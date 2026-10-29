@@ -1,0 +1,61 @@
+// Compares two folders of screenshots from capture.ts and fails if any pixel of any screen changed.
+// Run with: npm run visual:compare -w @chatward/client -- <before dir> <after dir> [diff dir]
+// Changed pixels are drawn in red into the diff dir so they can be reviewed.
+import fs from 'node:fs';
+import path from 'node:path';
+import { PNG } from 'pngjs';
+
+// Chromium's rasteriser is not bit-exact between runs: anti-aliased edges (round avatars) wobble by 1 in a colour
+// channel. Anything a stylesheet change could cause moves a channel by more than this.
+const NOISE = 2;
+
+function diffPixels(a: PNG, b: PNG, out: PNG): number {
+  let changed = 0;
+  for (let i = 0; i < a.data.length; i += 4) {
+    const moved = [0, 1, 2, 3].some((c) => Math.abs(a.data[i + c] - b.data[i + c]) > NOISE);
+    if (moved) changed++;
+    const grey = (a.data[i] + a.data[i + 1] + a.data[i + 2]) / 12 + 170;
+    out.data.set(moved ? [255, 0, 0, 255] : [grey, grey, grey, 255], i);
+  }
+  return changed;
+}
+
+const [beforeDir, afterDir, diffDir = 'out/visual/diff'] = process.argv.slice(2).map((d) => path.resolve(d));
+if (!beforeDir || !afterDir) {
+  console.error('usage: compare <before dir> <after dir> [diff dir]');
+  process.exit(2);
+}
+
+const names = (dir: string) => fs.readdirSync(dir).filter((f) => f.endsWith('.png')).sort();
+const before = names(beforeDir);
+const after = names(afterDir);
+const problems: string[] = [];
+
+for (const name of before.filter((n) => !after.includes(n))) problems.push(`${name}: missing from ${afterDir}`);
+for (const name of after.filter((n) => !before.includes(n))) problems.push(`${name}: missing from ${beforeDir}`);
+
+fs.rmSync(diffDir, { recursive: true, force: true });
+for (const name of before.filter((n) => after.includes(n))) {
+  const a = PNG.sync.read(fs.readFileSync(path.join(beforeDir, name)));
+  const b = PNG.sync.read(fs.readFileSync(path.join(afterDir, name)));
+  if (a.width !== b.width || a.height !== b.height) {
+    problems.push(`${name}: size changed from ${a.width}x${a.height} to ${b.width}x${b.height}`);
+    continue;
+  }
+  const diff = new PNG({ width: a.width, height: a.height });
+  const changed = diffPixels(a, b, diff);
+  if (changed > 0) {
+    fs.mkdirSync(diffDir, { recursive: true });
+    fs.writeFileSync(path.join(diffDir, name), PNG.sync.write(diff));
+    problems.push(`${name}: ${changed} pixels differ`);
+  } else {
+    console.log(`  same  ${name}`);
+  }
+}
+
+if (problems.length) {
+  for (const p of problems) console.error(`  DIFF  ${p}`);
+  console.error(`${problems.length} screen(s) changed. Diff images: ${diffDir}`);
+  process.exit(1);
+}
+console.log(`All ${before.length} screens match.`);
