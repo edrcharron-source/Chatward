@@ -62,3 +62,14 @@ export default function MessageText({ text }: { text: string }) {
   if (last < text.length) out.push(...lines(text.slice(last), `t${i}`));
   return <>{out}</>;
 }
+
+// Emoji pieces: pictographs, skin tones, flags, keycaps, the joiner and variation selectors that build combined emoji.
+const EMOJI_PART = /\p{Extended_Pictographic}|\p{Emoji_Modifier}|\p{Regional_Indicator}|[‍︎️⃣]|[\u{e0020}-\u{e007f}]/gu;
+const MAX_BIG_EMOJI = 30;
+
+/** True for a message that is nothing but emoji (and spaces or line breaks), which is shown larger. */
+export function isEmojiOnly(text: string): boolean {
+  if (!/\p{Extended_Pictographic}|\p{Regional_Indicator}/u.test(text)) return false;
+  if (text.replace(EMOJI_PART, '').trim() !== '') return false;
+  return [...text.matchAll(/\p{Extended_Pictographic}/gu)].length <= MAX_BIG_EMOJI;
+}

@@ -3,7 +3,7 @@ import type { Message, MessagePayload, User } from '@chatward/shared';
 import { AttachmentView, GifView, LinkPreviewCard } from '../media';
 import { deleteMessage, editMessage } from '../../state/chat';
 import Avatar from './Avatar';
-import MessageText from './MessageText';
+import MessageText, { isEmojiOnly } from './MessageText';
 import ProfileTrigger from '../profile/ProfileTrigger';
 
 interface Props {
@@ -69,7 +69,7 @@ export default function MessageItem({ message, payload, author, grouped, canEdit
     body = (
       <>
         {payload.text && (
-          <div className="cv-text">
+          <div className={`cv-text${isEmojiOnly(payload.text) ? ' cv-text-emoji' : ''}`}>
             <MessageText text={payload.text} />
             {message.editedAt != null && <span className="cv-edited"> (edited)</span>}
           </div>

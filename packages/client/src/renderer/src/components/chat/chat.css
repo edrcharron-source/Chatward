@@ -21,13 +21,23 @@
 }
 .cv-msg:hover { background: var(--hover-tint); }
 .cv-msg.cv-grouped { margin-top: 0; }
+/* Back-to-back messages from one person sit as close as lines of one message: no padding between them. */
+.cv-msg.cv-grouped { padding-top: 0; }
+.cv-msg:has(+ .cv-grouped) { padding-bottom: 0; }
 .cv-msg-main { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .cv-msg-head { display: flex; align-items: baseline; gap: 8px; }
 .cv-name { color: var(--text-strong); font-weight: 600; }
 .cv-time { color: var(--text-muted); font-size: 12px; }
-.cv-time-gutter { width: 36px; flex: none; color: transparent; font-size: 11px; text-align: right; padding-top: 4px; }
+/* The hover time beside a follow-up message. It takes no height (and stays on one line), so a one-line message is
+   only as tall as its text and back-to-back messages read like lines of one message. */
+.cv-time-gutter {
+  width: 36px; height: 0; flex: none; display: flex; justify-content: flex-end; padding-top: 3px;
+  color: transparent; font-size: 11px; white-space: nowrap;
+}
 .cv-msg:hover .cv-time-gutter { color: var(--text-muted); }
 .cv-text { white-space: pre-wrap; }
+/* A message of only emoji is shown larger. */
+.cv-text-emoji { font-size: 2em; line-height: 1.25; }
 .cv-edited { color: var(--text-muted); font-size: 11px; }
 .cv-text a { color: var(--accent); text-decoration: none; }
 .cv-text a:hover { text-decoration: underline; }
@@ -39,6 +49,8 @@
 .cv-code-block code { font-family: var(--font-code); font-size: 13px; }
 
 .cv-avatar { flex: none; }
+/* The avatar's profile button keeps the avatar's own height next to a tall message (a GIF, an image). */
+.cv-msg > .profile-trigger { align-self: flex-start; }
 .cv-avatar-fallback { display: grid; place-items: center; color: var(--text-strong); font-weight: 600; }
 
 .cv-actions {
