@@ -1,6 +1,7 @@
 import { useCallback, useState, type ReactElement } from 'react';
 import { isDemo } from '../../demo';
 import { useVoice } from '../../state/voice';
+import PixelIcon from '../icons/PixelIcon';
 import ScreenPicker from './ScreenPicker';
 import { setScreenShareOptions, type ScreenShareOptions } from './media';
 
@@ -54,7 +55,7 @@ export default function ShareControls(): ReactElement {
           className={cameraOn ? 'primary' : undefined}
           onClick={() => void run('camera', () => setCamera(!cameraOn))}
         >
-          {cameraOn ? 'Camera on' : 'Camera off'}
+          <PixelIcon name={cameraOn ? 'camera' : 'cameraoff'} size={18} />
         </button>
         <button
           type="button"
@@ -65,7 +66,7 @@ export default function ShareControls(): ReactElement {
           className={screenOn ? 'danger' : undefined}
           onClick={() => (screenOn ? void run('screen', () => setScreen(false)) : setPickerOpen(true))}
         >
-          {screenOn ? 'Stop sharing' : 'Share'}
+          <PixelIcon name={screenOn ? 'shareoff' : 'share'} size={18} />
         </button>
       </div>
       {error && <p role="alert" className="muted" style={{ margin: 0, color: 'var(--danger)', fontSize: 12 }}>{error}</p>}

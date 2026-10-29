@@ -188,25 +188,23 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTes
           : <div className="cw-tab-pane">{slot(tab)}</div>}
       </main>
 
-      {bundle && !(theaterKey !== null && membersHidden) && <MemberList serverId={bundle.server.id} members={members} />}
-
-      <footer className="cw-tabs-footer" data-region="footer">
-        <div className="cw-user-panel">
-          {user && (
-            <span className="cw-avatar-wrap">
-              <Avatar user={user} size={32} />
-              <span className={`cw-dot ${myStatus}`} aria-hidden="true" />
-            </span>
-          )}
-          <div className="cw-user-text">
-            <strong>{user?.displayName ?? ''}</strong>
+      {/* the right column: members on top, and your status and call controls in the bottom corner */}
+      <div className="cw-tabs-side" data-region="side">
+        {bundle && !(theaterKey !== null && membersHidden) && <MemberList serverId={bundle.server.id} members={members} />}
+        <section className="cw-me" aria-label="You">
+          <div className="cw-me-head">
+            {user && (
+              <span className="cw-avatar-wrap">
+                <Avatar user={user} size={32} />
+                <span className={`cw-dot ${myStatus}`} aria-hidden="true" />
+              </span>
+            )}
+            <strong className="cw-me-name">{user?.displayName ?? ''}</strong>
             <StatusPicker />
           </div>
-        </div>
-        <div className="cw-tabs-call">
-          <VoiceDock />
-        </div>
-      </footer>
+          <VoiceDock stacked />
+        </section>
+      </div>
 
       {popped.map((t) => (
         <PopoutWindow key={t} id={t} title={`Chatward · ${label(t)}`} onClose={() => bringBack(t)}>

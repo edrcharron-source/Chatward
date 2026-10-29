@@ -95,7 +95,7 @@
 :root[data-skin='lebserver'] .cv-header,
 :root[data-skin='lebserver'] .cw-channels-head,
 :root[data-skin='lebserver'] .cw-tabs-bar { border-bottom-style: dashed; }
-:root[data-skin='lebserver'] .cw-tabs-footer { border-top-style: dashed; }
+:root[data-skin='lebserver'] .cw-me { border-top-style: dashed; }
 
 /* Accents: names in peach, times dim, the open tab in blue, unread counts and roles in yellow, live dots in mint. */
 :root[data-skin='lebserver'] .cv-name,

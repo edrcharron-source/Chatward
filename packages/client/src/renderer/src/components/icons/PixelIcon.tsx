@@ -36,6 +36,10 @@ const PATHS = {
   stop: 'M2 2h8v1h-8zM2 3h8v1h-8zM2 4h8v1h-8zM2 5h8v1h-8zM2 6h8v1h-8zM2 7h8v1h-8zM2 8h8v1h-8zM2 9h8v1h-8z',
   upload: 'M5 0h2v1h-2zM4 1h4v1h-4zM3 2h6v1h-6zM2 3h2v1h-2zM5 3h2v1h-2zM8 3h2v1h-2zM5 4h2v1h-2zM5 5h2v1h-2zM5 6h2v1h-2zM0 8h1v1h-1zM11 8h1v1h-1zM0 9h1v1h-1zM11 9h1v1h-1zM0 10h12v1h-12z',
   close: 'M1 1h2v1h-2zM9 1h2v1h-2zM2 2h2v1h-2zM8 2h2v1h-2zM3 3h2v1h-2zM7 3h2v1h-2zM4 4h4v1h-4zM5 5h2v1h-2zM4 6h4v1h-4zM3 7h2v1h-2zM7 7h2v1h-2zM2 8h2v1h-2zM8 8h2v1h-2zM1 9h2v1h-2zM9 9h2v1h-2z',
+  deafenoff: 'M0 0h1v1h-1zM1 1h1v1h-1zM3 1h6v1h-6zM2 2h1v1h-1zM8 2h1v1h-1zM1 3h1v1h-1zM3 3h1v1h-1zM9 3h1v1h-1zM1 4h1v1h-1zM4 4h1v1h-1zM9 4h1v1h-1zM0 5h3v1h-3zM5 5h1v1h-1zM8 5h3v1h-3zM0 6h3v1h-3zM6 6h1v1h-1zM8 6h3v1h-3zM0 7h3v1h-3zM7 7h4v1h-4zM0 8h3v1h-3zM8 8h1v1h-1zM1 9h2v1h-2zM9 9h1v1h-1zM10 10h1v1h-1zM11 11h1v1h-1z',
+  cameraoff: 'M0 0h1v1h-1zM1 1h1v1h-1zM0 2h8v1h-8zM0 3h1v1h-1zM3 3h1v1h-1zM7 3h1v1h-1zM10 3h2v1h-2zM0 4h1v1h-1zM2 4h3v1h-3zM7 4h1v1h-1zM9 4h3v1h-3zM0 5h1v1h-1zM2 5h1v1h-1zM4 5h2v1h-2zM7 5h5v1h-5zM0 6h1v1h-1zM2 6h1v1h-1zM5 6h7v1h-7zM0 7h1v1h-1zM2 7h4v1h-4zM7 7h5v1h-5zM0 8h1v1h-1zM7 8h1v1h-1zM9 8h1v1h-1zM11 8h1v1h-1zM0 9h8v1h-8zM10 9h1v1h-1zM10 10h1v1h-1zM11 11h1v1h-1z',
+  shareoff: 'M0 0h12v1h-12zM0 1h1v1h-1zM11 1h1v1h-1zM0 2h1v1h-1zM3 2h1v1h-1zM8 2h1v1h-1zM11 2h1v1h-1zM0 3h1v1h-1zM4 3h1v1h-1zM7 3h1v1h-1zM11 3h1v1h-1zM0 4h1v1h-1zM5 4h2v1h-2zM11 4h1v1h-1zM0 5h1v1h-1zM5 5h2v1h-2zM11 5h1v1h-1zM0 6h1v1h-1zM4 6h1v1h-1zM7 6h1v1h-1zM11 6h1v1h-1zM0 7h1v1h-1zM3 7h1v1h-1zM8 7h1v1h-1zM11 7h1v1h-1zM0 8h12v1h-12zM5 9h2v1h-2zM3 10h6v1h-6z',
+  loopback: 'M3 1h6v1h-6zM2 2h1v1h-1zM9 2h1v1h-1zM1 3h1v1h-1zM10 3h1v1h-1zM1 4h1v1h-1zM10 4h1v1h-1zM1 5h1v1h-1zM6 5h1v1h-1zM10 5h1v1h-1zM1 6h1v1h-1zM5 6h2v1h-2zM10 6h1v1h-1zM1 7h1v1h-1zM4 7h6v1h-6zM1 8h1v1h-1zM5 8h2v1h-2zM2 9h1v1h-1zM6 9h1v1h-1zM3 10h2v1h-2z',
   dot: 'M4 3h4v1h-4zM3 4h6v1h-6zM3 5h6v1h-6zM3 6h6v1h-6zM3 7h6v1h-6zM4 8h4v1h-4z',
 } as const;
 

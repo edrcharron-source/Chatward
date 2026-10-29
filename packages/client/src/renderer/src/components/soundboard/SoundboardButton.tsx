@@ -1,4 +1,5 @@
 import { useRef, useState, type CSSProperties } from 'react';
+import PixelIcon from '../icons/PixelIcon';
 import { usePopover } from '../media/Popover';
 import SoundboardPanel from './SoundboardPanel';
 
@@ -26,7 +27,9 @@ export default function SoundboardButton({ serverId, channelId }: { serverId: st
 
   return (
     <div ref={ref} className="media-anchor">
-      <button ref={button} aria-haspopup="dialog" aria-expanded={open} onClick={toggle}>Soundboard</button>
+      <button ref={button} aria-label="Soundboard" title="Soundboard" aria-haspopup="dialog" aria-expanded={open} onClick={toggle}>
+        <PixelIcon name="sounds" size={18} />
+      </button>
       {open && (
         <div
           className="media-popover"

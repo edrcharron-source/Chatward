@@ -1,16 +1,15 @@
-/* The tabs layout (TabsLayout.tsx): a tab bar on top, the open tab (or text and voice side by side) in the middle, the
-   member list on the right and your status plus call controls along the bottom. Colours and fonts come from theme.css
+/* The tabs layout (TabsLayout.tsx): a tab bar on top, the open tab (or text and voice side by side) filling the rest,
+   and on the right the member list with your status and call controls in the bottom corner. Colours and fonts come from theme.css
    tokens, so themes and skins restyle it like the rest of the app. */
 .cw-tabs-shell {
   flex: 1; min-height: 0; display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  grid-template-rows: auto minmax(0, 1fr) auto;
-  grid-template-areas: 'tabs tabs' 'main members' 'footer footer';
+  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-areas: 'tabs tabs' 'main side';
 }
 .cw-tabs-shell > [data-region='tabs'] { grid-area: tabs; }
 .cw-tabs-shell > [data-region='main'] { grid-area: main; }
-.cw-tabs-shell > [data-region='members'] { grid-area: members; }
-.cw-tabs-shell > [data-region='footer'] { grid-area: footer; }
+.cw-tabs-shell > [data-region='side'] { grid-area: side; }
 
 .cw-tabs-bar {
   display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
@@ -58,12 +57,20 @@
 .cw-split-divider { cursor: col-resize; background: var(--border); touch-action: none; }
 .cw-split-divider:hover, .cw-split-divider:focus-visible { background: var(--accent); outline: none; }
 
-.cw-tabs-footer {
-  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
-  background: var(--bg-1); border-top: 1px solid var(--border);
-}
-.cw-tabs-footer .cw-user-panel { flex: 0 1 260px; background: transparent; border-top: 0; }
-.cw-tabs-call { flex: 1 1 360px; min-width: 0; display: flex; justify-content: flex-end; }
+/* The right column. The member list scrolls; your card stays at the bottom. */
+.cw-tabs-side { width: 260px; min-height: 0; display: flex; flex-direction: column; background: var(--bg-1); border-left: 1px solid var(--border); }
+.cw-tabs-side .cw-members { width: auto; flex: 1; min-height: 0; }
+.cw-me { flex: none; display: flex; flex-direction: column; gap: 10px; padding: 10px; border-top: 1px solid var(--border); background: var(--bg-1); }
+.cw-me-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+.cw-me-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-strong); }
+.cw-me-head .cw-status-select { margin-top: 0; }
+/* The call controls in pairs, each button taking half the row; Leave takes a whole row. */
+.cw-call-stack { display: flex; flex-direction: column; gap: 6px; }
+.cw-call-stack button { padding: 7px 6px; }
+.cw-call-pair, .cw-call-stack [role='group'] > div:first-child { display: flex; gap: 6px; }
+.cw-call-pair > *, .cw-call-stack [role='group'] > div:first-child > button { flex: 1 1 0; min-width: 0; }
+.cw-call-pair .media-anchor > button { width: 100%; }
+.cw-call-pair:empty { display: none; }
 
 /* A popped-out tab's window: the tab fills it. */
 .cw-popout { height: 100vh; display: flex; flex-direction: column; background: var(--bg-2); color: var(--text); }
