@@ -30,7 +30,7 @@ read_env() { grep -E "^$1=" .env 2>/dev/null | tail -n1 | cut -d= -f2- || true; 
 set_env() {
   if grep -qE "^$1=" .env; then sed -i "s|^$1=.*|$1=$2|" .env; else echo "$1=$2" >> .env; fi
 }
-rand() { head -c 64 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c "$1"; }
+rand() { head -c 256 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c "$1"; }
 
 # ---- .env ----
 if [ ! -f .env ]; then
@@ -42,7 +42,7 @@ chmod 600 .env
 [ -n "$(read_env LIVEKIT_API_KEY)" ] || set_env LIVEKIT_API_KEY "API$(rand 12)"
 [ -n "$(read_env LIVEKIT_API_SECRET)" ] || set_env LIVEKIT_API_SECRET "$(rand 48)"
 if [ -z "$(read_env SETUP_CODE)" ]; then
-  C=$(head -c 64 /dev/urandom | tr -dc 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789' | head -c 12)
+  C=$(head -c 1024 /dev/urandom | tr -dc 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789' | head -c 12)
   set_env SETUP_CODE "${C:0:4}-${C:4:4}-${C:8:4}"
 fi
 if [ -z "$(read_env CF_API_TOKEN)" ]; then
