@@ -20,7 +20,7 @@ jobs:
         run: xvfb-run -a npm run skins:parity -w @chatward/client -- "$RUNNER_TEMP/skins"
       - name: A skin that drops a feature is caught
         run: xvfb-run -a npm run skins:parity -w @chatward/client -- "$RUNNER_TEMP/skins-broken" --broken
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: skin-parity
