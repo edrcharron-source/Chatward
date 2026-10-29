@@ -1,16 +1,11 @@
-/* The main window's regions. Each carries a stable data-region name (servers, channels, main, members) that layout
-   skins place with grid-template-areas; components never need to change for a panel to move.
-   With no skin this grid reproduces the original row: server rail, channel list, main area, member list. */
+/* The main window's regions. Each carries a stable data-region name (servers, channels, main, members). The grid
+   itself (columns, rows, areas) comes from the layout manifest as inline style on .cw-shell, so a layout skin changes
+   it in layout/manifest.ts, not here. Components never need to change for a panel to move. */
 .cw-app { display: flex; flex-direction: column; height: 100%; }
 .cw-app-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .cw-shell-loading { display: grid; place-items: center; align-content: center; gap: 12px; height: 100%; }
 
-.cw-shell {
-  flex: 1; min-height: 0; display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr) auto;
-  grid-template-rows: minmax(0, 1fr);
-  grid-template-areas: 'servers channels main members';
-}
+.cw-shell { flex: 1; min-height: 0; display: grid; }
 .cw-shell > [data-region='servers'] { grid-area: servers; }
 .cw-shell > [data-region='channels'] { grid-area: channels; }
 .cw-shell > [data-region='main'] { grid-area: main; }

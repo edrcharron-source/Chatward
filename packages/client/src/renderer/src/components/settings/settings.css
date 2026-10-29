@@ -18,6 +18,7 @@
 .settings-nav button:hover { background: var(--bg-hover); color: var(--text); }
 .settings-nav button.active { background: var(--bg-hover); color: var(--text-strong); }
 .settings-nav .spacer { flex: 1; }
+.settings-nav .settings-group-label { padding: 8px 10px 2px; font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
 .settings-body { flex: 1; min-width: 0; padding: 28px 32px; overflow-y: auto; }
 .settings-body h2 { margin: 0 0 18px; font-size: 20px; color: var(--text-strong); }
 .settings-close { position: absolute; top: 12px; right: 12px; }

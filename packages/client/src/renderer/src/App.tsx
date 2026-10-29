@@ -25,7 +25,8 @@ import UpdateBanner from './components/updates/UpdateBanner';
 import DeviceAlertBanner from './components/devices/DeviceAlertBanner';
 import { showDeviceAlert } from './state/deviceAlerts';
 import UpdateRequired from './components/updates/UpdateRequired';
-import { MAIN_BAR, type MainBarId } from './layout/manifest';
+import type { MainBarId } from './layout/manifest';
+import { gridStyle, useLayout } from './layout/useLayout';
 import PoweredBy from './components/brand/PoweredBy';
 import { checkServerVersion, useUpdates } from './state/updates';
 
@@ -88,6 +89,7 @@ function Shell() {
   // the text chat shown below the share in theater mode; follows the last text channel opened
   const [chatChannelId, setChatChannelId] = useState<string | null>(null);
   const [sidebarsCollapsed, setSidebarsCollapsed] = useState(false);
+  const layout = useLayout();
   const openTextId = channel?.kind === 'text' ? channel.id : undefined;
   useEffect(() => {
     if (openTextId) setChatChannelId(openTextId);
@@ -343,7 +345,7 @@ function Shell() {
       </div>
     );
   }
-  // Main-bar actions by id. The order comes from the layout manifest; each button's condition lives here.
+  // Main-bar actions by id. The order comes from the active layout; each button's condition lives here.
   const mainBarActions: Record<MainBarId, ReactNode> = {
     sidebars: theaterKey !== null && (
       <button className="icon" onClick={() => setSidebarsCollapsed((c) => !c)} aria-pressed={sidebarsCollapsed}>
@@ -358,14 +360,14 @@ function Shell() {
     ),
   };
   return (
-    <div className="cw-shell" data-region="shell">
+    <div className="cw-shell" data-region="shell" style={gridStyle(layout)}>
       <ServerSidebar onReload={loadServers} />
       {!hideSidebars && <ChannelList onOpenSettings={() => setSettingsOpen(true)} onReload={loadServers} />}
       <main className="cw-main" data-region="main">
         {testOpen ? <TestConsole onClose={() => setTestOpen(false)} /> : <>
           {channel && (
             <div className="cw-main-bar" data-region="main-bar">
-              {MAIN_BAR.map((id) => <Fragment key={id}>{mainBarActions[id]}</Fragment>)}
+              {layout.mainBar.map((id) => <Fragment key={id}>{mainBarActions[id]}</Fragment>)}
             </div>
           )}
         {/* Voice channels have no message key of their own, so their watch party rides the server's first text channel. */}
