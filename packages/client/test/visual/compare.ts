@@ -9,15 +9,24 @@ import { PNG } from 'pngjs';
 // in a colour channel. A change too small to clear this is too small to see.
 const NOISE = 4;
 
-function diffPixels(a: PNG, b: PNG, out: PNG): number {
-  let changed = 0;
+interface Diff { changed: number; maxDelta: number; box: [number, number, number, number] }
+
+function diffPixels(a: PNG, b: PNG, out: PNG): Diff {
+  const d: Diff = { changed: 0, maxDelta: 0, box: [a.width, a.height, -1, -1] };
   for (let i = 0; i < a.data.length; i += 4) {
-    const moved = [0, 1, 2, 3].some((c) => Math.abs(a.data[i + c] - b.data[i + c]) > NOISE);
-    if (moved) changed++;
+    const delta = Math.max(...[0, 1, 2, 3].map((c) => Math.abs(a.data[i + c] - b.data[i + c])));
+    const moved = delta > NOISE;
+    if (moved) {
+      const x = (i / 4) % a.width;
+      const y = Math.floor(i / 4 / a.width);
+      d.changed++;
+      d.maxDelta = Math.max(d.maxDelta, delta);
+      d.box = [Math.min(d.box[0], x), Math.min(d.box[1], y), Math.max(d.box[2], x), Math.max(d.box[3], y)];
+    }
     const grey = (a.data[i] + a.data[i + 1] + a.data[i + 2]) / 12 + 170;
     out.data.set(moved ? [255, 0, 0, 255] : [grey, grey, grey, 255], i);
   }
-  return changed;
+  return d;
 }
 
 const [beforeDir, afterDir, diffDir = 'out/visual/diff'] = process.argv.slice(2).map((d) => path.resolve(d));
@@ -43,11 +52,11 @@ for (const name of before.filter((n) => after.includes(n))) {
     continue;
   }
   const diff = new PNG({ width: a.width, height: a.height });
-  const changed = diffPixels(a, b, diff);
+  const { changed, maxDelta, box } = diffPixels(a, b, diff);
   if (changed > 0) {
     fs.mkdirSync(diffDir, { recursive: true });
     fs.writeFileSync(path.join(diffDir, name), PNG.sync.write(diff));
-    problems.push(`${name}: ${changed} pixels differ`);
+    problems.push(`${name}: ${changed} pixels differ, by up to ${maxDelta}, within x ${box[0]}-${box[2]}, y ${box[1]}-${box[3]}`);
   } else {
     console.log(`  same  ${name}`);
   }
