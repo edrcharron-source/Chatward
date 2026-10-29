@@ -61,6 +61,8 @@ services:
       - ${UPDATES_PATH:-/srv/chatward/updates}:/updates:ro
     extra_hosts: ["host.docker.internal:host-gateway"]   # lets the server reach Jellyfin on the host
     expose: ["3000"]
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
     restart: unless-stopped
     logging: *logging
     deploy: { resources: { limits: { cpus: "2", memory: 1G } } }

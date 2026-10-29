@@ -38,13 +38,6 @@ export function concat(...parts: Bytes[]): Bytes {
   return out;
 }
 
-export function equalBytes(a: Bytes, b: Bytes): boolean {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a[i] ^ b[i];
-  return diff === 0;
-}
-
 export async function sha256(data: Bytes): Promise<Bytes> {
   return new Uint8Array(await subtle.digest('SHA-256', data));
 }
