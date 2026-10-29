@@ -101,7 +101,7 @@ echo "==> DDNS timer installed (systemctl list-timers chatward-ddns.timer)"
 echo "==> Building and starting Chatward (the first build takes a few minutes)"
 TAG=$(git -C ../.. describe --tags --exact-match 2>/dev/null || true)
 VERSION=${TAG#v}
-CHATWARD_VERSION=${VERSION:-dev} docker compose up -d --build
+CHATWARD_VERSION=${VERSION:-$(sed -n 's/^  "version": "\(.*\)",$/\1/p' ../../package.json)} docker compose up -d --build
 
 echo "==> Waiting for the server"
 up=0

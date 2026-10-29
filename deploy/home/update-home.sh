@@ -24,7 +24,8 @@ fi
 
 TAG=$(git -C ../.. describe --tags --exact-match 2>/dev/null || true)
 VERSION=${1:-${TAG#v}}
-VERSION=${VERSION:-dev}
+# A branch checkout has no tag; use the version in package.json so clients do not see the server as older.
+VERSION=${VERSION:-$(sed -n 's/^  "version": "\(.*\)",$/\1/p' ../../package.json)}
 STAMP=$(date -u +%Y%m%d-%H%M%S)
 ARCHIVE="$BACKUP_PATH/chatward-data-$STAMP.tar.gz"
 KEEP_BACKUPS=5
