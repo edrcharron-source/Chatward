@@ -11,6 +11,14 @@ const api = {
   selectScreenSource: (id: string): Promise<void> => ipcRenderer.invoke('screen:select', id),
   // Flashes the taskbar button until the window is focused. The main process ignores it while the window has focus.
   flashWindow: (): void => ipcRenderer.send('window:flash'),
+  // The app's own title bar (no system frame). `target` names a pop-out window this page opened; leave it out for this window.
+  windowControls: {
+    platform: process.platform,
+    minimize: (target?: string): void => ipcRenderer.send('window:control', 'minimize', target),
+    toggleMaximize: (target?: string): void => ipcRenderer.send('window:control', 'maximize', target),
+    close: (target?: string): void => ipcRenderer.send('window:control', 'close', target),
+    isMaximized: (target?: string): Promise<boolean> => ipcRenderer.invoke('window:maximized', target),
+  },
   // Auto-update. `check` points the updater at <serverUrl>/updates and starts a background download.
   updates: {
     getVersion: (): Promise<string> => ipcRenderer.invoke('app:version'),

@@ -28,6 +28,7 @@ import DeviceAlertBanner from './components/devices/DeviceAlertBanner';
 import { showDeviceAlert } from './state/deviceAlerts';
 import UpdateRequired from './components/updates/UpdateRequired';
 import PoweredBy from './components/brand/PoweredBy';
+import { TitleBar } from './components/titlebar/TitleBar';
 import { checkServerVersion, useUpdates } from './state/updates';
 
 export function App() {
@@ -48,6 +49,7 @@ export function App() {
   useEffect(() => { void applySkin(skin); }, [skin]);
   return (
     <div className="cw-app">
+      <TitleBar />
       <UpdateBanner />
       <DeviceAlertBanner />
       <DemoBanner />

@@ -123,3 +123,23 @@
   -webkit-background-clip: text; background-clip: text; color: transparent;
   text-transform: uppercase; letter-spacing: .18em; font-weight: 800;
 }
+
+/* The title bar: black with a dashed rule under it, the name in the banner fade, and the window buttons in
+   [ brackets ] like lebserver's nav. Close turns salmon on hover. */
+:root[data-skin='lebserver'] {
+  --titlebar-bg: #030303; --titlebar-border: #2e2e2e; --titlebar-text: #8a8a8a; --titlebar-text-strong: #f0f0f0;
+  --titlebar-mark: #f2a48c; --titlebar-letter-spacing: .18em;
+  --titlebar-button-hover: #141414; --titlebar-close-hover: #f0857a; --titlebar-close-hover-text: #050505;
+}
+:root[data-skin='lebserver'] .cw-titlebar { border-bottom-style: dashed; }
+:root[data-skin='lebserver'] .cw-titlebar-mark { border-radius: 0; }
+:root[data-skin='lebserver'] .cw-titlebar-title {
+  background: linear-gradient(180deg, #f6e4a4 0%, #f3b88e 55%, #f0907f 100%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  text-transform: uppercase; font-weight: 800;
+}
+:root[data-skin='lebserver'] .cw-titlebar .cw-titlebar-button { background: transparent; color: var(--titlebar-text); box-shadow: none; gap: 4px; grid-auto-flow: column; }
+:root[data-skin='lebserver'] .cw-titlebar .cw-titlebar-button::before { content: '['; }
+:root[data-skin='lebserver'] .cw-titlebar .cw-titlebar-button::after { content: ']'; }
+:root[data-skin='lebserver'] .cw-titlebar .cw-titlebar-button:hover { background: var(--titlebar-button-hover); color: var(--titlebar-text-strong); box-shadow: none; }
+:root[data-skin='lebserver'] .cw-titlebar .cw-titlebar-button.close:hover { background: var(--titlebar-close-hover); color: var(--titlebar-close-hover-text); }

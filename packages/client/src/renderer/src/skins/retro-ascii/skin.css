@@ -101,3 +101,15 @@
 @media (prefers-reduced-motion: reduce) {
   :root[data-skin='retro-ascii'] .cw-main-empty::after { animation: none; }
 }
+
+/* The title bar: amber on black with an amber rule, close lights up in the danger orange. */
+:root[data-skin='retro-ascii'] {
+  --titlebar-bg: #0a0703; --titlebar-border: var(--border); --titlebar-text: var(--text-muted); --titlebar-text-strong: var(--accent);
+  --titlebar-mark: var(--accent); --titlebar-letter-spacing: .14em;
+  --titlebar-button-hover: var(--accent-tint); --titlebar-close-hover: var(--danger); --titlebar-close-hover-text: #0a0703;
+}
+:root[data-skin='retro-ascii'] .cw-titlebar-mark { border-radius: 0; }
+:root[data-skin='retro-ascii'] .cw-titlebar-title { text-transform: uppercase; color: var(--accent); }
+:root[data-skin='retro-ascii'] .cw-titlebar .cw-titlebar-button { background: transparent; color: var(--titlebar-text); box-shadow: none; }
+:root[data-skin='retro-ascii'] .cw-titlebar .cw-titlebar-button:hover { background: var(--titlebar-button-hover); color: var(--titlebar-text-strong); }
+:root[data-skin='retro-ascii'] .cw-titlebar .cw-titlebar-button.close:hover { background: var(--titlebar-close-hover); color: var(--titlebar-close-hover-text); }

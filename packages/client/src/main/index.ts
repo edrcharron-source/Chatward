@@ -75,16 +75,28 @@ function guardWebContents(wc: Electron.WebContents) {
   wc.setWindowOpenHandler(({ url, frameName }) => {
     // A popped-out tab: an empty window the app draws into itself (components/tabs/PopoutWindow.tsx). It loads nothing.
     if (url === 'about:blank' && frameName.startsWith('chatward-tab-')) {
-      return { action: 'allow', overrideBrowserWindowOptions: { width: 1000, height: 700, minWidth: 420, minHeight: 320, resizable: true, autoHideMenuBar: true, backgroundColor: '#1e1f22', title: 'Chatward', webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true } } };
+      return { action: 'allow', overrideBrowserWindowOptions: { width: 1000, height: 700, minWidth: 420, minHeight: 320, resizable: true, autoHideMenuBar: true, titleBarStyle: 'hidden', backgroundColor: '#1e1f22', title: 'Chatward', webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true } } };
     }
     // Watch party pop-out: our own page with ?watch-popout=1. Everything else stays denied.
     if (url.includes('watch-popout=1') && (url.startsWith(APP_ORIGIN + '/') || url.startsWith('http://localhost:5173'))) {
-      return { action: 'allow', overrideBrowserWindowOptions: { width: 960, height: 540, resizable: true, webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true } } };
+      return { action: 'allow', overrideBrowserWindowOptions: { width: 960, height: 540, resizable: true, autoHideMenuBar: true, titleBarStyle: 'hidden', webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true } } };
     }
     if (/^https?:/.test(url)) shell.openExternal(url);
     return { action: 'deny' };
   });
   wc.on('will-navigate', (e, url) => { if (!url.startsWith('http://localhost:5173') && !url.startsWith(APP_ORIGIN + '/')) { e.preventDefault(); } });
+}
+
+// Pop-out windows by the name the page opened them with, per opening page. A popped-out tab runs no code of its own,
+// so the main window's page works its title bar buttons and names the window it means (components/titlebar).
+const childWindows = new WeakMap<Electron.WebContents, Map<string, BrowserWindow>>();
+
+function controlledWindow(sender: Electron.WebContents, target: unknown): BrowserWindow | null {
+  if (typeof target === 'string' && target) {
+    const child = childWindows.get(sender)?.get(target);
+    return child && !child.isDestroyed() ? child : null;
+  }
+  return BrowserWindow.fromWebContents(sender);
 }
 
 function createWindow() {
@@ -95,6 +107,9 @@ function createWindow() {
     backgroundColor: '#1e1f22',
     title: 'Chatward',
     autoHideMenuBar: true,
+    // No system frame: the page draws its own title bar (components/titlebar). 'hidden' keeps the edge resizing,
+    // the shadow and Windows snap that frame: false would lose. macOS keeps its traffic lights.
+    titleBarStyle: 'hidden',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true,
@@ -105,8 +120,14 @@ function createWindow() {
   win.on('focus', () => win.flashFrame(false));
   // Child windows (the watch-party pop-out) don't inherit the handlers above, so guard them too.
   // They live on this window's page, so they close with it.
-  win.webContents.on('did-create-window', (child) => {
+  win.webContents.on('did-create-window', (child, { frameName }) => {
     guardWebContents(child.webContents);
+    if (frameName) {
+      const named = childWindows.get(win.webContents) ?? new Map<string, BrowserWindow>();
+      childWindows.set(win.webContents, named);
+      named.set(frameName, child);
+      child.on('closed', () => { if (named.get(frameName) === child) named.delete(frameName); });
+    }
     win.on('closed', () => { if (!child.isDestroyed()) child.close(); });
   });
   if (process.env['ELECTRON_RENDERER_URL']) win.loadURL(process.env['ELECTRON_RENDERER_URL']);
@@ -189,6 +210,16 @@ app.whenReady().then(() => {
     const win = BrowserWindow.fromWebContents(e.sender);
     if (win && !win.isFocused()) win.flashFrame(true);
   });
+
+  // The page's own title bar buttons. `target` names a pop-out this page opened; without it the sender's own window.
+  ipcMain.on('window:control', (e, action: unknown, target: unknown) => {
+    const win = controlledWindow(e.sender, target);
+    if (!win) return;
+    if (action === 'minimize') win.minimize();
+    else if (action === 'maximize') { if (win.isMaximized()) win.unmaximize(); else win.maximize(); }
+    else if (action === 'close') win.close();
+  });
+  ipcMain.handle('window:maximized', (e, target: unknown) => controlledWindow(e.sender, target)?.isMaximized() ?? false);
 
   createWindow();
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });

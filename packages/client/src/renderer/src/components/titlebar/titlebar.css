@@ -1,0 +1,26 @@
+/* The app's own title bar (TitleBar.tsx). Colours, font and height come from the --titlebar-* tokens in styles/theme.css,
+   so a skin restyles it by setting those, or by styling these class names under its :root[data-skin] selector. */
+
+.cw-titlebar {
+  flex: none; display: flex; align-items: stretch; height: var(--titlebar-height);
+  background: var(--titlebar-bg); color: var(--titlebar-text); border-bottom: 1px solid var(--titlebar-border);
+  font: var(--titlebar-font-size)/1 var(--titlebar-font); user-select: none;
+  -webkit-app-region: drag;
+}
+.cw-titlebar.mac { padding-left: 76px; }
+.cw-titlebar-drag { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 0 12px; }
+.cw-titlebar-mark { width: 8px; height: 8px; flex: none; background: var(--titlebar-mark); border-radius: 50%; }
+.cw-titlebar-title { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; letter-spacing: var(--titlebar-letter-spacing); }
+.cw-titlebar-buttons { display: flex; -webkit-app-region: no-drag; }
+.cw-titlebar .cw-titlebar-button {
+  width: 46px; height: 100%; padding: 0; display: grid; place-items: center; border-radius: 0;
+  background: transparent; color: var(--titlebar-text); box-shadow: none; transition: background .1s, color .1s;
+}
+.cw-titlebar .cw-titlebar-button:hover { background: var(--titlebar-button-hover); color: var(--titlebar-text-strong); }
+.cw-titlebar .cw-titlebar-button.close:hover { background: var(--titlebar-close-hover); color: var(--titlebar-close-hover-text); }
+.cw-titlebar-glyph { fill: currentColor; display: block; }
+
+/* A popped-out tab keeps the bar at its natural height above the tab. */
+.cw-popout > .cw-titlebar { flex: none; }
+/* A window in fullscreen (the watch-party pop-out's Fullscreen button) shows no title bar. */
+:root:fullscreen .cw-titlebar { display: none; }
