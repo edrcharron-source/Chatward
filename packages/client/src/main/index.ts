@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, net, protocol, safeStorage, desktopCapturer, session, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, net, protocol, safeStorage, desktopCapturer, screen, session, shell } from 'electron';
 import { join, normalize, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync, renameSync } from 'node:fs';
@@ -6,6 +6,7 @@ import { fetchLinkPreview } from './linkPreview';
 import { searchGifs } from './klipy';
 import { setupUpdater } from './updater';
 import { APP_ORIGIN, buildCsp, loadServerOrigin, saveServerOrigin, serverOrigin } from './serverPolicy';
+import { fitWindow } from './windowBounds';
 
 // The page is served from app:// (not file://) so its Content-Security-Policy header can name the server.
 protocol.registerSchemesAsPrivileged([{ scheme: 'app', privileges: { standard: true, secure: true, corsEnabled: true } }]);
@@ -82,8 +83,10 @@ function guardWebContents(wc: Electron.WebContents) {
 }
 
 function createWindow() {
+  // Fit to the primary display's work area so the bottom edge is not hidden behind the taskbar on small or scaled screens.
+  const bounds = fitWindow(screen.getPrimaryDisplay().workArea, { width: 1280, height: 800, minWidth: 900, minHeight: 600 });
   const win = new BrowserWindow({
-    width: 1280, height: 800, minWidth: 900, minHeight: 600,
+    ...bounds,
     backgroundColor: '#1e1f22',
     title: 'Chatward',
     autoHideMenuBar: true,

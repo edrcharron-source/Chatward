@@ -1,0 +1,5 @@
+/* A skin that hides the channel admin icons (create channel, invite people, server settings). The feature check and
+   the lint must both catch it. Kept out of the shipped-skin lint on purpose. */
+:root[data-skin='hides-action'] [data-region='channels'] .icon {
+  display: none;
+}

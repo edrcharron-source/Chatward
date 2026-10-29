@@ -1,0 +1,28 @@
+name: Skins
+# Every skin must keep the full feature set (docs/SKINS.md, test/skins/). Lints skin CSS and runs the self-tests, then
+# drives the built app in demo mode: a test skin must match the base skin on every feature, and a skin that drops a
+# feature must be caught.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+jobs:
+  parity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npm run test:skins -w @chatward/client
+      - run: npm run typecheck:test -w @chatward/client
+      - run: npm run build -w @chatward/shared && npm run build -w @chatward/client
+      - name: Every skin keeps the feature set
+        run: xvfb-run -a npm run skins:parity -w @chatward/client -- "$RUNNER_TEMP/skins"
+      - name: A skin that drops a feature is caught
+        run: xvfb-run -a npm run skins:parity -w @chatward/client -- "$RUNNER_TEMP/skins-broken" --broken
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: skin-parity
+          path: ${{ runner.temp }}/skins*
+          if-no-files-found: ignore

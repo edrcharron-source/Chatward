@@ -5,6 +5,7 @@ import { connectWs, disconnectWs, onFrame, sendFrame } from './api/ws';
 import { keepTokenFresh } from './api/token';
 import { isLiveChannel, refreshUnread, signOut, useSession, type ServerBundle } from './state/session';
 import { useSettings, applyTheme } from './state/settings';
+import { applySkin } from './skins';
 import { useVoice, rekeyActiveCall, resumeVoiceSlot, clearLeftoverVoiceSlot, leaveCallOnExit } from './state/voice';
 import { forgetChatChannels, useChat } from './state/chat';
 import { accountKey, adoptLegacyIfOwned, initDevice, syncChannelKeys, handleEnvelope, handleMemberLeave, forgetChannels } from './crypto';
@@ -31,6 +32,7 @@ export function App() {
   const serverUrl = useSession((s) => s.serverUrl);
   const server = useUpdates((s) => s.server);
   const theme = useSettings((s) => s.theme);
+  const skin = useSettings((s) => s.skin);
   useEffect(() => { void checkServerVersion(serverUrl); }, [serverUrl]);
   useEffect(() => {
     applyTheme(theme);
@@ -40,6 +42,7 @@ export function App() {
     mq.addEventListener('change', h);
     return () => mq.removeEventListener('change', h);
   }, [theme]);
+  useEffect(() => { void applySkin(skin); }, [skin]);
   return (
     <div className="cw-app">
       <UpdateBanner />
