@@ -10,8 +10,10 @@ export interface SkinInfo {
   swatch: string;
 }
 
-/** The installed skins, in the order the Appearance tab lists them. Empty until the first skin is added. */
-export const SKINS: SkinInfo[] = [];
+/** The installed skins, in the order the Appearance tab lists them. */
+export const SKINS: SkinInfo[] = [
+  { id: 'retro-ascii', label: 'Retro ASCII', swatch: '#ffb000' },
+];
 
 // Packs load on first use, so a skin nobody picks costs nothing.
 const packs = import.meta.glob('./*/skin.css');
