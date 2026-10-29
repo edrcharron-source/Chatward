@@ -101,3 +101,20 @@ Backups hold password hashes and the login secret: anyone with a copy can sign i
 ## Not done yet
 Nightly backups with retention and a restore script, pulling desktop installers from GitHub releases, a health timer,
 fail2ban/CrowdSec on Caddy's log, and TURN for friends on very strict networks. See the design doc for the plan.
+
+## Jellyfin movies (optional)
+
+Chatward can browse and play the Jellyfin library from the 🍿 Movies button. The Chatward server talks to Jellyfin; Jellyfin itself stays off the internet, and the API key never reaches a client. Video goes out as HLS over the same 443 as everything else.
+
+1. In Jellyfin, make a dedicated user (for example `chatward`) and give it only the libraries the group should see.
+2. Dashboard → API Keys → add one named Chatward.
+3. Find that user's id: open the user in Dashboard → Users; the id is in the address bar (`userId=...`).
+4. Add to `deploy/home/.env`:
+   ```
+   JELLYFIN_URL=http://host.docker.internal:8096
+   JELLYFIN_API_KEY=...
+   JELLYFIN_USER_ID=...
+   ```
+5. `docker compose up -d` (or `deploy/home/update-home.sh`). Leave the three blank to keep the button hidden.
+
+Playback transcodes to H.264/AAC on the server's CPU, so a couple of simultaneous streams is fine; many is not. Each play request makes a 12-hour ticket that only unlocks that one item's video files.

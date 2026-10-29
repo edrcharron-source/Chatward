@@ -78,6 +78,7 @@
     "npmRebuild": false
   },
   "dependencies": {
-    "electron-updater": "^6.8.10"
+    "electron-updater": "^6.8.10",
+    "hls.js": "^1.5.17"
   }
 }

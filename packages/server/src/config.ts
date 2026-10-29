@@ -79,6 +79,13 @@ export const config = {
   trustProxy: process.env.TRUST_PROXY === '1',
   jwtSecret: jwtSecret(),
   klipyApiKey: process.env.KLIPY_API_KEY ?? '',
+  /** Jellyfin library for the movie browser. All three must be set to turn it on; see docs/HOME_SERVER.md. */
+  jellyfin: {
+    url: (process.env.JELLYFIN_URL ?? '').replace(/\/$/, ''),
+    apiKey: process.env.JELLYFIN_API_KEY ?? '',
+    /** The dedicated Jellyfin user whose library the group sees. */
+    userId: (process.env.JELLYFIN_USER_ID ?? '').replace(/-/g, ''),
+  },
   livekit: {
     url: process.env.LIVEKIT_URL ?? 'ws://localhost:7880',
     /**
