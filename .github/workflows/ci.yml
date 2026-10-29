@@ -1,5 +1,16 @@
 name: CI
-on: [push, pull_request]
+on:
+  # Feature branches are checked through their pull request, so a push to one does not run CI twice.
+  push:
+    branches: [main, develop]
+  pull_request:
+  workflow_dispatch:
+# One run per PR or branch: a newer push cancels the older run instead of queueing behind it.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
 jobs:
   typecheck:
     runs-on: ubuntu-latest
@@ -19,3 +30,26 @@ jobs:
       - run: npm run build -w @chatward/shared
       - run: npm run test:e2e -w @chatward/server
       - run: npm run test:e2e-client -w @chatward/client
+  # Unsigned installer for testing, built only after the checks above pass on develop or main (or a manual run).
+  windows-exe:
+    needs: [typecheck, e2e]
+    if: github.event_name != 'pull_request'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npm run build -w @chatward/shared
+      - run: npm run dist:win
+      - name: Name the artifact after the branch and commit
+        shell: bash
+        run: echo "ARTIFACT_NAME=Chatward-Setup-${GITHUB_REF_NAME//\//-}-${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT_NAME }}
+          path: packages/client/release/Chatward-Setup.exe
+          if-no-files-found: error
+          # Kept 7 days, then GitHub deletes it. The installer is already compressed.
+          retention-days: 7
+          compression-level: 0
