@@ -100,6 +100,7 @@ async function walk(page: Page, run: Run, shoot: (name: string) => Promise<void>
   await act(page, 'chat.gif');
   await probe(page, 'gif-picker.dialog', run);
   await probe(page, 'gif-picker.search', run);
+  await probe(page, 'gif-picker.add', run);
   await controls(page, 'gif', run);
   await closePopups(page);
 

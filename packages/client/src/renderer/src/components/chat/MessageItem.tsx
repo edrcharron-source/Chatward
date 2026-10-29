@@ -14,6 +14,8 @@ interface Props {
   grouped: boolean;
   canEdit: boolean;
   canDelete: boolean;
+  /** The server the message is in, so GIFs in it can be saved to that server's GIF library. */
+  serverId?: string;
 }
 
 function formatTime(ms: number): string {
@@ -24,7 +26,7 @@ function formatTime(ms: number): string {
     : d.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
-export default function MessageItem({ message, payload, author, grouped, canEdit, canDelete }: Props) {
+export default function MessageItem({ message, payload, author, grouped, canEdit, canDelete, serverId }: Props) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -74,8 +76,8 @@ export default function MessageItem({ message, payload, author, grouped, canEdit
             {message.editedAt != null && <span className="cv-edited"> (edited)</span>}
           </div>
         )}
-        {payload.attachments?.map((a) => <AttachmentView key={a.uploadId} attachment={a} />)}
-        {payload.gif && <GifView gif={payload.gif} />}
+        {payload.attachments?.map((a) => <AttachmentView key={a.uploadId} attachment={a} serverId={serverId} />)}
+        {payload.gif && <GifView gif={payload.gif} serverId={serverId} />}
         {payload.linkPreviews?.map((p) => <LinkPreviewCard key={p.url} preview={p} />)}
       </>
     );

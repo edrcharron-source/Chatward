@@ -10,6 +10,13 @@ export const LIMITS = {
   AVATAR_MAX_BYTES: 512 * 1024,
   SOUND_MAX_BYTES: 1024 * 1024,
   SOUND_MAX_SECONDS: 10,
+  /** One GIF in a server's shared GIF library. */
+  LIBRARY_GIF_MAX_BYTES: 10 * 1024 * 1024,
+  LIBRARY_GIF_NAME_MAX: 40,
+  LIBRARY_GIF_TAGS_MAX: 5,
+  LIBRARY_GIF_TAG_MAX: 20,
+  /** Longest clip the GIF maker turns into a GIF. */
+  GIF_MAKER_MAX_SECONDS: 15,
   HISTORY_PAGE: 50,
   BIO_MAX: 190,
   PRONOUNS_MAX: 40,
@@ -96,7 +103,8 @@ export interface Message {
 export interface MessagePayload {
   text: string;
   attachments?: Attachment[];
-  gif?: { url: string; previewUrl: string; title: string; provider: 'klipy' | 'tenor' };
+  /** A library GIF carries `libraryId` and empty urls; the file is fetched from the server's GIF library. */
+  gif?: { url: string; previewUrl: string; title: string; provider: 'klipy' | 'tenor' | 'library'; libraryId?: string };
   linkPreviews?: LinkPreview[];
 }
 
@@ -161,6 +169,21 @@ export interface SoundboardSound {
   durationMs: number;
 }
 
+/** A GIF in a server's shared library. Plain GIF bytes on the server (not E2EE), like soundboard sounds. */
+export interface LibraryGif {
+  id: string;
+  serverId: string;
+  ownerId: string;
+  name: string;
+  tags: string[];
+  width: number;
+  height: number;
+  size: number;
+  /** How many times it has been picked, for the "Most used" sort. */
+  uses: number;
+  createdAt: number;
+}
+
 // ---------- WebSocket protocol ----------
 // Client -> server frames
 export type ClientFrame =
@@ -189,6 +212,9 @@ export type ServerFrame =
   | { t: 'member.role'; serverId: string; userId: string; role: Member['role'] }
   | { t: 'sound.new'; sound: SoundboardSound }
   | { t: 'sound.delete'; serverId: string; soundId: string }
+  | { t: 'gif.new'; gif: LibraryGif }
+  | { t: 'gif.update'; gif: LibraryGif }
+  | { t: 'gif.delete'; serverId: string; gifId: string }
   | { t: 'vault.new'; item: VaultItem }
   | { t: 'vault.delete'; serverId: string; itemId: string }
   | { t: 'sound.play'; serverId: string; channelId: string; soundId: string; userId: string }

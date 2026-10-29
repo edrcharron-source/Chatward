@@ -1,5 +1,5 @@
 // Offline stand-in for the server. Implements docs/CONTRACT.md REST routes and the WS frame stream in memory.
-import { DEFAULT_VOICE_BITRATE_KBPS, LIMITS, VOICE_BITRATES_KBPS, type Channel, type Member, type Message, type ServerFrame, type SoundboardSound, type User } from '@chatward/shared';
+import { DEFAULT_VOICE_BITRATE_KBPS, LIMITS, VOICE_BITRATES_KBPS, type Channel, type Member, type Message, type LibraryGif, type ServerFrame, type SoundboardSound, type User } from '@chatward/shared';
 import { avatarPng } from './assets';
 import { createWorld, makeMessage, newId, SERVER_ID, YOU_ID } from './world';
 
@@ -561,6 +561,73 @@ on('POST', /^\/api\/channels\/([^/]+)\/sound-play$/, (r) => {
   const soundId = str((r.body as { soundId?: unknown })?.soundId, 'soundId', 64);
   emit({ t: 'sound.play', serverId: SERVER_ID, channelId: ch.id, soundId, userId: YOU_ID });
   return json({ ok: true });
+});
+
+// The server's GIF library. Same rules as the real server, kept in memory.
+function demoGifDetails(name: unknown, tags: unknown): { name: string; tags: string[] } {
+  const n = typeof name === 'string' ? name.trim().replace(/\s+/g, ' ') : '';
+  if (!n || n.length > LIMITS.LIBRARY_GIF_NAME_MAX) throw new HttpError(400, `Give the GIF a name (up to ${LIMITS.LIBRARY_GIF_NAME_MAX} characters).`);
+  const list = (Array.isArray(tags) ? tags : typeof tags === 'string' ? tags.split(',') : []).map((t) => String(t).trim().toLowerCase()).filter(Boolean);
+  const unique = [...new Set(list)];
+  if (unique.length > LIMITS.LIBRARY_GIF_TAGS_MAX || unique.some((t) => t.length > LIMITS.LIBRARY_GIF_TAG_MAX)) {
+    throw new HttpError(400, `Up to ${LIMITS.LIBRARY_GIF_TAGS_MAX} tags, each up to ${LIMITS.LIBRARY_GIF_TAG_MAX} characters.`);
+  }
+  return { name: n, tags: unique };
+}
+function demoGif(id: string): LibraryGif {
+  const gif = world.gifs.find((g) => g.id === id);
+  if (!gif) throw new HttpError(404, 'GIF not found');
+  return gif;
+}
+on('GET', /^\/api\/servers\/([^/]+)\/library-gifs$/, (r) => {
+  serverGuard(r.match[1]);
+  return json({ gifs: world.gifs });
+});
+on('POST', /^\/api\/servers\/([^/]+)\/library-gifs$/, (r) => {
+  serverGuard(r.match[1]);
+  const { name, tags } = demoGifDetails(r.url.searchParams.get('name'), r.url.searchParams.get('tags'));
+  const b = r.bytes;
+  const sig = b && b.length >= 13 ? String.fromCharCode(...b.subarray(0, 6)) : '';
+  if (!b || (sig !== 'GIF87a' && sig !== 'GIF89a')) throw new HttpError(400, "That file isn't a GIF.");
+  if (b.length > LIMITS.LIBRARY_GIF_MAX_BYTES) throw new HttpError(413, `GIFs must be ${LIMITS.LIBRARY_GIF_MAX_BYTES / (1024 * 1024)} MB or smaller.`);
+  const id = newId(world, 'gif');
+  const gif: LibraryGif = {
+    id, serverId: SERVER_ID, ownerId: YOU_ID, name, tags,
+    width: b[6] | (b[7] << 8), height: b[8] | (b[9] << 8), size: b.length, uses: 0, createdAt: Date.now(),
+  };
+  world.blobs.set(id, { bytes: b, mime: 'image/gif' });
+  world.gifs.unshift(gif);
+  emit({ t: 'gif.new', gif });
+  return json({ gif }, 201);
+});
+on('POST', /^\/api\/servers\/([^/]+)\/library-gifs\/from-url$/, () => {
+  throw new HttpError(400, "The offline demo can't download KLIPY GIFs. Upload a .gif file instead.");
+});
+on('PATCH', /^\/api\/library-gifs\/([^/]+)$/, (r) => {
+  const gif = demoGif(r.match[1]);
+  const body = (r.body ?? {}) as { name?: unknown; tags?: unknown };
+  const details = demoGifDetails(body.name ?? gif.name, body.tags ?? gif.tags);
+  const updated = { ...gif, ...details };
+  world.gifs = world.gifs.map((g) => (g.id === gif.id ? updated : g));
+  emit({ t: 'gif.update', gif: updated });
+  return json({ gif: updated });
+});
+on('DELETE', /^\/api\/library-gifs\/([^/]+)$/, (r) => {
+  const gif = demoGif(r.match[1]);
+  world.gifs = world.gifs.filter((g) => g !== gif);
+  world.blobs.delete(gif.id);
+  emit({ t: 'gif.delete', serverId: SERVER_ID, gifId: gif.id });
+  return json({ ok: true });
+});
+on('POST', /^\/api\/library-gifs\/([^/]+)\/use$/, (r) => {
+  const gif = demoGif(r.match[1]);
+  world.gifs = world.gifs.map((g) => (g === gif ? { ...g, uses: g.uses + 1 } : g));
+  return json({ ok: true });
+});
+on('GET', /^\/api\/library-gifs\/([^/]+)\/file$/, (r) => {
+  const blob = world.blobs.get(demoGif(r.match[1]).id);
+  if (!blob) throw new HttpError(404, 'GIF not found');
+  return bytesResponse(blob.bytes, blob.mime);
 });
 
 on('GET', /^\/api\/gifs\/(search|trending)$/, async (r) => {

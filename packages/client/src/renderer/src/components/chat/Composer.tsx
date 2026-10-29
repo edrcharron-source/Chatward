@@ -7,10 +7,11 @@ const MAX_FILES = 10;
 interface Props {
   channelId: string;
   channelName: string;
+  serverId: string;
   onSent: () => void;
 }
 
-export default function Composer({ channelId, channelName, onSent }: Props) {
+export default function Composer({ channelId, channelName, serverId, onSent }: Props) {
   const text = useChat((s) => s.drafts[channelId] ?? '');
   const setDraft = useChat((s) => s.setDraft);
   const [files, setFiles] = useState<File[]>([]);
@@ -135,7 +136,7 @@ export default function Composer({ channelId, channelName, onSent }: Props) {
           onKeyDown={onKeyDown}
           onPaste={onPaste}
         />
-        <GifPickerButton onPick={setGif} />
+        <GifPickerButton serverId={serverId} onPick={setGif} />
         <EmojiPickerButton onPick={insertEmoji} />
         <button className="primary cv-send" disabled={!canSend} onClick={() => void submit()}>Send</button>
       </div>

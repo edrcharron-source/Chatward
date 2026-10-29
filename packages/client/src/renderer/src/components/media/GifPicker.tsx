@@ -3,6 +3,9 @@ import type { MessagePayload } from '@chatward/shared';
 import { api } from '../../api/http';
 import { usePopover } from './Popover';
 import { isSafeGifUrl } from './safeUrls';
+import GifLibraryPanel from '../gifs/GifLibraryPanel';
+import LibraryGifImage from '../gifs/LibraryGifImage';
+import SaveGifButton from '../gifs/SaveGifButton';
 
 type Gif = NonNullable<MessagePayload['gif']>;
 
@@ -115,8 +118,17 @@ function GifPanel({ onPick }: { onPick: (gif: Gif) => void }) {
   );
 }
 
-export function GifPickerButton({ onPick }: { onPick: (gif: Gif) => void }): ReactElement {
+type Tab = 'server' | 'klipy';
+// Library ids come from other people's messages, so only plain ids reach the request path.
+const LIBRARY_ID = /^[0-9a-z-]{1,40}$/;
+
+export function GifPickerButton({ serverId, onPick }: { serverId: string; onPick: (gif: Gif) => void }): ReactElement {
   const { open, setOpen, ref } = usePopover();
+  const [tab, setTab] = useState<Tab>('server');
+  const pick = (gif: Gif) => {
+    onPick(gif);
+    setOpen(false);
+  };
   return (
     <div className="media-anchor" ref={ref}>
       <button
@@ -131,19 +143,29 @@ export function GifPickerButton({ onPick }: { onPick: (gif: Gif) => void }): Rea
       </button>
       {open && (
         <div className="media-popover media-gif-popover" role="dialog" aria-label="GIF picker">
-          <GifPanel
-            onPick={(gif) => {
-              onPick(gif);
-              setOpen(false);
-            }}
-          />
+          <div className="gif-tabs" role="tablist">
+            <button type="button" role="tab" aria-selected={tab === 'server'} onClick={() => setTab('server')}>Server</button>
+            <button type="button" role="tab" aria-selected={tab === 'klipy'} onClick={() => setTab('klipy')}>Klipy</button>
+          </div>
+          {tab === 'server' ? <GifLibraryPanel serverId={serverId} onPick={pick} /> : <GifPanel onPick={pick} />}
         </div>
       )}
     </div>
   );
 }
 
-export function GifView({ gif }: { gif: Gif }): ReactElement | null {
+/** A GIF in a message or the composer. With `serverId`, a hover button saves a KLIPY GIF to the server's library. */
+export function GifView({ gif, serverId }: { gif: Gif; serverId?: string }): ReactElement | null {
+  if (gif.provider === 'library') {
+    return gif.libraryId && LIBRARY_ID.test(gif.libraryId) ? <LibraryGifImage id={gif.libraryId} title={gif.title} className="media-gif" /> : <span className="muted media-gif-blocked">GIF removed</span>;
+  }
   if (!isSafeGifUrl(gif.url)) return <span className="muted media-gif-blocked">GIF blocked</span>;
-  return <img className="media-gif" src={gif.url} alt={gif.title || 'GIF'} loading="lazy" referrerPolicy="no-referrer" />;
+  const img = <img className="media-gif" src={gif.url} alt={gif.title || 'GIF'} loading="lazy" referrerPolicy="no-referrer" />;
+  if (!serverId || gif.url.startsWith('data:')) return img;
+  return (
+    <span className="media-gif-wrap">
+      {img}
+      <SaveGifButton serverId={serverId} source={{ kind: 'klipy', url: gif.url }} defaultName={gif.title} />
+    </span>
+  );
 }

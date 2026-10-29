@@ -120,6 +120,20 @@ export function openDb(): DB {
     duration_ms INTEGER NOT NULL,
     created_at INTEGER NOT NULL
   );
+  CREATE TABLE IF NOT EXISTS library_gifs (
+    id TEXT PRIMARY KEY,
+    server_id TEXT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+    owner_id TEXT NOT NULL REFERENCES users(id),
+    name TEXT NOT NULL,
+    tags TEXT NOT NULL DEFAULT '',
+    width INTEGER NOT NULL,
+    height INTEGER NOT NULL,
+    size INTEGER NOT NULL,
+    uses INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_library_gifs_server ON library_gifs(server_id, created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_library_gifs_owner ON library_gifs(owner_id);
   CREATE TABLE IF NOT EXISTS mls_keypackages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     device_id TEXT NOT NULL,
