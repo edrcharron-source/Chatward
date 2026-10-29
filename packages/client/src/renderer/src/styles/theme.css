@@ -15,17 +15,26 @@
   --danger: #d8394d; --ok: #17894f; --warn: #a86b00; --border: #d7dde5;
   --shadow: 0 10px 30px rgba(15,23,42,.12);
 }
+/* Shared by both themes. Skins override these as well as the colours above. */
+:root {
+  --font-body: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; --font-size: 14px; --line-height: 1.45;
+  --font-code: Consolas, 'Cascadia Mono', monospace; --font-digits: ui-monospace, Consolas, monospace;
+  --danger-text: #fff; --media-bg: #000; --backdrop: rgba(0,0,0,.6);
+  --overlay-bg: rgba(0,0,0,.55); --overlay-text: #fff;
+  --shadow-popover: 0 12px 32px rgba(0, 0, 0, 0.35); --shadow-composer: 0 2px 10px rgba(0,0,0,.12); --shadow-header: 0 1px 0 rgba(0,0,0,.04);
+  --radius-modal: 14px;
+}
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; margin: 0; }
 /* #root is the app surface. overflow: clip stops focus() or scrollIntoView from scrolling it and
    pushing the composer past the window bottom, which body overflow: hidden alone does not prevent. */
 #root { position: fixed; inset: 0; overflow: clip; }
-body { background: var(--bg-2); color: var(--text); font: 14px/1.45 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; overflow: hidden; }
+body { background: var(--bg-2); color: var(--text); font: var(--font-size)/var(--line-height) var(--font-body); overflow: hidden; }
 button { font: inherit; color: inherit; cursor: pointer; border: 0; border-radius: var(--radius-sm); padding: 8px 14px; background: var(--bg-3); transition: background .12s; }
 button:hover { background: var(--bg-hover); }
 button.primary { background: var(--accent); color: var(--accent-text); }
 button.primary:hover { background: var(--accent-hover); }
-button.danger { background: var(--danger); color: #fff; }
+button.danger { background: var(--danger); color: var(--danger-text); }
 button.icon { padding: 6px; border-radius: 8px; background: transparent; display: inline-flex; align-items: center; justify-content: center; }
 button.icon:hover { background: var(--bg-hover); }
 button:disabled { opacity: .5; cursor: not-allowed; }
@@ -35,6 +44,6 @@ input[type='range'] { padding: 0; accent-color: var(--accent); }
 .card { background: var(--bg-1); border-radius: var(--radius); box-shadow: var(--shadow); }
 .avatar { border-radius: 50%; object-fit: cover; background: var(--bg-3); flex: none; }
 .muted { color: var(--text-muted); }
-.modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: grid; place-items: center; z-index: 100; }
-.modal { background: var(--bg-2); border-radius: 14px; box-shadow: var(--shadow); max-height: 90vh; overflow: auto; }
+.modal-backdrop { position: fixed; inset: 0; background: var(--backdrop); display: grid; place-items: center; z-index: 100; }
+.modal { background: var(--bg-2); border-radius: var(--radius-modal); box-shadow: var(--shadow); max-height: 90vh; overflow: auto; }
 ::-webkit-scrollbar { width: 10px; } ::-webkit-scrollbar-thumb { background: var(--bg-3); border-radius: 8px; border: 2px solid transparent; background-clip: content-box; }

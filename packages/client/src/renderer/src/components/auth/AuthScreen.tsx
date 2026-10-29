@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { LIMITS, type DeviceKeys, type User } from '@chatward/shared';
 import { api, ApiError } from '../../api/http';
 import { accountKey, adoptLegacyDevice, deviceProof, getDevice, initDevice, legacyDevice } from '../../crypto';
+import { buildLabel } from '../../buildInfo';
 import { enterDemo } from '../../demo';
 import { useSession } from '../../state/session';
 import './auth.css';
@@ -151,6 +152,7 @@ export default function AuthScreen() {
         <button type="button" className="cw-auth-demo" disabled={busy} onClick={() => void enterDemo()}>
           Try demo (offline, no server)
         </button>
+        {buildLabel() && <p className="cw-auth-build">{buildLabel()}</p>}
       </form>
     </div>
   );

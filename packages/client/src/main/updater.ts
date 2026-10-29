@@ -43,7 +43,8 @@ export function setupUpdater(): void {
   ipcMain.handle('update:get', () => status);
   ipcMain.handle('update:check', (_e, serverUrl: string) => {
     // Dev runs have no installer to update to, so answer "none" and skip the network.
-    if (!app.isPackaged) { setStatus({ state: 'none' }); return; }
+    // A test build never updates: the server's feed holds the release, which would replace the build under test.
+    if (!app.isPackaged || __CHATWARD_BUILD__.channel === 'test') { setStatus({ state: 'none' }); return; }
     const base = String(serverUrl).replace(/\/$/, '');
     // The installer is unsigned, so the feed must be HTTPS or a network attacker could swap latest.yml and the installer together.
     // Plain HTTP is only allowed to this computer itself (local testing).

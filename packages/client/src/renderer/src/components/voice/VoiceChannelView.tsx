@@ -210,7 +210,9 @@ function Tile({ user, joined, local, micOff, speaking, screen, video, onMenu, th
         onDoubleClick={screen ? () => void toggleFullscreen(frame.current) : undefined}
         style={{
           position: 'relative', aspectRatio: expanded ? undefined : '16 / 9', borderRadius: full ? 0 : 8, overflow: 'hidden',
-          background: 'var(--bg-0)', display: 'grid', placeItems: 'center',
+          // the single cell is pinned to the frame's size; an auto-sized cell grows to the video's own height in a
+          // wide frame (theater mode), and the overflow clip then cuts off the top and bottom of the share
+          background: 'var(--bg-0)', display: 'grid', gridTemplate: 'minmax(0, 1fr) / minmax(0, 1fr)', placeItems: 'center',
           boxShadow: speaking && !expanded ? '0 0 0 2px var(--ok)' : 'none', transition: 'box-shadow .12s',
           ...(full ? { width: '100%', height: '100%' } : fill ? { flex: 1, minHeight: 0 } : {}),
         }}
@@ -229,7 +231,7 @@ function Tile({ user, joined, local, micOff, speaking, screen, video, onMenu, th
             aria-label={full ? 'Exit fullscreen' : 'Fullscreen'}
             title={full ? 'Exit fullscreen (Esc)' : 'Fullscreen'}
             onClick={() => void toggleFullscreen(frame.current)}
-            style={{ position: 'absolute', top: 6, right: 6, background: 'rgba(0,0,0,.55)', color: '#fff' }}
+            style={{ position: 'absolute', top: 6, right: 6, background: 'var(--overlay-bg)', color: 'var(--overlay-text)' }}
           >
             {full ? '⤡' : '⤢'}
           </button>
@@ -241,7 +243,7 @@ function Tile({ user, joined, local, micOff, speaking, screen, video, onMenu, th
             aria-pressed={theater}
             title={theater ? 'Exit theater mode (Esc)' : 'Theater mode'}
             onClick={onTheater}
-            style={{ position: 'absolute', top: 6, right: 40, background: 'rgba(0,0,0,.55)', color: '#fff' }}
+            style={{ position: 'absolute', top: 6, right: 40, background: 'var(--overlay-bg)', color: 'var(--overlay-text)' }}
           >
             ▭
           </button>
