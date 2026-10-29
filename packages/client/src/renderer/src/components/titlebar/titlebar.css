@@ -13,7 +13,7 @@
 .cw-titlebar-title { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; letter-spacing: var(--titlebar-letter-spacing); }
 .cw-titlebar-buttons { display: flex; -webkit-app-region: no-drag; }
 .cw-titlebar .cw-titlebar-button {
-  width: 46px; height: 100%; padding: 0; display: grid; place-items: center; border-radius: 0;
+  width: var(--titlebar-button-width); height: 100%; padding: 0; display: grid; place-items: center; border-radius: 0;
   background: transparent; color: var(--titlebar-text); box-shadow: none; transition: background .1s, color .1s;
 }
 .cw-titlebar .cw-titlebar-button:hover { background: var(--titlebar-button-hover); color: var(--titlebar-text-strong); }

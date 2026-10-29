@@ -24,7 +24,7 @@
   --shadow-popover: 0 12px 32px rgba(0, 0, 0, 0.35); --shadow-composer: 0 2px 10px rgba(0,0,0,.12); --shadow-header: 0 1px 0 rgba(0,0,0,.04);
   --radius-modal: 14px;
   /* The app's own title bar (components/titlebar). Skins may set any of these. */
-  --titlebar-height: 32px; --titlebar-bg: var(--bg-0); --titlebar-border: transparent;
+  --titlebar-height: 32px; --titlebar-button-width: 46px; --titlebar-bg: var(--bg-0); --titlebar-border: transparent;
   --titlebar-text: var(--text-muted); --titlebar-text-strong: var(--text-strong); --titlebar-mark: var(--accent);
   --titlebar-font: var(--font-body); --titlebar-font-size: 12px; --titlebar-letter-spacing: .02em;
   --titlebar-button-hover: var(--bg-hover); --titlebar-close-hover: #e81123; --titlebar-close-hover-text: #fff;
