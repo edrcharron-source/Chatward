@@ -40,11 +40,11 @@ export function App() {
     return () => mq.removeEventListener('change', h);
   }, [theme]);
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+    <div className="cw-app">
       <UpdateBanner />
       <DeviceAlertBanner />
       <DemoBanner />
-      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+      <div className="cw-app-body">
         {server.kind === 'update-required'
           ? <UpdateRequired serverUrl={serverUrl} minClientVersion={server.minClientVersion} />
           : token ? <Shell /> : <AuthScreen />}
@@ -314,7 +314,7 @@ function Shell() {
 
   if (!ready) {
     return (
-      <div style={{ display: 'grid', placeItems: 'center', alignContent: 'center', gap: 12, height: '100%' }}>
+      <div className="cw-shell-loading">
         {unreachable ? (
           <>
             <div className="muted">Can't reach server, retrying…</div>
@@ -325,12 +325,12 @@ function Shell() {
     );
   }
   return (
-    <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
+    <div className="cw-shell" data-region="shell">
       <ServerSidebar onReload={loadServers} />
       {!hideSidebars && <ChannelList onOpenSettings={() => setSettingsOpen(true)} onReload={loadServers} />}
-      <main style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+      <main className="cw-main" data-region="main">
         {channel && (
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '4px 12px', background: 'var(--bg-2)' }}>
+          <div className="cw-main-bar" data-region="main-bar">
             {theaterKey !== null && (
               <button className="icon" onClick={() => setSidebarsCollapsed((c) => !c)} aria-pressed={sidebarsCollapsed}>
                 {sidebarsCollapsed ? 'Show sidebars' : 'Hide sidebars'}
@@ -350,14 +350,14 @@ function Shell() {
               bottom={(
                 <>
                   {channel?.kind === 'voice' && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 12px', background: 'var(--bg-2)' }}>
-                      <span className="muted" style={{ fontSize: 12 }}>Chat</span>
+                    <div className="cw-chat-picker">
+                      <span className="muted">Chat</span>
                       <select value={chatChannel.id} onChange={(e) => setChatChannelId(e.target.value)} aria-label="Text channel for chat">
                         {textChannels.map((c) => <option key={c.id} value={c.id}>#{c.name}</option>)}
                       </select>
                     </div>
                   )}
-                  <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+                  <div className="cw-fill">
                     <ChatView key={chatChannel.id} channel={chatChannel} />
                   </div>
                 </>
@@ -368,7 +368,7 @@ function Shell() {
             ? <VoiceChannelView key={channel.id} channel={channel} />
             : channel
               ? <ChatView key={channel.id} channel={channel} />
-              : <div style={{ margin: 'auto' }} className="muted">{bundle ? 'Select a channel' : 'Create or join a server to get started'}</div>}
+              : <div className="cw-main-empty muted">{bundle ? 'Select a channel' : 'Create or join a server to get started'}</div>}
       </main>
       {bundle && !hideSidebars && <MemberList serverId={bundle.server.id} members={bundle.members as Member[]} />}
       {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}

@@ -3,7 +3,7 @@
 Rules for every feature thread
 - Read `docs/CONTRACT.md` first. Branch `feat/<feature>` off `main`, open a PR to `main`. Touch ONLY the files you own (listed below). Need a change to shared types, `CONTRACT.md`, stubs you don't own, or a new dependency? Add the dep to your own package.json section and note it in the PR, and ask the integrator for anything else.
 - Replace the stub bodies with real implementations; keep exported names/signatures. `npm run typecheck` must pass.
-- Style: use CSS variables from `styles/theme.css` (dark+light), sleek and modern, no UI libs. Keyboard accessible.
+- Style: use CSS variables from `styles/theme.css` (dark+light), sleek and modern, no UI libs. Keyboard accessible. No hard-coded colours or fonts; skins depend on the tokens (docs/SKINS.md).
 - Security: validate all input server-side, authz every route via `ctx.requireAuth` + membership checks, parameterized SQL, never log secrets or plaintext.
 - Binary routes use `express.raw({type: '*/*', limit})` on that route only (global parser is JSON/64kb).
 

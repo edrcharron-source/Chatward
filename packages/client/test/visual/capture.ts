@@ -74,7 +74,12 @@ async function settle(page: Page) {
 
 async function shot(page: Page, name: string) {
   await settle(page);
-  await page.screenshot({ path: path.join(outDir, `${name}.png`), animations: 'disabled', caret: 'hide' });
+  // Demo GIFs are animated SVGs that CSS can't pause, so their box is painted one flat colour: its size, place and
+  // rounding are still compared, the animation frame is not.
+  await page.screenshot({
+    path: path.join(outDir, `${name}.png`), animations: 'disabled', caret: 'hide',
+    mask: [page.locator('img.media-gif')], maskColor: '#ff00ff',
+  });
   console.log(`  ${name}`);
 }
 

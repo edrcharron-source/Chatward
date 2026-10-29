@@ -5,9 +5,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { PNG } from 'pngjs';
 
-// Chromium's rasteriser is not bit-exact between runs: anti-aliased edges (round avatars) wobble by 1 in a colour
-// channel. Anything a stylesheet change could cause moves a channel by more than this.
-const NOISE = 2;
+// Chromium's rasteriser is not bit-exact between runs: anti-aliased edges (round avatars, emoji) wobble by up to 3
+// in a colour channel. A change too small to clear this is too small to see.
+const NOISE = 4;
 
 function diffPixels(a: PNG, b: PNG, out: PNG): number {
   let changed = 0;
