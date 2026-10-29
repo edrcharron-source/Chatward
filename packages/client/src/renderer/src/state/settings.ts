@@ -5,8 +5,10 @@ export interface Settings {
   skin: string;             // id of the active skin (skins/index.ts); '' or an unknown id = no skin
   /** 'tabs': tab bar, one text and one voice chat (the default). 'classic': the channel sidebar layout. */
   layout: 'tabs' | 'classic';
-  /** tabs layout split view: share of the width the text chat takes, 0.2..0.8 */
+  /** tabs layout split view: share of the width the left tab takes, 0.2..0.8 */
   splitRatio: number;
+  /** tabs layout: the tab bar's order, by tab id; unknown ids are dropped and missing ones go at the end */
+  tabOrder: string[];
   inputDeviceId: string;   // '' = default
   outputDeviceId: string;
   cameraDeviceId: string;
@@ -31,7 +33,7 @@ export interface Settings {
 
 const LS = 'chatward.settings';
 const defaults = {
-  theme: 'dark' as const, skin: 'lebserver', layout: 'tabs' as 'tabs' | 'classic', splitRatio: 0.5, inputDeviceId: '', outputDeviceId: '', cameraDeviceId: '',
+  theme: 'dark' as const, skin: 'lebserver', layout: 'tabs' as 'tabs' | 'classic', splitRatio: 0.5, tabOrder: [] as string[], inputDeviceId: '', outputDeviceId: '', cameraDeviceId: '',
   masterVolume: 1, micGain: 1, noiseSuppression: true, echoCancellation: true,
   messageSounds: true, mutedChannels: [] as string[], voiceJoinLeaveSounds: true, soundVolume: 0.6,
   autoLoadEmbeds: false, linkPreviews: true, userVolumes: {} as Record<string, number>, mutedUsers: {} as Record<string, boolean>,

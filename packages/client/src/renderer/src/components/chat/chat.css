@@ -71,13 +71,15 @@
 .cv-input {
   flex: 1; min-width: 0; resize: none; max-height: 160px; background: transparent; padding: 8px 4px;
   line-height: 1.4;
+  /* the box grows with what you type, up to max-height, then scrolls */
+  field-sizing: content;
 }
 .cv-input:focus { border-color: transparent; }
 .cv-send { padding: 8px 14px; }
 /* In a narrow chat (split view, small window) the message box takes a full row of its own above the buttons. */
 @container cv-composer (max-width: 460px) {
   .cv-row { flex-wrap: wrap; }
-  .cv-input { flex: 1 0 100%; order: -1; }
+  .cv-input { flex: 1 0 100%; order: -1; min-height: calc(3lh + 16px); }
   .cv-send { margin-left: auto; }
 }
 

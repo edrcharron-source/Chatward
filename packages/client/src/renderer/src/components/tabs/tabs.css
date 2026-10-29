@@ -75,3 +75,7 @@
 /* A popped-out tab's window: the tab fills it. */
 .cw-popout { height: 100vh; display: flex; flex-direction: column; background: var(--bg-2); color: var(--text); }
 .cw-popout > * { flex: 1; min-height: 0; }
+
+/* Tabs can be dragged into a new order. */
+.cw-tab[draggable='true'] { cursor: grab; }
+.cw-tab.dragging { opacity: .5; }

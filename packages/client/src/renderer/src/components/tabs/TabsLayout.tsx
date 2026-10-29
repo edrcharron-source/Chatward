@@ -26,10 +26,17 @@ const TABS: Array<{ id: TabId; label: string; icon: PixelIconName }> = [
   { id: 'vault', label: 'Vault', icon: 'vault' },
 ];
 
+/** The tabs in the order the user dragged them into. */
+function orderTabs(saved: unknown): typeof TABS {
+  const ids = Array.isArray(saved) ? saved : [];
+  const known = ids.map((id) => TABS.find((t) => t.id === id)).filter((t): t is (typeof TABS)[number] => !!t);
+  const unique = known.filter((t, i) => known.indexOf(t) === i);
+  return [...unique, ...TABS.filter((t) => !unique.includes(t))];
+}
+
 const MIN_SPLIT = 0.2;
 const MAX_SPLIT = 0.8;
-/** The chat side never gets narrower than this, so there is room to read and type. The voice side's share is 1fr,
- *  so it still fills the rest when the chat side is held at this width. */
+/** In the split view the text chat never gets narrower than this, so there is room to read and type. */
 const TEXT_MIN = 'min(380px, 60%)';
 const clampSplit = (r: number) => Math.min(MAX_SPLIT, Math.max(MIN_SPLIT, r));
 
@@ -51,11 +58,36 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTes
   const callChannelId = useVoice((s) => s.channelId);
   const theaterKey = useVoice((s) => s.theaterKey);
   const join = useVoice((s) => s.join);
-  const [tab, setTab] = useState<TabId>('text');
+  // the last two tabs picked, newest first: the open tab is the first, and the split view shows both
+  const [recent, setRecent] = useState<[TabId, TabId]>(['text', 'voice']);
+  const tab = recent[0];
   const [split, setSplit] = useState(false);
   const [popped, setPopped] = useState<TabId[]>([]);
   const [membersHidden, setMembersHidden] = useState(false);
   const [serverSettingsOpen, setServerSettingsOpen] = useState(false);
+  const savedOrder = useSettings((s) => s.tabOrder);
+  const setSettings = useSettings((s) => s.set);
+  const tabs = orderTabs(savedOrder);
+  const [dragging, setDragging] = useState<TabId | null>(null);
+  // the split view's two tabs sit in the tab bar's order
+  const at = (t: TabId) => tabs.findIndex((x) => x.id === t);
+  const [leftTab, rightTab] = at(recent[0]) < at(recent[1]) ? recent : [recent[1], recent[0]];
+
+  /** Moves tab `t` to sit just before `before` (or to the end), and saves the order. */
+  const moveTab = (t: TabId, before: TabId | null) => {
+    const ids = tabs.map((x) => x.id).filter((id) => id !== t);
+    const at = before ? ids.indexOf(before) : -1;
+    ids.splice(at < 0 ? ids.length : at, 0, t);
+    setSettings({ tabOrder: ids });
+  };
+  const nudgeTab = (t: TabId, by: -1 | 1) => {
+    const ids = tabs.map((x) => x.id);
+    const i = ids.indexOf(t);
+    const j = i + by;
+    if (j < 0 || j >= ids.length) return;
+    [ids[i], ids[j]] = [ids[j], ids[i]];
+    setSettings({ tabOrder: ids });
+  };
 
   const serverId = bundle?.server.id;
   const text = bundle?.channels.find((c) => c.kind === 'text');
@@ -65,9 +97,10 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTes
   const isPopped = (t: TabId) => popped.includes(t);
   const textUnread = text ? unread[text.id] ?? 0 : 0;
 
-  // The chat counts as read while it is on screen: its tab, the split view, or its own window.
-  const textOnScreen = tab === 'text' || split || isPopped('text');
-  const activeId = tab === 'voice' && !split ? voice?.id : text?.id;
+  const shownTabs = new Set<TabId>(split ? recent : [tab]);
+  // The chat counts as read while it is on screen: its tab, one side of the split view, or its own window.
+  const textOnScreen = shownTabs.has('text') || isPopped('text');
+  const activeId = !shownTabs.has('text') && shownTabs.has('voice') ? voice?.id : text?.id;
   useEffect(() => {
     if (!serverId) return;
     const st = useSession.getState();
@@ -116,22 +149,52 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTes
     );
   }
 
-  function selectTab(t: TabId) {
-    setTab(t);
-    // the split view is text and voice together, so picking another tab leaves it
-    if (t !== 'text' && t !== 'voice') setSplit(false);
+  // A click opens just that tab. Shift+click splits the clicked tab with the one already open (in the split view, the
+  // one picked last), so switching tabs never splits by accident.
+  function selectTab(t: TabId, withOpen: boolean) {
+    if (withOpen) {
+      if (t === recent[0]) return;
+      setRecent([t, recent[0]]);
+      setSplit(true);
+      return;
+    }
+    setRecent((r) => (r[0] === t ? r : [t, r[0]]));
+    setSplit(false);
   }
-
-  const shownTabs = new Set<TabId>(split ? ['text', 'voice'] : [tab]);
 
   return (
     <div className="cw-tabs-shell" data-region="shell" data-layout="tabs">
       <header className="cw-tabs-bar" data-region="tabs">
         <strong className="cw-tabs-server">{bundle?.server.name ?? 'Chatward'}</strong>
         <nav className="cw-tabs" aria-label="Views">
-          {TABS.map((t) => (
-            <span key={t.id} className={`cw-tab${shownTabs.has(t.id) ? ' active' : ''}`}>
-              <button type="button" className="cw-tab-main" aria-current={shownTabs.has(t.id) ? 'page' : undefined} onClick={() => selectTab(t.id)}>
+          {tabs.map((t) => (
+            <span
+              key={t.id}
+              className={`cw-tab${shownTabs.has(t.id) ? ' active' : ''}${dragging === t.id ? ' dragging' : ''}`}
+              draggable
+              title="Shift+click to show beside the open tab. Drag to reorder (or Alt + arrow keys)"
+              onDragStart={(e) => { setDragging(t.id); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', t.id); }}
+              onDragEnd={() => setDragging(null)}
+              onDragOver={(e) => { if (dragging) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; } }}
+              onDrop={(e) => {
+                e.preventDefault();
+                if (!dragging || dragging === t.id) return;
+                // dropped on the right half of a tab: go after it
+                const r = e.currentTarget.getBoundingClientRect();
+                const after = e.clientX > r.left + r.width / 2;
+                const i = tabs.findIndex((x) => x.id === t.id);
+                moveTab(dragging, after ? tabs[i + 1]?.id ?? null : t.id);
+                setDragging(null);
+              }}
+            >
+              <button type="button" className="cw-tab-main" aria-current={shownTabs.has(t.id) ? 'page' : undefined}
+                aria-keyshortcuts="Alt+ArrowLeft Alt+ArrowRight"
+                onClick={(e) => selectTab(t.id, e.shiftKey)}
+                onKeyDown={(e) => {
+                  if (!e.altKey || (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight')) return;
+                  e.preventDefault();
+                  nudgeTab(t.id, e.key === 'ArrowLeft' ? -1 : 1);
+                }}>
                 <span aria-hidden="true">[</span>
                 <PixelIcon name={t.icon} size={14} />
                 <span>{t.label}</span>
@@ -158,7 +221,7 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTes
         </nav>
         <div className="cw-tabs-tools">
           <button type="button" className={`cw-tool${split ? ' active' : ''}`} aria-pressed={split}
-            title="Text on the left, voice on the right" onClick={() => { setSplit((s) => !s); if (tab !== 'voice') setTab('text'); }}>
+            title="Show the open tab beside the one before it (or Shift+click a tab)" onClick={() => setSplit((s) => !s)}>
             <PixelIcon name="theater" size={14} />
             <span>Split</span>
           </button>
@@ -184,7 +247,10 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTes
 
       <main className="cw-tabs-main" data-region="main">
         {split
-          ? <SideBySide left={slot('text')} right={slot('voice')} />
+          ? <SideBySide
+              left={{ id: leftTab, label: label(leftTab), node: slot(leftTab) }}
+              right={{ id: rightTab, label: label(rightTab), node: slot(rightTab) }}
+            />
           : <div className="cw-tab-pane">{slot(tab)}</div>}
       </main>
 
@@ -223,7 +289,10 @@ function Empty({ children }: { children: ReactNode }) {
 }
 
 /** Text on the left, voice on the right, with a divider to drag (or arrow keys) to share the width. */
-function SideBySide({ left, right }: { left: ReactNode; right: ReactNode }) {
+interface SidePane { id: TabId; label: string; node: ReactNode }
+
+function SideBySide({ left, right }: { left: SidePane; right: SidePane }) {
+  // the saved ratio is the left side's share of the width
   const saved = useSettings((s) => s.splitRatio);
   const set = useSettings((s) => s.set);
   const [ratio, setRatio] = useState(() => clampSplit(saved));
@@ -247,14 +316,16 @@ function SideBySide({ left, right }: { left: ReactNode; right: ReactNode }) {
     set({ splitRatio: next });
   };
 
+  // Both shares are at least 1fr, so when one side is held at its minimum width the other still fills the rest.
+  const col = (p: SidePane, share: number) => `minmax(${p.id === 'text' ? TEXT_MIN : '0px'}, ${Math.max(1, share)}fr)`;
   return (
-    <div className="cw-split" ref={box} style={{ gridTemplateColumns: `minmax(${TEXT_MIN}, ${ratio / (1 - ratio)}fr) 8px minmax(0, 1fr)` }}>
-      <section className="cw-split-pane" aria-label="Text">{left}</section>
+    <div className="cw-split" ref={box} style={{ gridTemplateColumns: `${col(left, ratio / (1 - ratio))} 8px ${col(right, (1 - ratio) / ratio)}` }}>
+      <section key={left.id} className="cw-split-pane" aria-label={left.label}>{left.node}</section>
       <div
         className="cw-split-divider"
         role="separator"
         aria-orientation="vertical"
-        aria-label="Resize text and voice"
+        aria-label={`Resize ${left.label} and ${right.label}`}
         aria-valuemin={MIN_SPLIT * 100}
         aria-valuemax={MAX_SPLIT * 100}
         aria-valuenow={Math.round(ratio * 100)}
@@ -265,7 +336,7 @@ function SideBySide({ left, right }: { left: ReactNode; right: ReactNode }) {
         onLostPointerCapture={save}
         onKeyDown={onKey}
       />
-      <section className="cw-split-pane" aria-label="Voice">{right}</section>
+      <section key={right.id} className="cw-split-pane" aria-label={right.label}>{right.node}</section>
     </div>
   );
 }
