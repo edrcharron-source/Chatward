@@ -52,7 +52,7 @@ export default function MemberList({ serverId, members }: { serverId: string; me
   const offline = members.filter((m) => statusOf(m) === 'offline');
 
   return (
-    <aside className="cw-members" aria-label="Members">
+    <aside className="cw-members" data-region="members" aria-label="Members">
       {online.length > 0 && <Group title="Online" list={online} statusOf={statusOf} actions={actions} />}
       {offline.length > 0 && <Group title="Offline" list={offline} statusOf={statusOf} actions={actions} />}
       {error && <p className="cw-error" role="alert">{error}</p>}
