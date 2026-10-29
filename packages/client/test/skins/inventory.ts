@@ -49,6 +49,7 @@ export const FEATURES: Feature[] = [
   { id: 'emoji-picker.dialog', what: 'emoji picker opens', find: (p) => p.getByRole('dialog', { name: 'Emoji picker' }) },
   { id: 'gif-picker.dialog', what: 'GIF picker opens', find: (p) => p.getByRole('dialog', { name: 'GIF picker' }) },
   { id: 'gif-picker.search', what: 'GIF search box', find: (p) => p.getByLabel('Search GIFs', { exact: true }) },
+  { id: 'gif-picker.add', what: "add a GIF to the server's GIFs", find: (p) => p.getByRole('button', { name: '+ Add GIF', exact: true }) },
   { id: 'server-settings.dialog', what: 'server settings opens', find: (p) => p.getByRole('dialog') },
   { id: 'settings.dialog', what: 'app settings opens', find: (p) => settings(p) },
   ...settingsTabs,

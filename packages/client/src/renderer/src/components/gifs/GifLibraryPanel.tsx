@@ -78,7 +78,7 @@ export default function GifLibraryPanel({ serverId, onPick }: { serverId: string
           type="search"
           className="media-search gif-library-search"
           placeholder="Search names and tags"
-          aria-label="Search the server's GIFs"
+          aria-label="Search GIFs"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           autoFocus
