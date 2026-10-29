@@ -21,8 +21,9 @@ export default function ProfileTrigger({ user, className, children }: {
   useLayoutEffect(() => {
     if (!open || !btn.current) return;
     const r = btn.current.getBoundingClientRect();
-    const left = Math.min(Math.max(GAP, r.left), window.innerWidth - CARD_WIDTH - GAP);
-    const top = r.bottom + GAP + 340 > window.innerHeight ? Math.max(GAP, r.top - 340 - GAP) : r.bottom + GAP;
+    const view = btn.current.ownerDocument.defaultView ?? window;
+    const left = Math.min(Math.max(GAP, r.left), view.innerWidth - CARD_WIDTH - GAP);
+    const top = r.bottom + GAP + 340 > view.innerHeight ? Math.max(GAP, r.top - 340 - GAP) : r.bottom + GAP;
     setPos({ position: 'fixed', left, top, width: CARD_WIDTH, zIndex: 1000 });
   }, [open]);
 
@@ -33,11 +34,12 @@ export default function ProfileTrigger({ user, className, children }: {
       if (!card.current?.contains(t) && !btn.current?.contains(t)) setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
-    document.addEventListener('mousedown', onDown);
-    document.addEventListener('keydown', onKey);
+    const doc = btn.current?.ownerDocument ?? document;
+    doc.addEventListener('mousedown', onDown);
+    doc.addEventListener('keydown', onKey);
     return () => {
-      document.removeEventListener('mousedown', onDown);
-      document.removeEventListener('keydown', onKey);
+      doc.removeEventListener('mousedown', onDown);
+      doc.removeEventListener('keydown', onKey);
     };
   }, [open]);
 
