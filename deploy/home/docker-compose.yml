@@ -29,7 +29,7 @@ services:
     image: livekit/livekit-server:v1.13.11
     command: '--config /etc/livekit.yaml --keys "${LIVEKIT_API_KEY:?set LIVEKIT_API_KEY in deploy/home/.env}: ${LIVEKIT_API_SECRET:?set LIVEKIT_API_SECRET in deploy/home/.env}"'
     volumes: ["./livekit.yaml:/etc/livekit.yaml:ro"]
-    ports: ["${LAN_IP}:7881:7881", "${LAN_IP}:7882:7882/udp"]   # LAN address only: the router forwards here
+    ports: ["7881:7881", "50000-50100:50000-50100/udp"]
     restart: unless-stopped
     logging: *logging
     deploy: { resources: { limits: { cpus: "4", memory: 2G } } }

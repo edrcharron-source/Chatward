@@ -7,7 +7,7 @@ Written after the port review in #246. Run these on lebserver yourself (they nee
 | Port | Service | Who may reach it |
 |---|---|---|
 | 443/tcp | Chatward (Caddy) | Internet |
-| 7881/tcp, 7882/udp | LiveKit voice | Internet (after #286; before it, 50000-50100/udp instead of 7882) |
+| 7881/tcp, 7882/udp | LiveKit voice | Internet (after the single-port change #299; before it, 50000-50100/udp instead of 7882) |
 | 22/tcp | SSH | LAN and Tailscale only |
 | 80/tcp | Pelican panel (nginx) | LAN and Tailscale only |
 | 8080/tcp, 2022/tcp | Pelican Wings API and SFTP | LAN and Tailscale only |
@@ -26,7 +26,7 @@ LAN is `192.168.1.0/24`. Tailscale is `100.64.0.0/10` (or the `tailscale0` inter
 Docker publishes ports by writing its own iptables rules that run before ufw's. A rule like `ufw deny 11434` does **nothing** for a port published by a container (Ollama, LiveKit, Caddy, Portainer, TeslaMate). Host services (sshd, nginx, smbd, Wings if it runs on the host) are filtered normally.
 
 For container ports, use one of these:
-1. **Bind them to the right address** in the compose file (best). Example: `192.168.1.228:11434:11434`, or `127.0.0.1:11434:11434` if only the box itself needs it. #286 does this for LiveKit.
+1. **Bind them to the right address** in the compose file (best). Example: `192.168.1.228:11434:11434`, or `127.0.0.1:11434:11434` if only the box itself needs it. #299 does this for LiveKit.
 2. **Filter in the `DOCKER-USER` chain**, which Docker leaves alone. Example that blocks everything but the LAN from reaching container port 11434:
    ```
    sudo iptables -I DOCKER-USER -p tcp --dport 11434 ! -s 192.168.1.0/24 -j DROP
@@ -90,7 +90,7 @@ If anything breaks and you can't tell why, `sudo ufw disable` puts you back wher
 | Port | Container | Fix |
 |---|---|---|
 | 11434 | Ollama | Bind to `127.0.0.1` or the Docker network once LebBot talks to it internally. Until then, `DOCKER-USER` rule above |
-| 7881, 7882 | LiveKit | Bound to the LAN address by #286, so Tailscale and IPv6 no longer reach them |
+| 7881, 7882 | LiveKit | Bound to the LAN address by #299, so Tailscale and IPv6 no longer reach them |
 | 9443 | Portainer | Already `127.0.0.1` only |
 | 3001, 4000 | TeslaMate | Bind to the Tailscale address if you don't want LAN access |
 
@@ -100,7 +100,7 @@ ufw can't protect you from a wrong port forward. In UniFi, forward only:
 
 - 443/tcp to 192.168.1.228
 - 7881/tcp to 192.168.1.228 (check it is TCP, not UDP)
-- 7882/udp to 192.168.1.228 (after #286; replaces 50000-50100/udp)
+- 7882/udp to 192.168.1.228 (after the single-port PR; replaces 50000-50100/udp)
 
 Also check that **no** forward exists for 22, 80, 8080, 2022, 11434, 7778, and that remote access to the gateway itself is off on the WAN side (test from your phone on cellular).
 

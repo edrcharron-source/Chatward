@@ -8,7 +8,7 @@ DNS-01 (so port 80 stays with the host's nginx), the database sits on the NVMe, 
 | Container | Listens on the host | Forwarded on the router |
 |---|---|---|
 | caddy (HTTPS, API, `/ws`, `/rtc`, `/updates`) | `LAN_IP:443` | 443/tcp |
-| livekit (voice, video, screen share) | 7881/tcp, 7882/udp | 7881/tcp, 7882/udp |
+| livekit (voice, video, screen share) | 7881/tcp, 50000-50100/udp | 7881/tcp, 50000-50100/udp |
 | server (Node) | none (Docker network only) | never |
 
 Never forward 22, 80, 3000, 7880, Samba, Jellyfin, Ollama, Grafana or Portainer.
@@ -23,7 +23,7 @@ Never forward 22, 80, 3000, 7880, Samba, Jellyfin, Ollama, Grafana or Portainer.
 4. **Router port forwards** (UniFi → Settings → Routing → Port Forwarding), all to `192.168.1.228`, from any source:
    - `Chatward HTTPS` 443 TCP → 443
    - `Chatward voice TCP` 7881 TCP → 7881
-   - `Chatward voice UDP` 7882 UDP → 7882
+   - `Chatward voice UDP` 50000-50100 UDP → 50000-50100
 
 ## 2. Install
 On the box (SSH over Tailscale):
