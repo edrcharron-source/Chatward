@@ -1,8 +1,4 @@
-import type { Channel, Member } from '@chatward/shared';
-
-export function firstTextId(channels: Channel[]): string | null {
-  return channels.find((c) => c.kind === 'text')?.id ?? null;
-}
+import type { Member } from '@chatward/shared';
 
 export function isAdmin(member: Member | undefined): boolean {
   return member?.role === 'owner' || member?.role === 'admin';
