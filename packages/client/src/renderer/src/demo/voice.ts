@@ -1,15 +1,18 @@
 // Demo voice call: no LiveKit, no token, no server. The real mic is looped back to the speakers,
-// the other occupants of the channel are synthesized voices, and camera/screen are local previews.
+// the other occupants of the channel take turns playing
+// short bundled recordings, and camera/screen are local previews.
 // Nothing is published anywhere. Outgoing audio stays inside voiceAudio, so mute, deafen, master
 // volume, output device and the soundboard behave as they do in a real call.
 import { useSession } from '../state/session';
 import { useSettings } from '../state/settings';
 import { attachRemote, detachRemote, openMic, startPlayback } from '../state/voiceAudio';
+import { VOICE_CLIPS } from './voiceClips';
 
 const SELF_KEY = 'demo:self';
 const TONE_USER = 'demo:tone';
 
 interface Bot {
+  say: (clip: AudioBuffer, onDone: () => void) => void;
   stop: () => void;
 }
 
@@ -24,6 +27,9 @@ interface Call {
   loopback: boolean;
   onSpeaking: (ids: string[]) => void;
   unsubscribe: () => void;
+  clips: AudioBuffer[];
+  lastClip: number;
+  chatterTimer?: number;
 }
 
 let call: Call | null = null;
@@ -38,74 +44,90 @@ function publishSpeaking(): void {
   call?.onSpeaking([...talking]);
 }
 
-/** A synthesized, voice-like source: a pitch-wandering buzz through two formant-ish bands, in bursts. */
+/** One source per other occupant. It stays silent until the chatter loop hands it a clip. */
 function startBot(userId: string, ctx: AudioContext): Bot {
   const key = `demo:bot:${userId}`;
   const dest = ctx.createMediaStreamDestination();
-  const env = ctx.createGain();
-  env.gain.value = 0;
-  env.connect(dest);
-
-  const osc = ctx.createOscillator();
-  osc.type = 'sawtooth';
-  osc.frequency.value = 95 + Math.random() * 70;
-  const wobble = ctx.createOscillator();
-  wobble.frequency.value = 4 + Math.random() * 3;
-  const wobbleDepth = ctx.createGain();
-  wobbleDepth.gain.value = 14;
-  wobble.connect(wobbleDepth);
-  wobbleDepth.connect(osc.frequency);
-
-  const low = ctx.createBiquadFilter();
-  low.type = 'bandpass';
-  low.frequency.value = 700;
-  low.Q.value = 4;
-  const high = ctx.createBiquadFilter();
-  high.type = 'bandpass';
-  high.frequency.value = 1200;
-  high.Q.value = 6;
-  const highLevel = ctx.createGain();
-  highLevel.gain.value = 0.6;
-  osc.connect(low);
-  osc.connect(high);
-  high.connect(highLevel);
-  low.connect(env);
-  highLevel.connect(env);
-
-  osc.start();
-  wobble.start();
+  const level = ctx.createGain();
+  level.gain.value = 0.9;
+  level.connect(dest);
   attachRemote(key, userId, dest.stream.getAudioTracks()[0]);
 
-  let syllables: number | undefined;
-  let timer: number | undefined;
-  const talk = () => {
-    talking.add(userId);
-    publishSpeaking();
-    env.gain.setTargetAtTime(0.2, ctx.currentTime, 0.03);
-    syllables = window.setInterval(() => {
-      env.gain.setTargetAtTime(0.08 + Math.random() * 0.16, ctx.currentTime, 0.04);
-    }, 170);
-    timer = window.setTimeout(hush, 1500 + Math.random() * 2500);
-  };
-  const hush = () => {
-    window.clearInterval(syllables);
-    talking.delete(userId);
-    publishSpeaking();
-    env.gain.setTargetAtTime(0, ctx.currentTime, 0.05);
-    timer = window.setTimeout(talk, 900 + Math.random() * 2600);
-  };
-  timer = window.setTimeout(talk, 500 + Math.random() * 1500);
-
+  let playing: AudioBufferSourceNode | null = null;
+  let done: (() => void) | null = null;
   return {
+    say: (clip, onDone) => {
+      const src = ctx.createBufferSource();
+      src.buffer = clip;
+      src.connect(level);
+      playing = src;
+      done = onDone;
+      talking.add(userId);
+      publishSpeaking();
+      src.onended = () => {
+        if (playing !== src) return;
+        playing = null;
+        done = null;
+        talking.delete(userId);
+        publishSpeaking();
+        onDone();
+      };
+      src.start();
+    },
     stop: () => {
-      window.clearTimeout(timer);
-      window.clearInterval(syllables);
+      if (playing) {
+        playing.onended = null;
+        playing.stop();
+        playing = null;
+      }
       talking.delete(userId);
-      osc.stop();
-      wobble.stop();
       detachRemote(key);
+      // a chatter leaving mid-clip hands the turn back to the loop
+      done?.();
+      done = null;
     },
   };
+}
+
+/** Decodes the bundled recordings for this call's AudioContext. A clip that fails to decode is skipped. */
+async function loadClips(ctx: AudioContext): Promise<AudioBuffer[]> {
+  const decoded = await Promise.all(VOICE_CLIPS.map(async (clip) => {
+    try {
+      return await ctx.decodeAudioData(base64Bytes(clip));
+    } catch {
+      return null;
+    }
+  }));
+  return decoded.filter((b): b is AudioBuffer => b !== null);
+}
+
+function base64Bytes(b64: string): ArrayBuffer {
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes.buffer;
+}
+
+/** After a random pause, a random chatter plays a random recording (never the same one twice in a row), then repeat. */
+function scheduleChatter(delayMs = 1500 + Math.random() * 4500): void {
+  const c = call;
+  if (!c) return;
+  window.clearTimeout(c.chatterTimer);
+  c.chatterTimer = window.setTimeout(() => {
+    if (call !== c) return;
+    const bots = [...c.bots.values()];
+    const clips = c.clips;
+    if (!bots.length || !clips.length) {
+      scheduleChatter();
+      return;
+    }
+    let pick = Math.floor(Math.random() * clips.length);
+    if (clips.length > 1 && pick === c.lastClip) pick = (pick + 1 + Math.floor(Math.random() * (clips.length - 1))) % clips.length;
+    c.lastClip = pick;
+    bots[Math.floor(Math.random() * bots.length)].say(clips[pick], () => {
+      if (call === c) scheduleChatter();
+    });
+  }, delayMs);
 }
 
 /** Short rising (join) or falling (leave) two-note chime, played through the call's output path. */
@@ -179,12 +201,17 @@ export const demoVoice = {
 
     call = {
       channelId, selfId, ctx, mic, bots: new Map(), camera: null, screen: null,
-      loopback: opts.loopback, onSpeaking: opts.onSpeaking, unsubscribe,
+      loopback: opts.loopback, onSpeaking: opts.onSpeaking, unsubscribe, clips: [], lastClip: -1,
     };
     setLoopbackPath(opts.loopback);
     for (const id of useSession.getState().voiceOccupants[channelId] ?? []) {
       if (id !== selfId) addBot(id);
     }
+    const c = call;
+    void loadClips(ctx).then((clips) => {
+      c.clips = clips;
+    });
+    scheduleChatter(600 + Math.random() * 1200);
   },
 
   leave(): void {
@@ -192,6 +219,7 @@ export const demoVoice = {
     if (!c) return;
     call = null;
     c.unsubscribe();
+    window.clearTimeout(c.chatterTimer);
     for (const bot of c.bots.values()) bot.stop();
     talking.clear();
     stopTracks(c.camera);

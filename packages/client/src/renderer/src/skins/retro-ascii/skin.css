@@ -55,6 +55,10 @@
 :root[data-skin='retro-ascii'] button.danger { background: transparent; color: var(--danger); box-shadow: inset 0 0 0 1px var(--danger); }
 :root[data-skin='retro-ascii'] button.danger:hover { background: var(--danger); color: var(--danger-text); }
 
+/* Names and avatars that open a profile are buttons too, but read as text: no outline and no hover box. */
+:root[data-skin='retro-ascii'] button.profile-trigger,
+:root[data-skin='retro-ascii'] button.profile-trigger:hover { box-shadow: none; background: transparent; color: inherit; }
+
 /* Fields get a dark well and an amber rule, with a one-pixel glow on focus. Their border is already 1px in the base. */
 :root[data-skin='retro-ascii'] input:not([type='checkbox']):not([type='radio']):not([type='range']),
 :root[data-skin='retro-ascii'] textarea,
@@ -82,9 +86,6 @@
 /* Dashed section rules under headers. The base already has a 1px bottom border there. */
 :root[data-skin='retro-ascii'] .cw-channels-head,
 :root[data-skin='retro-ascii'] .cv-header { border-bottom-style: dashed; }
-
-/* Avatars take the amber tint so photos sit in the palette. */
-:root[data-skin='retro-ascii'] .avatar { filter: sepia(.7) saturate(1.1); }
 
 /* ASCII accents. The banner and the cursor are generated text placed outside the flow (absolute), so the empty
    state keeps its size and position. */

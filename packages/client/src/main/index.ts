@@ -90,6 +90,9 @@ function guardWebContents(wc: Electron.WebContents) {
 // Pop-out windows by the name the page opened them with, per opening page. A popped-out tab runs no code of its own,
 // so the main window's page works its title bar buttons and names the window it means (components/titlebar).
 const childWindows = new WeakMap<Electron.WebContents, Map<string, BrowserWindow>>();
+// Every window's page that belongs to the app: the main window and the pop-outs it opened (a popped-out tab is
+// about:blank, so its own address doesn't say it is ours).
+const appWindowContents = new WeakSet<Electron.WebContents>();
 
 function controlledWindow(sender: Electron.WebContents, target: unknown): BrowserWindow | null {
   if (typeof target === 'string' && target) {
@@ -116,12 +119,14 @@ function createWindow() {
     },
   });
   guardWebContents(win.webContents);
+  appWindowContents.add(win.webContents);
   // Once the user looks at the window, the taskbar flash has done its job, so stop it.
   win.on('focus', () => win.flashFrame(false));
   // Child windows (the watch-party pop-out) don't inherit the handlers above, so guard them too.
   // They live on this window's page, so they close with it.
   win.webContents.on('did-create-window', (child, { frameName }) => {
     guardWebContents(child.webContents);
+    appWindowContents.add(child.webContents);
     if (frameName) {
       const named = childWindows.get(win.webContents) ?? new Map<string, BrowserWindow>();
       childWindows.set(win.webContents, named);
@@ -170,8 +175,12 @@ app.whenReady().then(() => {
 
   // Permissions: only media (mic/camera/screen) + clipboard-sanitized-write, and only for the app's own page.
   // Frames embedded in messages (YouTube, X previews) must not get the microphone, camera or screen.
-  session.defaultSession.setPermissionRequestHandler((_wc, perm, cb, details) =>
-    cb(['media', 'display-capture', 'clipboard-sanitized-write', 'fullscreen'].includes(perm) && isAppPage(details.requestingUrl)));
+  // Fullscreen is the exception: a YouTube embed's own fullscreen button asks from its frame, so it is allowed for
+  // any frame inside the app's window (the iframe's allow="fullscreen" already limits which frames can ask).
+  session.defaultSession.setPermissionRequestHandler((wc, perm, cb, details) => {
+    if (perm === 'fullscreen') return cb(isAppPage(details.requestingUrl) || appWindowContents.has(wc));
+    cb(['media', 'display-capture', 'clipboard-sanitized-write'].includes(perm) && isAppPage(details.requestingUrl));
+  });
 
   // Screen share: renderer first calls chatward.getScreenSources(), user picks, then
   // chatward.selectScreenSource(id) and getDisplayMedia() resolves with that source.
