@@ -10,7 +10,6 @@ import { forgetChatChannels, useChat } from './state/chat';
 import { accountKey, adoptLegacyIfOwned, initDevice, syncChannelKeys, handleEnvelope, handleMemberLeave, forgetChannels } from './crypto';
 import { installNotifications } from './notify/notify';
 import AuthScreen from './components/auth/AuthScreen';
-import ServerSidebar from './components/servers/ServerSidebar';
 import ChannelList from './components/servers/ChannelList';
 import MemberList from './components/servers/MemberList';
 import ChatView from './components/chat/ChatView';
@@ -341,7 +340,6 @@ function Shell() {
   }
   return (
     <div className="cw-shell" data-region="shell">
-      <ServerSidebar onReload={loadServers} />
       {!hideSidebars && <ChannelList onOpenSettings={() => setSettingsOpen(true)} onReload={loadServers} />}
       <main className="cw-main" data-region="main">
         {testOpen ? <TestConsole onClose={() => setTestOpen(false)} /> : <>
@@ -387,7 +385,7 @@ function Shell() {
             ? <VoiceChannelView key={channel.id} channel={channel} />
             : channel
               ? <ChatView key={channel.id} channel={channel} />
-              : <div className="cw-main-empty muted">{bundle ? 'Select a channel' : 'Create or join a server to get started'}</div>}
+              : <div className="cw-main-empty muted">{bundle ? 'Select a channel' : 'Waiting for the server…'}</div>}
         </>}
       </main>
       {bundle && !hideSidebars && <MemberList serverId={bundle.server.id} members={bundle.members as Member[]} />}

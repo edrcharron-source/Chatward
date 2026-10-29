@@ -1,14 +1,17 @@
-import { useState, type FormEvent } from 'react';
-import { LIMITS, type Member } from '@chatward/shared';
+import { useEffect, useState, type FormEvent } from 'react';
+import { LIMITS, type Member, type User } from '@chatward/shared';
 import { api } from '../../api/http';
-import { isDemo } from '../../demo';
 import { useSession } from '../../state/session';
+import Avatar from './Avatar';
 import Dialog from './Dialog';
 import { errorText } from './util';
 
+type TurnedOff = { user: User; bannedAt: number };
+
 /**
- * Server-wide settings. Everyone can leave. Admins can rename. The owner can make admins, hand the server to another member, and delete the server.
- * Removing people is handled elsewhere in the member list.
+ * Settings for the one server. Admins can rename it and turn removed accounts back on. The owner can make admins and
+ * issue password reset codes. Removing people is handled in the member list; new people sign up with a code from
+ * `chatward invite` on the server.
  */
 export default function ServerSettingsDialog({ serverId, onClose, onReload }: { serverId: string; onClose: () => void; onReload: () => Promise<void> }) {
   const bundle = useSession((s) => s.servers.find((b) => b.server.id === serverId));
@@ -16,8 +19,19 @@ export default function ServerSettingsDialog({ serverId, onClose, onReload }: { 
   const [name, setName] = useState(bundle?.server.name ?? '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [transferTo, setTransferTo] = useState('');
   const [issued, setIssued] = useState<{ name: string; code: string; expiresAt: number } | null>(null);
+  const [turnedOff, setTurnedOff] = useState<TurnedOff[]>([]);
+  const myRoleNow = bundle?.members.find((m) => m.user.id === me?.id)?.role;
+  const canModerate = myRoleNow === 'owner' || myRoleNow === 'admin';
+
+  async function loadTurnedOff() {
+    try {
+      setTurnedOff((await api.get<{ bans: TurnedOff[] }>(`/api/servers/${serverId}/bans`)).bans);
+    } catch (err) {
+      setError(errorText(err));
+    }
+  }
+  useEffect(() => { if (canModerate) void loadTurnedOff(); }, [serverId, canModerate]);
 
   if (!bundle) return null;
   const serverName = bundle.server.name;
@@ -63,30 +77,11 @@ export default function ServerSettingsDialog({ serverId, onClose, onReload }: { 
     });
   }
 
-  async function transfer() {
-    const target = bundle?.members.find((m) => m.user.id === transferTo);
-    if (!target) return;
-    if (!window.confirm(`Make ${target.user.displayName} the owner of ${serverName}? You will become an admin and cannot undo this yourself.`)) return;
+  async function turnBackOn(user: User) {
     await run(async () => {
-      await api.post(`/api/servers/${serverId}/transfer`, { userId: target.user.id });
-      setTransferTo('');
+      await api.del(`/api/servers/${serverId}/bans/${encodeURIComponent(user.id)}`);
+      await loadTurnedOff();
     });
-  }
-
-  async function leave() {
-    if (!window.confirm(`Leave ${serverName}? You will need a new invite to come back.`)) return;
-    await run(async () => {
-      await api.post(`/api/servers/${serverId}/leave`, {});
-      useSession.getState().removeServer(serverId);
-    }, true);
-  }
-
-  async function remove() {
-    if (!window.confirm(`Delete ${serverName}? All channels and messages are deleted for everyone. This cannot be undone.`)) return;
-    await run(async () => {
-      await api.del(`/api/servers/${serverId}`);
-      useSession.getState().removeServer(serverId);
-    }, true);
   }
 
   const others = bundle.members.filter((m) => m.role !== 'owner');
@@ -127,7 +122,7 @@ export default function ServerSettingsDialog({ serverId, onClose, onReload }: { 
           <ul className="cw-role-list">
             {others.map((m) => (
               <li key={m.user.id}>
-                <span>{m.user.displayName} <span className="muted">@{m.user.username}</span></span>
+                <span>{m.user.displayName}</span>
                 <select value={m.role} disabled={busy} onChange={(e) => void setRole(m, e.target.value as 'admin' | 'member')} aria-label={`Role for ${m.user.displayName}`}>
                   <option value="member">Member</option>
                   <option value="admin">Admin</option>
@@ -148,7 +143,7 @@ export default function ServerSettingsDialog({ serverId, onClose, onReload }: { 
           <ul className="cw-role-list">
             {others.map((m) => (
               <li key={m.user.id}>
-                <span>{m.user.displayName} <span className="muted">@{m.user.username}</span></span>
+                <span>{m.user.displayName}</span>
                 <button type="button" disabled={busy} onClick={() => void issueResetCode(m)} aria-label={`Issue reset code for ${m.user.displayName}`}>Reset code</button>
               </li>
             ))}
@@ -161,35 +156,24 @@ export default function ServerSettingsDialog({ serverId, onClose, onReload }: { 
         </section>
       )}
 
-      {isOwner && (
-        <section aria-label="Transfer ownership">
-          <h3>Transfer ownership</h3>
-          <p className="cw-hint">Give this server to another member. You become an admin, and only the new owner can delete the server or transfer it again.</p>
-          <div className="cw-dialog-actions">
-            <select value={transferTo} disabled={busy || others.length === 0} onChange={(e) => setTransferTo(e.target.value)} aria-label="New owner">
-              <option value="">Choose a member</option>
-              {others.map((m) => (
-                <option key={m.user.id} value={m.user.id}>{m.user.displayName} (@{m.user.username})</option>
-              ))}
-            </select>
-            <button type="button" onClick={() => void transfer()} disabled={busy || !transferTo}>Transfer ownership</button>
-          </div>
+      {isAdmin && (
+        <section aria-label="Removed accounts">
+          <h3>Removed accounts</h3>
+          <p className="cw-hint">People removed from the member list can't sign in. Turn an account back on to let them in again.</p>
+          {turnedOff.length === 0 && <p className="cw-hint">Nobody has been removed.</p>}
+          <ul className="cw-role-list">
+            {turnedOff.map((b) => (
+              <li key={b.user.id}>
+                <span className="cw-ban-user"><Avatar user={b.user} size={24} />{b.user.displayName}</span>
+                <button type="button" disabled={busy} onClick={() => void turnBackOn(b.user)}>Turn back on</button>
+              </li>
+            ))}
+          </ul>
         </section>
       )}
 
       {error && <p className="cw-error" role="alert">{error}</p>}
-
-      {/* The offline demo keeps its one server, so the owner gets no delete button there. */}
-      {!(isOwner && isDemo()) && (
-        <div className="cw-dialog-actions">
-          {isOwner ? (
-            <button type="button" className="danger" onClick={() => void remove()} disabled={busy}>Delete server</button>
-          ) : (
-            <button type="button" className="danger" onClick={() => void leave()} disabled={busy}>Leave server</button>
-          )}
-        </div>
-      )}
-      {isOwner && !isDemo() && <p className="cw-hint">The owner cannot leave. Deleting the server is the only way to close it.</p>}
+      <p className="cw-hint">To add someone, run <code>chatward invite</code> on the server and send them the code it prints.</p>
     </Dialog>
   );
 }
