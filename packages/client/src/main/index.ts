@@ -11,11 +11,12 @@ import { fitWindow } from './windowBounds';
 // The page is served from app:// (not file://) so its Content-Security-Policy header can name the server.
 protocol.registerSchemesAsPrivileged([{ scheme: 'app', privileges: { standard: true, secure: true, corsEnabled: true } }]);
 
-// A test build installs next to the real app as "Chatward Test", so it keeps its own settings, keys and sign-ins.
-// This runs before anything reads userData.
+// A test build installs next to the real app as "Chatward Test" but shares its userData folder. Keys in secure-store.json
+// are encrypted with a key kept in that folder's Local State, so a separate folder can't read the real app's keys and
+// every channel stays locked. This runs before anything reads userData.
 if (__CHATWARD_BUILD__.channel === 'test') {
   app.setName('Chatward Test');
-  app.setPath('userData', join(app.getPath('appData'), 'Chatward Test'));
+  app.setPath('userData', join(app.getPath('appData'), 'Chatward'));
 }
 
 const KLIPY_KEY_STORE = 'klipyApiKey';
@@ -42,21 +43,6 @@ function writeStore(s: Record<string, string>) {
   writeFileSync(tmp, JSON.stringify(s), { mode: 0o600 });
   if (readStoreFile(file)) copyFileSync(file, storeBackupFile());
   renameSync(tmp, file);
-}
-
-// The test build keeps its own userData folder, so on first run it has none of the keys the installed Chatward made.
-// Copy those once, replacing any fresh keys this build made meanwhile (still encrypted; safeStorage decrypts them for the same Windows user), or every channel stays locked.
-const IMPORT_MARKER = 'imported.from.chatward';
-function importKeysFromInstalledApp() {
-  if (__CHATWARD_BUILD__.channel !== 'test') return;
-  const own = readStore();
-  if (own[IMPORT_MARKER]) return;
-  const installed = readStoreFile(join(app.getPath('appData'), 'Chatward', 'secure-store.json'));
-  if (installed) {
-    for (const [k, v] of Object.entries(installed)) if (k.startsWith('crypto.')) own[k] = v;
-  }
-  own[IMPORT_MARKER] = '1';
-  writeStore(own);
 }
 
 const readSecret = (key: string): string | null => {
@@ -173,7 +159,6 @@ app.whenReady().then(() => {
   sendReferrerForYouTube();
   setupUpdater();
 
-  importKeysFromInstalledApp();
   ipcMain.handle('secure:get', (_e, key: string) => readSecret(key));
   // Demo-only internet access. Both run here so the renderer's CSP and CORS never apply.
   ipcMain.handle('demo:linkpreview', (_e, url: string) => fetchLinkPreview(String(url)));

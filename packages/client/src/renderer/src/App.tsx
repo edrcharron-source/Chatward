@@ -294,7 +294,9 @@ function Shell() {
       if (!stillWanted()) return;
       for (const [cid, ids] of Object.entries(channels)) useSession.getState().setVoiceOccupants(cid, ids);
     }
-    await syncChannelKeys(servers);
+    // Not awaited: catching up MLS groups can take minutes (a Commit post waits up to 90 s), and the app must open meanwhile.
+    // Messages show "Waiting for this channel's key" until the sync lands. A failed sync schedules its own retry.
+    void syncChannelKeys(servers).catch((err) => console.error('Key sync failed', err));
   }
 
   /** Runs a load again with growing waits until it succeeds. A 401 means the session is gone, so it is rethrown and signs out. */
