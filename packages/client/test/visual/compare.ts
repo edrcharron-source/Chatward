@@ -5,26 +5,57 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { PNG } from 'pngjs';
 
-// Chromium's rasteriser is not bit-exact between runs: anti-aliased edges (round avatars, emoji) wobble by up to 3
-// in a colour channel. A change too small to clear this is too small to see.
+// Chromium's rasteriser is not bit-exact between runs, even for the same build:
+// - anti-aliased edges (round avatars, emoji) wobble by up to 3 in a colour channel;
+// - on CI runners, the sub-pixel edge of a box sometimes flips, leaving a one-pixel-wide sliver a few pixels long.
+// A changed area counts when it holds a 2x2 block of changed pixels or is SLIVER pixels or longer, so a real change,
+// even a 1px border recoloured, is still caught.
 const NOISE = 4;
+const SLIVER = 40;
 
 interface Diff { changed: number; maxDelta: number; box: [number, number, number, number] }
 
 function diffPixels(a: PNG, b: PNG, out: PNG): Diff {
-  const d: Diff = { changed: 0, maxDelta: 0, box: [a.width, a.height, -1, -1] };
-  for (let i = 0; i < a.data.length; i += 4) {
-    const delta = Math.max(...[0, 1, 2, 3].map((c) => Math.abs(a.data[i + c] - b.data[i + c])));
-    const moved = delta > NOISE;
-    if (moved) {
-      const x = (i / 4) % a.width;
-      const y = Math.floor(i / 4 / a.width);
+  const { width, height } = a;
+  const delta = new Uint8Array(width * height);
+  for (let p = 0; p < delta.length; p++) {
+    const i = p * 4;
+    delta[p] = Math.max(...[0, 1, 2, 3].map((c) => Math.abs(a.data[i + c] - b.data[i + c])));
+  }
+  const moved = (x: number, y: number) => x >= 0 && y >= 0 && x < width && y < height && delta[y * width + x] > NOISE;
+
+  // Group changed pixels into 8-connected areas and keep the areas that are more than noise.
+  const real = new Uint8Array(width * height);
+  const seen = new Uint8Array(width * height);
+  for (let start = 0; start < delta.length; start++) {
+    if (seen[start] || delta[start] <= NOISE) continue;
+    const area: number[] = [start];
+    seen[start] = 1;
+    let block = false;
+    for (let k = 0; k < area.length; k++) {
+      const x = area[k] % width;
+      const y = Math.floor(area[k] / width);
+      if (moved(x + 1, y) && moved(x, y + 1) && moved(x + 1, y + 1)) block = true;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const n = (y + dy) * width + x + dx;
+        if (moved(x + dx, y + dy) && !seen[n]) { seen[n] = 1; area.push(n); }
+      }
+    }
+    if (block || area.length >= SLIVER) for (const n of area) real[n] = 1;
+  }
+
+  const d: Diff = { changed: 0, maxDelta: 0, box: [width, height, -1, -1] };
+  for (let p = 0; p < real.length; p++) {
+    const i = p * 4;
+    if (real[p]) {
+      const x = p % width;
+      const y = Math.floor(p / width);
       d.changed++;
-      d.maxDelta = Math.max(d.maxDelta, delta);
+      d.maxDelta = Math.max(d.maxDelta, delta[p]);
       d.box = [Math.min(d.box[0], x), Math.min(d.box[1], y), Math.max(d.box[2], x), Math.max(d.box[3], y)];
     }
     const grey = (a.data[i] + a.data[i + 1] + a.data[i + 2]) / 12 + 170;
-    out.data.set(moved ? [255, 0, 0, 255] : [grey, grey, grey, 255], i);
+    out.data.set(real[p] ? [255, 0, 0, 255] : [grey, grey, grey, 255], i);
   }
   return d;
 }
