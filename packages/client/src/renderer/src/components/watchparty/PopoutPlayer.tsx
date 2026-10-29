@@ -3,6 +3,7 @@ import { bindPlayer, embedSrc, sendCommand, type PlayerEvent } from './youtube';
 import type { PanelToPopout, PopoutToPanel } from './popout';
 import { useSettings, type Settings } from '../../state/settings';
 import { applySkin } from '../../skins';
+import { TitleBar } from '../titlebar/TitleBar';
 import './watchparty.css';
 
 /** The pop-out window's whole UI: the embed the panel tells it to show, and a fullscreen button. */
@@ -51,6 +52,7 @@ export function PopoutPlayer(): ReactElement {
 
   return (
     <div className="watch-popout">
+      <TitleBar title="Chatward · Watch party" />
       {videoId ? (
         <iframe
           key={videoId}

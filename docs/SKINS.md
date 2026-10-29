@@ -12,6 +12,12 @@ The full plan lives in the project's "Chatward skins plan" doc. This file is the
   `servers`, `channels`, `main`, `members`. A layout skin moves panels by redefining `grid-template-columns` and
   `grid-template-areas` on `.cw-shell`; the components stay as they are, so keyboard and screen reader order never change.
 - **Class names** already on components, for effects tokens can't express.
+- **Title bar.** Windows open without the system frame; the app draws its own bar (`components/titlebar`). Restyle it
+  with the `--titlebar-*` tokens in `styles/theme.css` (height, button width, background, rule under it, text, mark, font, button
+  hover, close hover) and the classes `cw-titlebar`, `cw-titlebar-mark`, `cw-titlebar-title`, `cw-titlebar-button`
+  (plus `min`, `max`, `close`). Skins that outline every `button` must reset that on `.cw-titlebar .cw-titlebar-button`;
+  the Lebserver skin shows how, including `[ ]` brackets drawn with `::before`/`::after`. Keep the buttons in the bar
+  and leave `-webkit-app-region` alone, or the window can no longer be dragged.
 
 ## Adding a skin
 
