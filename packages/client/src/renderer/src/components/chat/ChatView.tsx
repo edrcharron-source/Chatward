@@ -44,12 +44,15 @@ export default function ChatView({ channel }: { channel: Channel }) {
     loadHistory(channel.id).catch(() => {});
 
     // Reading the channel clears its unread count, including when the window regains focus.
-    const markRead = () => { if (!document.hidden) useSession.getState().clearUnread(channel.id); };
-    document.addEventListener('visibilitychange', markRead);
-    window.addEventListener('focus', markRead);
+    // The chat may be drawn in a popped-out window, so watch that window rather than the main one.
+    const doc = listRef.current?.ownerDocument ?? document;
+    const win = doc.defaultView ?? window;
+    const markRead = () => { if (!doc.hidden) useSession.getState().clearUnread(channel.id); };
+    doc.addEventListener('visibilitychange', markRead);
+    win.addEventListener('focus', markRead);
     return () => {
-      document.removeEventListener('visibilitychange', markRead);
-      window.removeEventListener('focus', markRead);
+      doc.removeEventListener('visibilitychange', markRead);
+      win.removeEventListener('focus', markRead);
     };
   }, [channel.id]);
 

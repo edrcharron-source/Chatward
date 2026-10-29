@@ -3,6 +3,10 @@ import { create } from 'zustand';
 export interface Settings {
   theme: 'dark' | 'light' | 'system';
   skin: string;             // id of the active skin (skins/index.ts); '' or an unknown id = no skin
+  /** 'tabs': tab bar, one text and one voice chat (the default). 'classic': the channel sidebar layout. */
+  layout: 'tabs' | 'classic';
+  /** tabs layout split view: share of the width the text chat takes, 0.2..0.8 */
+  splitRatio: number;
   inputDeviceId: string;   // '' = default
   outputDeviceId: string;
   cameraDeviceId: string;
@@ -27,7 +31,7 @@ export interface Settings {
 
 const LS = 'chatward.settings';
 const defaults = {
-  theme: 'dark' as const, skin: '', inputDeviceId: '', outputDeviceId: '', cameraDeviceId: '',
+  theme: 'dark' as const, skin: '', layout: 'tabs' as 'tabs' | 'classic', splitRatio: 0.5, inputDeviceId: '', outputDeviceId: '', cameraDeviceId: '',
   masterVolume: 1, micGain: 1, noiseSuppression: true, echoCancellation: true,
   messageSounds: true, mutedChannels: [] as string[], voiceJoinLeaveSounds: true, soundVolume: 0.6,
   autoLoadEmbeds: false, linkPreviews: true, userVolumes: {} as Record<string, number>, mutedUsers: {} as Record<string, boolean>,

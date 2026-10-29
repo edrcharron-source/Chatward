@@ -72,7 +72,11 @@ function isAppPage(url: string | undefined): boolean {
 
 // Never navigate away from the app; open links in the OS browser.
 function guardWebContents(wc: Electron.WebContents) {
-  wc.setWindowOpenHandler(({ url }) => {
+  wc.setWindowOpenHandler(({ url, frameName }) => {
+    // A popped-out tab: an empty window the app draws into itself (components/tabs/PopoutWindow.tsx). It loads nothing.
+    if (url === 'about:blank' && frameName.startsWith('chatward-tab-')) {
+      return { action: 'allow', overrideBrowserWindowOptions: { width: 1000, height: 700, minWidth: 420, minHeight: 320, resizable: true, autoHideMenuBar: true, backgroundColor: '#1e1f22', title: 'Chatward', webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true } } };
+    }
     // Watch party pop-out: our own page with ?watch-popout=1. Everything else stays denied.
     if (url.includes('watch-popout=1') && (url.startsWith(APP_ORIGIN + '/') || url.startsWith('http://localhost:5173'))) {
       return { action: 'allow', overrideBrowserWindowOptions: { width: 960, height: 540, resizable: true, webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true } } };
@@ -100,7 +104,11 @@ function createWindow() {
   // Once the user looks at the window, the taskbar flash has done its job, so stop it.
   win.on('focus', () => win.flashFrame(false));
   // Child windows (the watch-party pop-out) don't inherit the handlers above, so guard them too.
-  win.webContents.on('did-create-window', (child) => guardWebContents(child.webContents));
+  // They live on this window's page, so they close with it.
+  win.webContents.on('did-create-window', (child) => {
+    guardWebContents(child.webContents);
+    win.on('closed', () => { if (!child.isDestroyed()) child.close(); });
+  });
   if (process.env['ELECTRON_RENDERER_URL']) win.loadURL(process.env['ELECTRON_RENDERER_URL']);
   else win.loadURL(`${APP_ORIGIN}/index.html`);
 }

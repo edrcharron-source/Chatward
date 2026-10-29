@@ -8,9 +8,15 @@ const THEMES = [
   { id: 'system', label: 'Match system' },
 ] as const;
 
+const LAYOUTS = [
+  { id: 'tabs', label: 'Tabs', hint: 'One text chat and one voice chat, picked from tabs along the top' },
+  { id: 'classic', label: 'Classic', hint: 'Channel list on the left' },
+] as const;
+
 export default function AppearanceTab() {
   const theme = useSettings((s) => s.theme);
   const skin = useSettings((s) => s.skin);
+  const layout = useSettings((s) => s.layout);
   const set = useSettings((s) => s.set);
   return (
     <>
@@ -22,6 +28,17 @@ export default function AppearanceTab() {
                 onChange={() => set({ theme: t.id })} />
               <span className={`theme-swatch swatch-${t.id}`} aria-hidden />
               <span>{t.label}</span>
+            </label>
+          ))}
+        </div>
+      </Section>
+      <Section title="Layout">
+        <div className="choice-group" role="radiogroup" aria-label="Layout">
+          {LAYOUTS.map((l) => (
+            <label key={l.id} className="choice" title={l.hint}>
+              <input type="radio" name="layout" value={l.id} checked={layout === l.id}
+                onChange={() => set({ layout: l.id })} />
+              <span>{l.label}</span>
             </label>
           ))}
         </div>

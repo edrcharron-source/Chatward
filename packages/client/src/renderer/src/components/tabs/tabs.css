@@ -1,0 +1,70 @@
+/* The tabs layout (TabsLayout.tsx): a tab bar on top, the open tab (or text and voice side by side) in the middle, the
+   member list on the right and your status plus call controls along the bottom. Colours and fonts come from theme.css
+   tokens, so themes and skins restyle it like the rest of the app. */
+.cw-tabs-shell {
+  flex: 1; min-height: 0; display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-areas: 'tabs tabs' 'main members' 'footer footer';
+}
+.cw-tabs-shell > [data-region='tabs'] { grid-area: tabs; }
+.cw-tabs-shell > [data-region='main'] { grid-area: main; }
+.cw-tabs-shell > [data-region='members'] { grid-area: members; }
+.cw-tabs-shell > [data-region='footer'] { grid-area: footer; }
+
+.cw-tabs-bar {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 6px 12px; background: var(--bg-1); border-bottom: 1px solid var(--border);
+}
+.cw-tabs-server { color: var(--text-strong); white-space: nowrap; }
+.cw-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 0 auto; }
+.cw-tab {
+  display: inline-flex; align-items: stretch;
+  border: 1px solid var(--bg-3); border-radius: var(--radius-sm); background: var(--bg-2);
+}
+.cw-tab.active { border-color: var(--accent); background: var(--accent-tint); }
+.cw-tab-main {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 10px; min-height: 34px; border: 0; background: transparent; color: var(--text-muted);
+  font: inherit; cursor: pointer; border-radius: var(--radius-sm);
+}
+.cw-tab-main:hover { color: var(--text-strong); }
+.cw-tab.active .cw-tab-main { color: var(--text-strong); }
+.cw-tab-main > [aria-hidden='true']:not(svg) { opacity: .55; font-family: var(--font-code); }
+.cw-tab-pop { padding: 0 8px; border: 0; border-left: 1px solid var(--bg-3); background: transparent; color: var(--text-muted); cursor: pointer; }
+.cw-tab-pop:hover { color: var(--text-strong); }
+.cw-tab-live { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); }
+
+.cw-tabs-tools { display: flex; align-items: center; gap: 6px; }
+.cw-tool {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 34px; padding: 0 10px;
+  border: 1px solid var(--bg-3); border-radius: var(--radius-sm); background: var(--bg-2); color: var(--text-muted);
+  font: inherit; cursor: pointer;
+}
+.cw-tool:hover { color: var(--text-strong); }
+.cw-tool.active, .cw-tool[aria-pressed='true'] { border-color: var(--accent); color: var(--text-strong); background: var(--accent-tint); }
+.cw-tool-icon { display: inline-flex; align-items: center; justify-content: center; min-width: 34px; min-height: 34px; }
+
+.cw-tabs-main { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.cw-tab-pane { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.cw-tab-scroll { flex: 1; min-height: 0; overflow: auto; }
+.cw-tab-empty {
+  margin: auto; padding: 24px; display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center;
+}
+.cw-tab-empty p { margin: 0; }
+
+.cw-split { flex: 1; min-height: 0; display: grid; grid-template-rows: minmax(0, 1fr); }
+.cw-split-pane { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.cw-split-divider { cursor: col-resize; background: var(--border); touch-action: none; }
+.cw-split-divider:hover, .cw-split-divider:focus-visible { background: var(--accent); outline: none; }
+
+.cw-tabs-footer {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  background: var(--bg-1); border-top: 1px solid var(--border);
+}
+.cw-tabs-footer .cw-user-panel { flex: 0 1 260px; background: transparent; border-top: 0; }
+.cw-tabs-call { flex: 1 1 360px; min-width: 0; display: flex; justify-content: flex-end; }
+
+/* A popped-out tab's window: the tab fills it. */
+.cw-popout { height: 100vh; display: flex; flex-direction: column; background: var(--bg-2); color: var(--text); }
+.cw-popout > * { flex: 1; min-height: 0; }

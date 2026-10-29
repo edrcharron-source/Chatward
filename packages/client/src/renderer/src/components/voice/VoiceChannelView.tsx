@@ -39,7 +39,9 @@ function useContentSize<T extends HTMLElement>(): [RefObject<T>, { width: number
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const observer = new ResizeObserver(([entry]) => {
+    // a popped-out window only reports sizes to its own ResizeObserver
+    const Observer = el.ownerDocument.defaultView?.ResizeObserver ?? ResizeObserver;
+    const observer = new Observer(([entry]) => {
       const { width, height } = entry.contentRect;
       setSize((s) => (s.width === width && s.height === height ? s : { width, height }));
     });
@@ -304,15 +306,16 @@ function Tile({ user, joined, local, micOff, speaking, screen, video, onMenu, th
 function useFullscreen(ref: RefObject<HTMLElement | null>): boolean {
   const [full, setFull] = useState(false);
   useEffect(() => {
-    const onChange = () => setFull(document.fullscreenElement !== null && document.fullscreenElement === ref.current);
+    const doc = ref.current?.ownerDocument ?? document;
+    const onChange = () => setFull(doc.fullscreenElement !== null && doc.fullscreenElement === ref.current);
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && document.fullscreenElement === ref.current) void document.exitFullscreen().catch(() => {});
+      if (e.key === 'Escape' && doc.fullscreenElement === ref.current) void doc.exitFullscreen().catch(() => {});
     };
-    document.addEventListener('fullscreenchange', onChange);
-    document.addEventListener('keydown', onKey);
+    doc.addEventListener('fullscreenchange', onChange);
+    doc.addEventListener('keydown', onKey);
     return () => {
-      document.removeEventListener('fullscreenchange', onChange);
-      document.removeEventListener('keydown', onKey);
+      doc.removeEventListener('fullscreenchange', onChange);
+      doc.removeEventListener('keydown', onKey);
     };
   }, [ref]);
   return full;
@@ -321,7 +324,7 @@ function useFullscreen(ref: RefObject<HTMLElement | null>): boolean {
 async function toggleFullscreen(el: HTMLElement | null): Promise<void> {
   if (!el) return;
   // a refused request (no user gesture, unsupported) just leaves the tile as it is
-  if (document.fullscreenElement === el) await document.exitFullscreen().catch(() => {});
+  if (el.ownerDocument.fullscreenElement === el) await el.ownerDocument.exitFullscreen().catch(() => {});
   else await el.requestFullscreen().catch(() => {});
 }
 
