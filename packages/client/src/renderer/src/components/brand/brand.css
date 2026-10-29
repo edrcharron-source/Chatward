@@ -1,0 +1,15 @@
+/* Slim status-bar strip at the bottom of the window. Uses theme tokens only, so new themes restyle it for free. */
+.cw-powered {
+  flex: none; height: 22px; display: flex; align-items: center; justify-content: center; gap: 6px;
+  background: var(--bg-0); border-top: 1px solid var(--border);
+  font-size: 10px; line-height: 1; letter-spacing: .14em; text-transform: uppercase;
+  color: var(--text-muted); user-select: none;
+}
+.cw-powered-label { opacity: .8; }
+.cw-powered-mark { color: var(--accent); flex: none; }
+.cw-powered-led { fill: var(--ok); animation: cw-powered-blink 2.4s ease-in-out infinite; }
+.cw-powered-name { color: var(--text-strong); font-weight: 600; }
+/* short accent rules either side, a nod to HUD-style brackets */
+.cw-powered-tick { width: 14px; height: 1px; background: var(--accent); opacity: .5; }
+@keyframes cw-powered-blink { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
+@media (prefers-reduced-motion: reduce) { .cw-powered-led { animation: none; } }
