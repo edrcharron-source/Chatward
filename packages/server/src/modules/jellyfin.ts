@@ -51,7 +51,8 @@ export function register(app: Express, ctx: Ctx): void {
   const upstream = (path: string, params: Record<string, string | number | undefined> = {}, init: { range?: string; signal?: AbortSignal } = {}) => {
     const u = new URL(base + path);
     for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== '') u.searchParams.set(k, String(v));
-    const headers: Record<string, string> = { 'X-Emby-Token': apiKey };
+    // Jellyfin 12 only accepts the key in this Authorization header; older versions also read X-Emby-Token, so send both.
+    const headers: Record<string, string> = { Authorization: `MediaBrowser Token="${apiKey}"`, 'X-Emby-Token': apiKey };
     if (init.range) headers.Range = init.range;
     return fetch(u, { headers, signal: init.signal ?? AbortSignal.timeout(UPSTREAM_TIMEOUT_MS) });
   };
