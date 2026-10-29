@@ -1,6 +1,7 @@
 import { DEMO_URL } from '../../demo';
 import { useSession } from '../../state/session';
 import { useVoice } from '../../state/voice';
+import SoundboardButton from '../soundboard/SoundboardButton';
 import ShareControls from './ShareControls';
 
 export default function VoiceDock() {
@@ -16,7 +17,8 @@ export default function VoiceDock() {
   const setDemoLoopback = useVoice((s) => s.setDemoLoopback);
   const leave = useVoice((s) => s.leave);
   const notice = useVoice((s) => s.notice);
-  const channelName = useSession((s) => s.servers.flatMap((b) => b.channels).find((c) => c.id === channelId)?.name);
+  const channel = useSession((s) => s.servers.flatMap((b) => b.channels).find((c) => c.id === channelId));
+  const channelName = channel?.name;
 
   if (!channelId) {
     if (!notice) return null;
@@ -78,6 +80,7 @@ export default function VoiceDock() {
           </button>
         )}
         <ShareControls />
+        {channel && <SoundboardButton serverId={channel.serverId} channelId={channel.id} />}
         <button className="danger" onClick={() => void leave()}>Leave</button>
       </div>
     </div>

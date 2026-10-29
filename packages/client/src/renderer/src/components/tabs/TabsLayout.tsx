@@ -28,6 +28,9 @@ const TABS: Array<{ id: TabId; label: string; icon: PixelIconName }> = [
 
 const MIN_SPLIT = 0.2;
 const MAX_SPLIT = 0.8;
+/** The chat side never gets narrower than this, so there is room to read and type. The voice side's share is 1fr,
+ *  so it still fills the rest when the chat side is held at this width. */
+const TEXT_MIN = 'min(380px, 60%)';
 const clampSplit = (r: number) => Math.min(MAX_SPLIT, Math.max(MIN_SPLIT, r));
 
 /**
@@ -247,7 +250,7 @@ function SideBySide({ left, right }: { left: ReactNode; right: ReactNode }) {
   };
 
   return (
-    <div className="cw-split" ref={box} style={{ gridTemplateColumns: `minmax(0, ${ratio}fr) 8px minmax(0, ${1 - ratio}fr)` }}>
+    <div className="cw-split" ref={box} style={{ gridTemplateColumns: `minmax(${TEXT_MIN}, ${ratio / (1 - ratio)}fr) 8px minmax(0, 1fr)` }}>
       <section className="cw-split-pane" aria-label="Text">{left}</section>
       <div
         className="cw-split-divider"

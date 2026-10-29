@@ -55,6 +55,7 @@
   flex: none; margin: 0 16px 16px; padding: 8px 10px; background: var(--bg-3); border-radius: var(--radius);
   border: 2px solid transparent; transition: border-color .12s;
   box-shadow: var(--shadow-composer);
+  container: cv-composer / inline-size;
 }
 .cv-composer:focus-within { border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
 .cv-composer.cv-dragging { border-color: var(--accent); }
@@ -73,6 +74,12 @@
 }
 .cv-input:focus { border-color: transparent; }
 .cv-send { padding: 8px 14px; }
+/* In a narrow chat (split view, small window) the message box takes a full row of its own above the buttons. */
+@container cv-composer (max-width: 460px) {
+  .cv-row { flex-wrap: wrap; }
+  .cv-input { flex: 1 0 100%; order: -1; }
+  .cv-send { margin-left: auto; }
+}
 
 @media (max-width: 640px) {
   .cv-msg { gap: 10px; }

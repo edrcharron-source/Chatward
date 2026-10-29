@@ -8,7 +8,6 @@ import { useSession } from '../../state/session';
 import { useVoice } from '../../state/voice';
 import ProfileTrigger from '../profile/ProfileTrigger';
 import { useMemberMenu } from './MemberMenu';
-import SoundboardPanel from '../soundboard/SoundboardPanel';
 
 const NOBODY: string[] = [];
 const GRID_GAP = 12;
@@ -162,19 +161,12 @@ export default function VoiceChannelView({ channel, theaterOnly = false }: { cha
 
   if (theaterOnly) {
     return (
-      <div style={{ height: '100%', minHeight: 0, padding: 12, boxSizing: 'border-box', display: 'flex', gap: 12 }}>
-        <div style={{ flex: 1, minWidth: 0, minHeight: 0, height: '100%' }}>
-          {theaterLayout || (
-            <div className="muted" style={{ textAlign: 'center', paddingTop: 40 }}>
-              <p>Nobody is sharing a screen right now.</p>
-              <button className="icon" onClick={() => setTheater(null)}>Exit theater</button>
-            </div>
-          )}
-        </div>
-        {inCall && (
-          <aside style={{ flex: '0 0 260px', minHeight: 0, overflow: 'auto', borderLeft: '1px solid var(--border)' }}>
-            <SoundboardPanel serverId={channel.serverId} channelId={channel.id} />
-          </aside>
+      <div style={{ height: '100%', minHeight: 0, padding: 12, boxSizing: 'border-box' }}>
+        {theaterLayout || (
+          <div className="muted" style={{ textAlign: 'center', paddingTop: 40 }}>
+            <p>Nobody is sharing a screen right now.</p>
+            <button className="icon" onClick={() => setTheater(null)}>Exit theater</button>
+          </div>
         )}
         {menu.element}
       </div>
@@ -213,11 +205,6 @@ export default function VoiceChannelView({ channel, theaterOnly = false }: { cha
               );
             })()}
         </div>
-        {inCall && (
-          <aside style={{ flex: '0 0 260px', minHeight: 0, overflow: 'auto', borderLeft: '1px solid var(--border)' }}>
-            <SoundboardPanel serverId={channel.serverId} channelId={channel.id} />
-          </aside>
-        )}
       </div>
       {menu.element}
     </div>
@@ -372,7 +359,8 @@ function Avatar({ user, size }: { user?: User; size: number }) {
 
   const initial = (user?.displayName ?? user?.username ?? '?').charAt(0).toUpperCase();
   return (
-    <div className="avatar" style={{ width: size, height: size, display: 'grid', placeItems: 'center', fontSize: size / 2.4, fontWeight: 600, color: 'var(--text-strong)' }}>
+    // the picture is clipped to the avatar's circle, so a square photo does not show its corners
+    <div className="avatar" style={{ width: size, height: size, overflow: 'hidden', display: 'grid', placeItems: 'center', fontSize: size / 2.4, fontWeight: 600, color: 'var(--text-strong)' }}>
       {src ? <img src={src} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : initial}
     </div>
   );

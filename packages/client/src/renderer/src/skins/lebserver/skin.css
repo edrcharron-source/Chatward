@@ -35,8 +35,12 @@
   background-size: 520px 380px;
 }
 
-/* Square corners everywhere, avatars and status dots included. */
+/* Square corners everywhere except avatars, which stay round with the picture clipped to the circle. */
 :root[data-skin='lebserver'] * { border-radius: 0; }
+:root[data-skin='lebserver'] .avatar,
+:root[data-skin='lebserver'] .avatar img,
+:root[data-skin='lebserver'] .profile-avatar,
+:root[data-skin='lebserver'] .profile-trigger:has(> .avatar:only-child) { border-radius: 50%; }
 :root[data-skin='lebserver'] ::selection { background: var(--accent); color: var(--accent-text); }
 :root[data-skin='lebserver'] ::-webkit-scrollbar-thumb { background: #2e2e2e; }
 
