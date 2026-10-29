@@ -3,6 +3,7 @@ import Cropper, { type Area } from 'react-easy-crop';
 import 'react-easy-crop/react-easy-crop.css';
 import { LIMITS, type User } from '@chatward/shared';
 import { api, fetchObjectUrl } from '../../api/http';
+import { deviceProof } from '../../crypto';
 import { signOut, useSession } from '../../state/session';
 import { cropToAvatar } from './avatar';
 import { Section, errorText } from './controls';
@@ -20,6 +21,8 @@ export default function AccountTab() {
   const [status, setStatus] = useState<Status | null>(null);
   const [busy, setBusy] = useState(false);
   const [deletePassword, setDeletePassword] = useState('');
+  // Accounts without a password confirm deletion from this PC instead.
+  const needsPassword = user?.hasPassword !== false;
 
   const [current, setCurrent] = useState<string | null>(null);
   const [rev, setRev] = useState(0);
@@ -77,7 +80,7 @@ export default function AccountTab() {
     if (!window.confirm('Delete your account? You will leave every server. This cannot be undone.')) return;
     setBusy(true);
     try {
-      await api.post('/api/me/delete', { password: deletePassword });
+      await api.post('/api/me/delete', deletePassword ? { password: deletePassword } : { proof: await deviceProof() });
       // The account is gone, so the token no longer works. Run the local sign-out cleanup without server calls.
       await signOut({ serverAvailable: false });
     } catch (err) {
@@ -194,10 +197,12 @@ export default function AccountTab() {
               Removes you from every server and deletes your devices and profile picture.
               Your old messages stay. Owners must hand off or delete their servers first.
             </span>
-            <input type="password" value={deletePassword} placeholder="Password"
-              autoComplete="current-password" onChange={(e) => setDeletePassword(e.target.value)} />
+            {needsPassword && (
+              <input type="password" value={deletePassword} placeholder="Password"
+                autoComplete="current-password" onChange={(e) => setDeletePassword(e.target.value)} />
+            )}
           </label>
-          <button type="submit" className="danger" disabled={busy || !deletePassword}>Delete account</button>
+          <button type="submit" className="danger" disabled={busy || (needsPassword && !deletePassword)}>Delete account</button>
         </form>
       </Section>
 

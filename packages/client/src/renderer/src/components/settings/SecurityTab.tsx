@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import type { Member } from '@chatward/shared';
 import { api } from '../../api/http';
-import { acceptContactKeys, changedContacts, getDevice, onKeysChanged, safetyNumber } from '../../crypto';
+import { acceptContactKeys, changedContacts, deviceProof, getDevice, onKeysChanged, safetyNumber } from '../../crypto';
 import { useSession } from '../../state/session';
 import { Section, errorText } from './controls';
 
@@ -18,6 +18,7 @@ function YourDevices() {
   // The device whose Remove form is open, and the password typed into it.
   const [pending, setPending] = useState<OwnDevice | null>(null);
   const [password, setPassword] = useState('');
+  const needsPassword = useSession((s) => s.user?.hasPassword !== false);
   const thisDevice = getDevice().deviceId;
 
   async function load() {
@@ -43,7 +44,7 @@ function YourDevices() {
     setBusy(true);
     setError(null);
     try {
-      await api.del(`/api/me/devices/${encodeURIComponent(pending.deviceId)}`, { password });
+      await api.del(`/api/me/devices/${encodeURIComponent(pending.deviceId)}`, password ? { password } : { proof: await deviceProof() });
       setPending(null);
       setPassword('');
       await load();
@@ -76,13 +77,15 @@ function YourDevices() {
           {pending?.deviceId === d.deviceId && (
             <form onSubmit={remove}>
               <p className="muted">
-                Removing it signs it out at once and stops it getting new messages once your friends update their copies of your chats. It keeps any messages it already has. Enter your password to confirm.
+                Removing it signs it out at once and stops it getting new messages once your friends update their copies of your chats. It keeps any messages it already has.{needsPassword ? ' Enter your password to confirm.' : ' Confirm from this PC to continue.'}
               </p>
-              <label className="field">
-                <span>Password</span>
-                <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required autoFocus />
-              </label>
-              <button type="submit" className="danger" disabled={busy}>Remove device</button>
+              {needsPassword && (
+                <label className="field">
+                  <span>Password</span>
+                  <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required autoFocus />
+                </label>
+              )}
+              <button type="submit" className="danger" disabled={busy || (needsPassword && !password)}>Remove device</button>
               <button type="button" onClick={() => setPending(null)} disabled={busy}>Cancel</button>
             </form>
           )}

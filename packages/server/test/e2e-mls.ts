@@ -212,6 +212,38 @@ async function main() {
     })).json;
     const carol = await newDev('carol', { id: carolReg.user.id, token: carolReg.token }, carolKeys);
     for (const d of [alice, bob, carol]) await uploadPool(d, 4);
+    // Accounts without a password: registration needs only a username and an invite, and sign-in uses this PC's key.
+    const danaKeys = await makeDeviceKeys();
+    const danaReg = await api(null, 'POST', '/api/auth/register', { username: 'dana', device: danaKeys, inviteCode: await invite(3) });
+    assert.equal(danaReg.status, 200, 'registers with only a username and an invite');
+    assert.equal(danaReg.json.user.displayName, 'dana', 'the display name starts as the username');
+    assert.equal(danaReg.json.user.hasPassword, false, 'the account has no password');
+    // A proof is a signature over a one-time nonce, made with the device's private key, like the PC does.
+    const proofFor = async (deviceId: string) => {
+      const { nonce } = (await api(null, 'GET', '/api/auth/challenge')).json as { nonce: string };
+      const sig = await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, signPrivates.get(deviceId)!, new TextEncoder().encode(`chatward-proof:${nonce}`));
+      return { deviceId, nonce, signature: b64(new Uint8Array(sig)) };
+    };
+    const danaSignIn = await api(null, 'POST', '/api/auth/login', { username: 'dana', device: danaKeys, proof: await proofFor(danaKeys.deviceId) });
+    assert.equal(danaSignIn.status, 200, 'a linked PC signs in with its key and no password');
+    const danaProofOnce = await proofFor(danaKeys.deviceId);
+    await api(null, 'POST', '/api/auth/login', { username: 'dana', device: danaKeys, proof: danaProofOnce });
+    const replay = await api(null, 'POST', '/api/auth/login', { username: 'dana', device: danaKeys, proof: danaProofOnce });
+    assert.equal(replay.status, 401, 'a proof cannot be used twice');
+    const noProof = await api(null, 'POST', '/api/auth/login', { username: 'dana', device: danaKeys });
+    assert.equal(noProof.status, 401, 'typing only the username is not enough');
+    const strangerKeys = await makeDeviceKeys();
+    const strangerSignIn = await api(null, 'POST', '/api/auth/login', { username: 'dana', device: strangerKeys, proof: await proofFor(strangerKeys.deviceId) });
+    assert.equal(strangerSignIn.status, 401, 'a PC that is not linked to the account cannot sign in with a proof');
+    const passwordTry = await api(null, 'POST', '/api/auth/login', { username: 'dana', password: PASSWORD, device: danaKeys });
+    assert.equal(passwordTry.status, 401, 'an account without a password cannot sign in with one');
+    // Setting the first password from a linked PC; after that the password works like any other account.
+    const setPw = await api(danaSignIn.json.token, 'POST', '/api/me/password', { newPassword: PASSWORD, deviceId: danaKeys.deviceId, proof: await proofFor(danaKeys.deviceId) });
+    assert.equal(setPw.status, 200, 'a linked PC can set the first password');
+    const danaPw = await api(null, 'POST', '/api/auth/login', { username: 'dana', password: PASSWORD, device: danaKeys });
+    assert.equal(danaPw.status, 200, 'the new password signs in');
+    log('registered dana with a username only; device-key sign-in, replay, unlinked PC and first password checked');
+
     log('registered alice (owner), bob and carol through invites; uploaded KeyPackage pools');
     // A replace drops the unclaimed packages the device already had: carol still has 4, not 8.
     await uploadPool(carol, 4, true);

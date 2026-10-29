@@ -117,11 +117,65 @@ function broadcastUser(ctx: Ctx, userId: string): void {
   }
 }
 
-/** Checks the caller's own password for a destructive action. Wrong or missing is a 403, never a 401, so the client doesn't read it as signed out. */
-async function requirePassword(ctx: Ctx, userId: string, value: unknown): Promise<void> {
+// Accounts made without a password sign in with a key stored on each PC. The server hands out a one-time nonce, and the
+// PC signs it with its device key. A nonce lives for two minutes and can be used once, even if the signature is wrong.
+const CHALLENGE_MS = 2 * 60_000;
+const CHALLENGE_MAX = 5000;
+const challenges = new Map<string, number>();
+
+function newChallenge(): string {
+  const now = Date.now();
+  if (challenges.size > CHALLENGE_MAX) for (const [nonce, expires] of challenges) if (expires <= now) challenges.delete(nonce);
+  const nonce = crypto.randomBytes(32).toString('base64');
+  challenges.set(nonce, now + CHALLENGE_MS);
+  return nonce;
+}
+
+/** Consumes a nonce. True only if it was issued by this server, is unused and has not expired. */
+function takeChallenge(nonce: string): boolean {
+  const expires = challenges.get(nonce);
+  challenges.delete(nonce);
+  return expires !== undefined && expires > Date.now();
+}
+
+/** The bytes a device signs. The prefix keeps a signature made for this server from meaning anything else. */
+const proofMessage = (nonce: string) => Buffer.from(`chatward-proof:${nonce}`, 'utf8');
+/** DER prefix that turns a raw P-256 point into a SubjectPublicKeyInfo, so Node can verify with it. */
+const P256_SPKI_PREFIX = Buffer.from('3059301306072a8648ce3d020106082a8648ce3d030107034200', 'hex');
+
+function signatureValid(signPublic: string, nonce: string, signature: string): boolean {
+  try {
+    const key = crypto.createPublicKey({ key: Buffer.concat([P256_SPKI_PREFIX, Buffer.from(signPublic, 'base64')]), format: 'der', type: 'spki' });
+    return crypto.verify('sha256', proofMessage(nonce), { key, dsaEncoding: 'ieee-p1363' }, Buffer.from(signature, 'base64'));
+  } catch {
+    return false;
+  }
+}
+
+/** True if the body's proof is a fresh signature from a PC already registered to this account. */
+function deviceProofOk(ctx: Ctx, userId: string, proof: unknown, deviceId?: string): boolean {
+  const p = (proof ?? {}) as Record<string, unknown>;
+  if (typeof p.deviceId !== 'string' || typeof p.nonce !== 'string' || typeof p.signature !== 'string') return false;
+  if (p.signature.length > 200 || !BASE64_RE.test(p.signature)) return false;
+  if (deviceId !== undefined && p.deviceId !== deviceId) return false;
+  const row = ctx.db.prepare('SELECT sign_public FROM devices WHERE device_id=? AND user_id=?').get(p.deviceId, userId) as
+    { sign_public: string } | undefined;
+  if (!row) return false;
+  return takeChallenge(p.nonce) && signatureValid(row.sign_public, p.nonce, p.signature);
+}
+
+/**
+ * Confirms a sensitive action. Accounts with a password need it typed in; accounts without one need a fresh proof
+ * from a registered PC. Wrong or missing is a 403, never a 401, so the client doesn't read it as signed out.
+ */
+async function requirePassword(ctx: Ctx, userId: string, body: Record<string, unknown>): Promise<void> {
   const row = ctx.db.prepare('SELECT password_hash FROM users WHERE id=?').get(userId) as { password_hash: string } | undefined;
   if (!row) throw new ApiError(401, 'unauthorized');
-  const password = typeof value === 'string' && value.length <= PASSWORD_MAX ? value : '';
+  if (row.password_hash === '') {
+    if (!deviceProofOk(ctx, userId, body.proof)) throw new ApiError(403, 'this PC could not confirm the action');
+    return;
+  }
+  const password = typeof body.password === 'string' && body.password.length <= PASSWORD_MAX ? body.password : '';
   if (!password || !(await verify(row.password_hash, password))) throw new ApiError(403, 'password is incorrect');
 }
 
@@ -186,10 +240,12 @@ function recordLoginFailure(username: string): void {
   loginGuards.set(key, guard);
 }
 
+/** The account as its owner sees it. Only the owner's own responses carry hasPassword, so the client knows which confirmation to ask for. */
 function mustUser(ctx: Ctx, userId: string) {
   const user = ctx.getUser(userId);
   if (!user) throw new ApiError(401, 'unauthorized');
-  return user;
+  const row = ctx.db.prepare('SELECT password_hash FROM users WHERE id=?').get(userId) as { password_hash: string } | undefined;
+  return { ...user, hasPassword: !!row && row.password_hash !== '' };
 }
 
 /** Profile pictures are visible to the account itself and to anyone who shares a server with it. */
@@ -247,13 +303,16 @@ export function register(app: Express, ctx: Ctx): void {
     if (!USERNAME_RE.test(username)) {
       bad(`username must be ${LIMITS.USERNAME_MIN}-${LIMITS.USERNAME_MAX} letters, digits, dots, dashes or underscores`);
     }
-    const displayName = cleanText(body.displayName, DISPLAY_NAME_MAX, 'display name');
-    const password = validPassword(body.password);
+    // The display name starts as the username and can be changed in the profile later. A password is optional.
+    const displayName = typeof body.displayName === 'string' && body.displayName.trim()
+      ? cleanText(body.displayName, DISPLAY_NAME_MAX, 'display name')
+      : username;
+    const password = typeof body.password === 'string' && body.password !== '' ? validPassword(body.password) : '';
     const device = parseDevice(body.device);
     const inviteCode = typeof body.inviteCode === 'string' ? body.inviteCode : null;
     const givenSetupCode = typeof body.setupCode === 'string' ? body.setupCode : '';
     const id = newId();
-    const passwordHash = await hash(password);
+    const passwordHash = password ? await hash(password) : '';
 
     let firstAccount = false;
     const joinedServerId = ctx.db.transaction((): string | null => {
@@ -285,6 +344,13 @@ export function register(app: Express, ctx: Ctx): void {
     res.json({ token: ctx.signToken(id, device.deviceId), user: mustUser(ctx, id) });
   }));
 
+  // A nonce for the PC to sign when it signs in without a password. Issued for any name, so it reveals nothing.
+  app.get('/api/auth/challenge', route((_req, res) => {
+    res.json({ nonce: newChallenge() });
+  }));
+
+  // Signs in with a password, or, for accounts without one, with a proof from this PC's device key. A proof never adds
+  // a device: the PC must already be registered to the account, which is what stops a stranger typing a name and in.
   app.post('/api/auth/login', route(async (req, res) => {
     const body = bodyOf(req);
     const username = typeof body.username === 'string' ? body.username : '';
@@ -295,15 +361,19 @@ export function register(app: Express, ctx: Ctx): void {
       ? (ctx.db.prepare('SELECT id, password_hash FROM users WHERE username=? AND deleted_at IS NULL').get(username) as
           { id: string; password_hash: string } | undefined)
       : undefined;
-    const ok = password !== '' && (await verify(row?.password_hash ?? (await dummyHash), password));
-    if (!row || !ok) {
+    const hasPassword = !!row && row.password_hash !== '';
+    const passwordOk = password !== '' && (await verify(hasPassword ? row!.password_hash : await dummyHash, password)) && hasPassword;
+    const proofOk = !!row && password === '' && !hasPassword && deviceProofOk(ctx, row.id, body.proof, device.deviceId);
+    if (!row || !(passwordOk || proofOk)) {
       if (username) recordLoginFailure(username);
-      throw new ApiError(401, 'invalid username or password');
+      throw new ApiError(401, 'invalid username or password, or this PC is not linked to the account');
     }
     loginGuards.delete(loginGuardKey(username));
-    const newDevice = isNewDevice(ctx, row.id, device.deviceId);
-    if (ctx.db.transaction(() => upsertDevice(ctx, row.id, device))()) broadcastDevices(ctx, row.id);
-    if (newDevice) announceNewDevice(ctx, row.id, device.deviceId);
+    if (passwordOk) {
+      const newDevice = isNewDevice(ctx, row.id, device.deviceId);
+      if (ctx.db.transaction(() => upsertDevice(ctx, row.id, device))()) broadcastDevices(ctx, row.id);
+      if (newDevice) announceNewDevice(ctx, row.id, device.deviceId);
+    }
     res.json({ token: ctx.signToken(row.id, device.deviceId), user: mustUser(ctx, row.id) });
   }));
 
@@ -315,7 +385,12 @@ export function register(app: Express, ctx: Ctx): void {
     const row = ctx.db.prepare('SELECT password_hash FROM users WHERE id=?').get(uid) as { password_hash: string } | undefined;
     if (!row) throw new ApiError(401, 'unauthorized');
     const current = typeof body.currentPassword === 'string' && body.currentPassword.length <= PASSWORD_MAX ? body.currentPassword : '';
-    if (current === '' || !(await verify(row.password_hash, current))) throw new ApiError(403, 'current password is wrong');
+    // An account without a password is setting its first one, so a proof from this PC stands in for the current password.
+    if (row.password_hash === '') {
+      if (!deviceProofOk(ctx, uid, body.proof)) throw new ApiError(403, 'this PC could not confirm the change');
+    } else if (current === '' || !(await verify(row.password_hash, current))) {
+      throw new ApiError(403, 'current password is wrong');
+    }
     const newPassword = validPassword(body.newPassword);
     if (newPassword === current) bad('the new password must be different from the current one');
     const deviceId = callerDevice(ctx, req, body, uid);
@@ -415,7 +490,7 @@ export function register(app: Express, ctx: Ctx): void {
   app.delete('/api/me/devices/:deviceId', ctx.requireAuth, sensitiveLimit, route(async (req, res) => {
     const uid = userIdOf(req);
     const deviceId = String(req.params.deviceId);
-    await requirePassword(ctx, uid, bodyOf(req).password);
+    await requirePassword(ctx, uid, bodyOf(req));
     const row = ctx.db.prepare('SELECT user_id FROM devices WHERE device_id=?').get(deviceId) as
       { user_id: string } | undefined;
     if (!row || row.user_id !== uid) throw new ApiError(404, 'device not found');
@@ -457,7 +532,7 @@ export function register(app: Express, ctx: Ctx): void {
   // tombstone so old messages still point at a user; everything personal is wiped.
   app.post('/api/me/delete', ctx.requireAuth, sensitiveLimit, route(async (req, res) => {
     const uid = userIdOf(req);
-    await requirePassword(ctx, uid, bodyOf(req).password);
+    await requirePassword(ctx, uid, bodyOf(req));
 
     const owned = ctx.db.prepare('SELECT name FROM servers WHERE owner_id=?').all(uid) as { name: string }[];
     if (owned.length > 0) {

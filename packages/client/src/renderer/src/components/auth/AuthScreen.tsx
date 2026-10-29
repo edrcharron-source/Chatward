@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { LIMITS, type DeviceKeys, type User } from '@chatward/shared';
 import { api, ApiError } from '../../api/http';
-import { accountKey, adoptLegacyDevice, getDevice, initDevice, legacyDevice } from '../../crypto';
+import { accountKey, adoptLegacyDevice, deviceProof, getDevice, initDevice, legacyDevice } from '../../crypto';
 import { enterDemo } from '../../demo';
 import { useSession } from '../../state/session';
 import './auth.css';
@@ -14,7 +14,6 @@ export default function AuthScreen() {
   const [mode, setMode] = useState<Mode>('login');
   const [serverUrl, setServerUrlField] = useState(savedUrl);
   const [username, setUsername] = useState('');
-  const [displayName, setDisplayName] = useState('');
   const [password, setPassword] = useState('');
   const [inviteCode, setInviteCode] = useState('');
   const [setupCode, setSetupCode] = useState('');
@@ -31,15 +30,9 @@ export default function AuthScreen() {
       setError(`Username must be ${LIMITS.USERNAME_MIN}–${LIMITS.USERNAME_MAX} characters.`);
       return;
     }
-    if (mode === 'register') {
-      if (!displayName.trim()) { setError('Enter a display name.'); return; }
-      if (password.length < LIMITS.PASSWORD_MIN) { setError(`Password must be at least ${LIMITS.PASSWORD_MIN} characters.`); return; }
-    } else if (mode === 'reset') {
+    if (mode === 'reset') {
       if (!resetCode.trim()) { setError('Enter the reset code from the server owner.'); return; }
       if (password.length < LIMITS.PASSWORD_MIN) { setError(`New password must be at least ${LIMITS.PASSWORD_MIN} characters.`); return; }
-    } else if (!password) {
-      setError('Enter your password.');
-      return;
     }
 
     setBusy(true);
@@ -51,23 +44,25 @@ export default function AuthScreen() {
       if (await window.chatward.server.allow(url)) { location.reload(); return; }
       await initDevice(accountKey(url, name));
       // Reset goes through the same device handling as login, so this PC's existing keys and history stay with the account.
-      const send = (device: DeviceKeys) => {
+      const send = async (device: DeviceKeys) => {
         if (mode === 'reset') {
           return api.post<{ token: string; user: User }>('/api/auth/reset', { username: name, code: resetCode.trim(), newPassword: password, device });
         }
-        return mode === 'login'
-          ? api.post<{ token: string; user: User }>('/api/auth/login', { username: name, password, device })
-          : api.post<{ token: string; user: User }>('/api/auth/register', {
-              username: name,
-              displayName: displayName.trim(),
-              password,
-              device,
-              inviteCode: inviteCode.trim() || undefined,
-              setupCode: setupCode.trim() || undefined,
-            });
+        if (mode === 'login') {
+          // With no password typed, this PC signs in with its device key. The server only accepts it for a PC already linked to the account.
+          const body = password ? { username: name, password, device } : { username: name, device, proof: await deviceProof() };
+          return api.post<{ token: string; user: User }>('/api/auth/login', body);
+        }
+        return api.post<{ token: string; user: User }>('/api/auth/register', {
+          username: name,
+          device,
+          inviteCode: inviteCode.trim() || undefined,
+          setupCode: setupCode.trim() || undefined,
+        });
       };
       // An old PC device is only adopted once the server accepts it for this account. If another account owns it, the server refuses and this account keeps its own device.
-      const legacy = await legacyDevice();
+      // A password-less sign-in proves this PC's own device key, so an old device is not offered there.
+      const legacy = mode === 'login' && !password ? null : await legacyDevice();
       let res: { token: string; user: User };
       let adopt = legacy !== null;
       try {
@@ -110,13 +105,6 @@ export default function AuthScreen() {
           <input value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" spellCheck={false} maxLength={LIMITS.USERNAME_MAX} required />
         </label>
 
-        {mode === 'register' && (
-          <label className="cw-field">
-            <span>Display name</span>
-            <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} autoComplete="nickname" maxLength={48} required />
-          </label>
-        )}
-
         {mode === 'reset' && (
           <label className="cw-field">
             <span>Reset code from the server owner</span>
@@ -124,10 +112,12 @@ export default function AuthScreen() {
           </label>
         )}
 
-        <label className="cw-field">
-          <span>{mode === 'reset' ? 'New password' : 'Password'}</span>
-          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} required />
-        </label>
+        {mode !== 'register' && (
+          <label className="cw-field">
+            <span>{mode === 'reset' ? 'New password' : 'Password (only if you set one)'}</span>
+            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} required={mode === 'reset'} />
+          </label>
+        )}
 
         {mode === 'register' && (
           <label className="cw-field">

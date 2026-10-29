@@ -13,7 +13,7 @@ import * as mls from './mls';
 import {
   aesDecryptWith, aesEncryptWith, aesOpen, aesSeal, Bytes, exportJwk, exportRawPublic, fromB64, generateAesKeyBytes,
   generateEcdh, generateSigning, importAesKey, importEcdhPrivate, importSignPrivate, importSignPublic, IV_BYTES, randomBytes,
-  sha256, toB64, utf8,
+  sha256, sign, toB64, utf8,
 } from './primitives';
 
 import { safetyNumber } from './safety';
@@ -194,6 +194,13 @@ export async function adoptLegacyIfOwned(): Promise<void> {
   } catch {
     // Offline or the check failed: keep the account's own device and try again next start.
   }
+}
+
+/** Proves this PC holds its device key: a signature over a fresh server nonce. Used where an account has no password. */
+export async function deviceProof(): Promise<{ deviceId: string; nonce: string; signature: string }> {
+  const { nonce } = await api.get<{ nonce: string }>('/api/auth/challenge');
+  const signature = await sign(privates!.sign, utf8(`chatward-proof:${nonce}`));
+  return { deviceId: getDevice().deviceId, nonce, signature: toB64(signature) };
 }
 
 /** Public keys of this device (valid after initDevice). Sent in register/login bodies. */

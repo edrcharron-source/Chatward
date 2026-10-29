@@ -38,6 +38,8 @@ export interface User {
   displayName: string;
   avatarUrl: string | null; // e.g. /api/avatars/<id>
   profile: UserProfile;
+  /** Only in the account's own responses. Accounts without a password confirm sensitive actions from this PC instead. */
+  hasPassword?: boolean;
 }
 
 /** A device's public keys (base64, raw). Server only relays these. */
