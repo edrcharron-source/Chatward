@@ -21,6 +21,7 @@ import { WatchPartyPanel } from './components/watchparty';
 import SettingsModal from './components/settings/SettingsModal';
 import { JellyfinBrowser, useJellyfinEnabled } from './components/jellyfin/JellyfinBrowser';
 import TestConsole from './components/testconsole/TestConsole';
+import TabsLayout from './components/tabs/TabsLayout';
 import DemoBanner from './demo/DemoBanner';
 import UpdateBanner from './components/updates/UpdateBanner';
 import DeviceAlertBanner from './components/devices/DeviceAlertBanner';
@@ -79,6 +80,7 @@ function Shell() {
   const [moviesOpen, setMoviesOpen] = useState(false);
   const jellyfinEnabled = useJellyfinEnabled();
   const [vaultOpen, setVaultOpen] = useState(false);
+  const layout = useSettings((s) => s.layout);
   const { servers, activeServerId, activeChannelId } = useSession();
   const bundle = servers.find((s) => s.server.id === activeServerId);
   const channel = bundle?.channels.find((c) => c.id === activeChannelId);
@@ -116,10 +118,12 @@ function Shell() {
   const hideSidebars = theaterKey !== null && sidebarsCollapsed;
   // The chat under the share is on screen, so its new messages should not count as unread.
   const theaterChatId = theaterWithChat && chatChannel ? chatChannel.id : null;
+  // The tabs layout says which chat is on screen itself.
   useEffect(() => {
+    if (layout !== 'classic') return;
     useSession.getState().setTheaterChatId(theaterChatId);
     return () => useSession.getState().setTheaterChatId(null);
-  }, [theaterChatId]);
+  }, [theaterChatId, layout]);
 
   useEffect(() => {
     let off: (() => void) | undefined;
@@ -348,7 +352,26 @@ function Shell() {
       </div>
     );
   }
+  const modals = (
+    <>
+      {moviesOpen && <JellyfinBrowser onClose={() => setMoviesOpen(false)} />}
+      {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
+    </>
+  );
+  // The modals sit after the layout in both branches, so switching the layout in settings keeps the settings open.
+  if (layout !== 'classic') {
+    return (
+      <>
+        {testOpen
+          ? <div className="cw-shell" data-region="shell"><main className="cw-main" data-region="main"><TestConsole onClose={() => setTestOpen(false)} /></main></div>
+          : <TabsLayout bundle={bundle} onOpenSettings={() => setSettingsOpen(true)} onReload={loadServers}
+              onOpenTest={() => setTestOpen(true)} onOpenMovies={jellyfinEnabled ? () => setMoviesOpen(true) : null} />}
+        {modals}
+      </>
+    );
+  }
   return (
+    <>
     <div className="cw-shell" data-region="shell">
       {!hideSidebars && <ChannelList onOpenSettings={() => setSettingsOpen(true)} onReload={loadServers} />}
       <main className="cw-main" data-region="main">
@@ -408,11 +431,11 @@ function Shell() {
         </>}
       </main>
       {bundle && !hideSidebars && <MemberList serverId={bundle.server.id} members={bundle.members as Member[]} />}
-      {moviesOpen && <JellyfinBrowser onClose={() => setMoviesOpen(false)} />}
-      {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
       {/* keep voice room mounted even when browsing text channels */}
       {voiceChannelId && null}
     </div>
+    {modals}
+    </>
   );
 }
 export type { Channel };

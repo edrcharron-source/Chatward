@@ -11,7 +11,7 @@ const electronPath = require('electron') as unknown as string;
 export const SIZE = { width: 1280, height: 800 };
 export const DEFAULT_APP_DIR = path.resolve(import.meta.dirname, '../..');
 
-// Runs in the page before the app's own code. Timers of 5 s or more are held, which keeps the demo bots from
+// Runs in the page before the app's own code. The checks walk the classic layout, whose screens they were written for. Timers of 5 s or more are held, which keeps the demo bots from
 // typing or posting mid-capture; nothing the screens below show depends on a timer that long.
 const pinPage = (theme: string, skin: string) => `(() => {
   const FIXED = Date.UTC(2026, 0, 15, 18, 0, 0);
@@ -30,7 +30,7 @@ const pinPage = (theme: string, skin: string) => `(() => {
   };
   const realSetTimeout = window.setTimeout.bind(window);
   window.setTimeout = (fn, ms, ...rest) => (Number(ms) >= 5000 ? 0 : realSetTimeout(fn, ms, ...rest));
-  localStorage.setItem('chatward.settings', JSON.stringify({ theme: ${JSON.stringify(theme)}, skin: ${JSON.stringify(skin)} }));
+  localStorage.setItem('chatward.settings', JSON.stringify({ theme: ${JSON.stringify(theme)}, skin: ${JSON.stringify(skin)}, layout: 'classic' }));
 })();`;
 
 // skin is a registered skin id, or '' for the plain app.

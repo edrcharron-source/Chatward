@@ -3,6 +3,9 @@
   background: none; color: inherit; font: inherit; cursor: pointer; border-radius: 6px;
 }
 .profile-trigger:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* the base button:hover shade would draw a square behind a round avatar */
+.profile-trigger:hover { background: none; }
+.profile-trigger:has(> .avatar:only-child) { border-radius: 50%; }
 
 .profile-card {
   background: var(--bg-1); color: var(--text); border-radius: 10px; overflow: hidden;

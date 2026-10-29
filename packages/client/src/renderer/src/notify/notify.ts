@@ -5,6 +5,7 @@ import { onFrame } from '../api/ws';
 import { useSession } from '../state/session';
 import { useSettings } from '../state/settings';
 import { useVoice } from '../state/voice';
+import { popoutHasFocus } from '../components/tabs/PopoutWindow';
 
 export type SoundKind = 'message' | 'join' | 'leave';
 
@@ -53,11 +54,12 @@ function onNewMessage(m: Message) {
   // Do Not Disturb: the user asked not to be interrupted, so stay silent and don't flash either.
   if (myStatus === 'dnd') return;
   if (mutedChannels.includes(m.channelId)) return;
-  // Flash the taskbar when the window is in the background, even if sounds are off.
-  if (!document.hasFocus()) window.chatward?.flashWindow();
+  // Flash the taskbar when the app is in the background, even if sounds are off. A popped-out tab counts as the app.
+  const focused = document.hasFocus() || popoutHasFocus();
+  if (!focused) window.chatward?.flashWindow();
   if (!messageSounds) return;
   // The channel is on screen and the window has focus: the user already sees it.
-  if (m.channelId === activeChannelId && document.hasFocus()) return;
+  if (m.channelId === activeChannelId && focused) return;
   // The chat shown alongside theater mode is on screen, so it needs no ping.
   if (m.channelId === theaterChatId) return;
   playSound('message');

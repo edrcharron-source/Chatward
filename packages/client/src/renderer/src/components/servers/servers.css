@@ -133,6 +133,10 @@
 .cw-member:hover { background: var(--bg-hover); }
 .cw-member.offline { opacity: .5; }
 .cw-member-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cw-member-voice { display: inline-flex; flex: none; color: var(--ok); }
+.cw-pixel-icon { flex: none; display: block; }
+/* an icon-only button (the call controls) centres its icon */
+button > .cw-pixel-icon:only-child { margin: 0 auto; }
 .cw-role { font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--accent); background: var(--accent-tint); padding: 2px 7px; border-radius: 999px; }
 
 .cw-avatar-wrap { position: relative; flex: none; }

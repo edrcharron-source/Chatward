@@ -75,11 +75,13 @@ export function bindPlayer(frame: HTMLIFrameElement, onEvent: (e: PlayerEvent) =
     }
   };
 
-  window.addEventListener('message', onMessage);
+  // the embed posts to the window it is drawn in, which is a popped-out window when its tab is popped out
+  const win = frame.ownerDocument.defaultView ?? window;
+  win.addEventListener('message', onMessage);
   frame.addEventListener('load', listen);
   listen();
   return () => {
-    window.removeEventListener('message', onMessage);
+    win.removeEventListener('message', onMessage);
     frame.removeEventListener('load', listen);
   };
 }

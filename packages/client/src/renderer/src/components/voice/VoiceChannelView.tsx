@@ -8,7 +8,6 @@ import { useSession } from '../../state/session';
 import { useVoice } from '../../state/voice';
 import ProfileTrigger from '../profile/ProfileTrigger';
 import { useMemberMenu } from './MemberMenu';
-import SoundboardPanel from '../soundboard/SoundboardPanel';
 
 const NOBODY: string[] = [];
 const GRID_GAP = 12;
@@ -39,7 +38,9 @@ function useContentSize<T extends HTMLElement>(): [RefObject<T>, { width: number
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const observer = new ResizeObserver(([entry]) => {
+    // a popped-out window only reports sizes to its own ResizeObserver
+    const Observer = el.ownerDocument.defaultView?.ResizeObserver ?? ResizeObserver;
+    const observer = new Observer(([entry]) => {
       const { width, height } = entry.contentRect;
       setSize((s) => (s.width === width && s.height === height ? s : { width, height }));
     });
@@ -160,19 +161,12 @@ export default function VoiceChannelView({ channel, theaterOnly = false }: { cha
 
   if (theaterOnly) {
     return (
-      <div style={{ height: '100%', minHeight: 0, padding: 12, boxSizing: 'border-box', display: 'flex', gap: 12 }}>
-        <div style={{ flex: 1, minWidth: 0, minHeight: 0, height: '100%' }}>
-          {theaterLayout || (
-            <div className="muted" style={{ textAlign: 'center', paddingTop: 40 }}>
-              <p>Nobody is sharing a screen right now.</p>
-              <button className="icon" onClick={() => setTheater(null)}>Exit theater</button>
-            </div>
-          )}
-        </div>
-        {inCall && (
-          <aside style={{ flex: '0 0 260px', minHeight: 0, overflow: 'auto', borderLeft: '1px solid var(--border)' }}>
-            <SoundboardPanel serverId={channel.serverId} channelId={channel.id} />
-          </aside>
+      <div style={{ height: '100%', minHeight: 0, padding: 12, boxSizing: 'border-box' }}>
+        {theaterLayout || (
+          <div className="muted" style={{ textAlign: 'center', paddingTop: 40 }}>
+            <p>Nobody is sharing a screen right now.</p>
+            <button className="icon" onClick={() => setTheater(null)}>Exit theater</button>
+          </div>
         )}
         {menu.element}
       </div>
@@ -211,11 +205,6 @@ export default function VoiceChannelView({ channel, theaterOnly = false }: { cha
               );
             })()}
         </div>
-        {inCall && (
-          <aside style={{ flex: '0 0 260px', minHeight: 0, overflow: 'auto', borderLeft: '1px solid var(--border)' }}>
-            <SoundboardPanel serverId={channel.serverId} channelId={channel.id} />
-          </aside>
-        )}
       </div>
       {menu.element}
     </div>
@@ -304,15 +293,16 @@ function Tile({ user, joined, local, micOff, speaking, screen, video, onMenu, th
 function useFullscreen(ref: RefObject<HTMLElement | null>): boolean {
   const [full, setFull] = useState(false);
   useEffect(() => {
-    const onChange = () => setFull(document.fullscreenElement !== null && document.fullscreenElement === ref.current);
+    const doc = ref.current?.ownerDocument ?? document;
+    const onChange = () => setFull(doc.fullscreenElement !== null && doc.fullscreenElement === ref.current);
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && document.fullscreenElement === ref.current) void document.exitFullscreen().catch(() => {});
+      if (e.key === 'Escape' && doc.fullscreenElement === ref.current) void doc.exitFullscreen().catch(() => {});
     };
-    document.addEventListener('fullscreenchange', onChange);
-    document.addEventListener('keydown', onKey);
+    doc.addEventListener('fullscreenchange', onChange);
+    doc.addEventListener('keydown', onKey);
     return () => {
-      document.removeEventListener('fullscreenchange', onChange);
-      document.removeEventListener('keydown', onKey);
+      doc.removeEventListener('fullscreenchange', onChange);
+      doc.removeEventListener('keydown', onKey);
     };
   }, [ref]);
   return full;
@@ -321,7 +311,7 @@ function useFullscreen(ref: RefObject<HTMLElement | null>): boolean {
 async function toggleFullscreen(el: HTMLElement | null): Promise<void> {
   if (!el) return;
   // a refused request (no user gesture, unsupported) just leaves the tile as it is
-  if (document.fullscreenElement === el) await document.exitFullscreen().catch(() => {});
+  if (el.ownerDocument.fullscreenElement === el) await el.ownerDocument.exitFullscreen().catch(() => {});
   else await el.requestFullscreen().catch(() => {});
 }
 
@@ -369,7 +359,8 @@ function Avatar({ user, size }: { user?: User; size: number }) {
 
   const initial = (user?.displayName ?? user?.username ?? '?').charAt(0).toUpperCase();
   return (
-    <div className="avatar" style={{ width: size, height: size, display: 'grid', placeItems: 'center', fontSize: size / 2.4, fontWeight: 600, color: 'var(--text-strong)' }}>
+    // the picture is clipped to the avatar's circle, so a square photo does not show its corners
+    <div className="avatar" style={{ width: size, height: size, overflow: 'hidden', display: 'grid', placeItems: 'center', fontSize: size / 2.4, fontWeight: 600, color: 'var(--text-strong)' }}>
       {src ? <img src={src} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : initial}
     </div>
   );

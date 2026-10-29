@@ -12,6 +12,7 @@ export interface SkinInfo {
 
 /** The installed skins, in the order the Appearance tab lists them. */
 export const SKINS: SkinInfo[] = [
+  { id: 'lebserver', label: 'Lebserver retro', swatch: '#f2a48c' },
   { id: 'retro-ascii', label: 'Retro ASCII', swatch: '#ffb000' },
 ];
 
