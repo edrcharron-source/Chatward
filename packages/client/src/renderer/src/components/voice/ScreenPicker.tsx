@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactElement } from 'react';
-import { DEFAULT_SCREEN_OPTIONS, type ScreenShareOptions } from './media';
+import { DEFAULT_SCREEN_OPTIONS, type ScreenHeight, type ScreenShareOptions } from './media';
 
 type ScreenSource = Awaited<ReturnType<Window['chatward']['getScreenSources']>>[number];
 
@@ -88,7 +88,8 @@ export default function ScreenPicker({ onPick, onClose }: Props): ReactElement {
           <legend className="muted" style={{ padding: 0, marginBottom: 6 }}>Quality</legend>
           <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             Resolution
-            <select value={opts.height} onChange={(e) => setOpts({ ...opts, height: Number(e.target.value) as 720 | 1080 })}>
+            <select value={opts.height} onChange={(e) => setOpts({ ...opts, height: Number(e.target.value) as ScreenHeight })}>
+              <option value={2160}>4K</option>
               <option value={1080}>1080p</option>
               <option value={720}>720p</option>
             </select>
