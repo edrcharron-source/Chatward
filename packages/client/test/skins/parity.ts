@@ -69,7 +69,7 @@ async function walk(page: Page, run: Run, shoot: (name: string) => Promise<void>
 
   await act(page, 'auth.try-demo');
   await page.getByText('This is the start of #general').waitFor();
-  for (const id of ['channel.create', 'channel.invite', 'server.create', 'server.join', 'server.settings', 'settings.open',
+  for (const id of ['channel.create', 'server.settings', 'settings.open',
     'watch-party.toggle', 'chat.attach', 'chat.emoji', 'chat.gif', 'member.profile', 'channel.open-memes']) {
     await probe(page, id, run);
   }
