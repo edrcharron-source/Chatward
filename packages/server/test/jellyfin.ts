@@ -14,8 +14,10 @@ fs.mkdirSync(dataDir, { recursive: true });
 
 const seen: { url: string; token?: string }[] = [];
 const fake = http.createServer((req, res) => {
-  seen.push({ url: req.url!, token: req.headers['x-emby-token'] as string | undefined });
-  if (req.headers['x-emby-token'] !== 'KEY') { res.writeHead(401).end(); return; }
+  // Like Jellyfin 12, accept the key only in the Authorization header.
+  const authed = req.headers.authorization === 'MediaBrowser Token="KEY"';
+  seen.push({ url: req.url!, token: authed ? 'KEY' : undefined });
+  if (!authed) { res.writeHead(401).end(); return; }
   if (req.url!.startsWith('/Users/u1/Views')) {
     res.setHeader('content-type', 'application/json');
     res.end(JSON.stringify({ Items: [{ Id: ID, Name: 'Movies', Type: 'CollectionFolder' }], TotalRecordCount: 1 })); return;
