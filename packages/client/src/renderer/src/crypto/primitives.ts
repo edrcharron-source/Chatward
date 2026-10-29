@@ -100,6 +100,12 @@ export async function deriveWrapKey(priv: CryptoKey, peerPub: CryptoKey, salt: B
   return subtle.deriveKey({ name: 'HKDF', hash: 'SHA-256', salt, info }, hkdfKey, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
 }
 
+/** HKDF-SHA-256 over a symmetric key, producing `length` bytes. */
+export async function hkdf(ikm: Bytes, salt: Bytes, info: Bytes, length: number): Promise<Bytes> {
+  const base = await subtle.importKey('raw', ikm, 'HKDF', false, ['deriveBits']);
+  return new Uint8Array(await subtle.deriveBits({ name: 'HKDF', hash: 'SHA-256', salt, info }, base, length * 8));
+}
+
 // ---------- ECDSA P-256 (envelope signatures, device identity) ----------
 
 export function generateSigning(): Promise<CryptoKeyPair> {
