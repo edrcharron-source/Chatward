@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState, type ReactNode } from 'react';
 import type { Channel, Member } from '@chatward/shared';
 import { api, ApiError } from './api/http';
 import { connectWs, disconnectWs, onFrame, sendFrame } from './api/ws';
@@ -25,6 +25,7 @@ import UpdateBanner from './components/updates/UpdateBanner';
 import DeviceAlertBanner from './components/devices/DeviceAlertBanner';
 import { showDeviceAlert } from './state/deviceAlerts';
 import UpdateRequired from './components/updates/UpdateRequired';
+import { MAIN_BAR, type MainBarId } from './layout/manifest';
 import PoweredBy from './components/brand/PoweredBy';
 import { checkServerVersion, useUpdates } from './state/updates';
 
@@ -342,25 +343,31 @@ function Shell() {
       </div>
     );
   }
+  // Main-bar actions by id. The order comes from the layout manifest; each button's condition lives here.
+  const mainBarActions: Record<MainBarId, ReactNode> = {
+    sidebars: theaterKey !== null && (
+      <button className="icon" onClick={() => setSidebarsCollapsed((c) => !c)} aria-pressed={sidebarsCollapsed}>
+        {sidebarsCollapsed ? 'Show sidebars' : 'Hide sidebars'}
+      </button>
+    ),
+    test: <button className="icon" onClick={() => setTestOpen(true)} title="Feature test console (Ctrl+Shift+T)">🧪 Test</button>,
+    watch: channel && (
+      <button className="icon" onClick={() => setWatchOpen((o) => !o)} aria-pressed={watchOpen} title="Watch YouTube together">
+        🎬 {watchOpen ? 'Close watch party' : 'Watch together'}
+      </button>
+    ),
+  };
   return (
     <div className="cw-shell" data-region="shell">
       <ServerSidebar onReload={loadServers} />
       {!hideSidebars && <ChannelList onOpenSettings={() => setSettingsOpen(true)} onReload={loadServers} />}
       <main className="cw-main" data-region="main">
         {testOpen ? <TestConsole onClose={() => setTestOpen(false)} /> : <>
-          <div className="cw-main-bar" data-region="main-bar">
-            {theaterKey !== null && (
-              <button className="icon" onClick={() => setSidebarsCollapsed((c) => !c)} aria-pressed={sidebarsCollapsed}>
-                {sidebarsCollapsed ? 'Show sidebars' : 'Hide sidebars'}
-              </button>
-            )}
-            <button className="icon" onClick={() => setTestOpen(true)} title="Feature test console (Ctrl+Shift+T)">🧪 Test</button>
-            {channel && (
-              <button className="icon" onClick={() => setWatchOpen((o) => !o)} aria-pressed={watchOpen} title="Watch YouTube together">
-                🎬 {watchOpen ? 'Close watch party' : 'Watch together'}
-              </button>
-            )}
-          </div>
+          {channel && (
+            <div className="cw-main-bar" data-region="main-bar">
+              {MAIN_BAR.map((id) => <Fragment key={id}>{mainBarActions[id]}</Fragment>)}
+            </div>
+          )}
         {/* Voice channels have no message key of their own, so their watch party rides the server's first text channel. */}
         {watchOpen && (voiceChannelId && watchKeyChannelId
           ? <WatchPartyPanel key={`watch-${voiceChannelId}`} callChannelId={voiceChannelId} keyChannelId={watchKeyChannelId} />
