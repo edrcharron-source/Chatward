@@ -18,11 +18,13 @@ import VoiceChannelView from './components/voice/VoiceChannelView';
 import TheaterSplit from './components/voice/TheaterSplit';
 import { WatchPartyPanel } from './components/watchparty';
 import SettingsModal from './components/settings/SettingsModal';
+import TestConsole from './components/testconsole/TestConsole';
 import DemoBanner from './demo/DemoBanner';
 import UpdateBanner from './components/updates/UpdateBanner';
 import DeviceAlertBanner from './components/devices/DeviceAlertBanner';
 import { showDeviceAlert } from './state/deviceAlerts';
 import UpdateRequired from './components/updates/UpdateRequired';
+import PoweredBy from './components/brand/PoweredBy';
 import { checkServerVersion, useUpdates } from './state/updates';
 
 export function App() {
@@ -49,6 +51,7 @@ export function App() {
           ? <UpdateRequired serverUrl={serverUrl} minClientVersion={server.minClientVersion} />
           : token ? <Shell /> : <AuthScreen />}
       </div>
+      <PoweredBy />
     </div>
   );
 }
@@ -68,11 +71,14 @@ function Shell() {
   const [ready, setReady] = useState(false);
   const [unreachable, setUnreachable] = useState(false);
   const [watchOpen, setWatchOpen] = useState(false);
+  const [testOpen, setTestOpen] = useState(false);
   const { servers, activeServerId, activeChannelId } = useSession();
   const bundle = servers.find((s) => s.server.id === activeServerId);
   const channel = bundle?.channels.find((c) => c.id === activeChannelId);
   const voiceChannelId = useVoice((s) => s.channelId);
-  const watchChannelId = channel?.kind === 'voice' ? bundle?.channels.find((c) => c.kind === 'text')?.id : channel?.id;
+  // A watch party belongs to the call: the server keeps one snapshot per voice channel and only people in it can change it.
+  const callServer = servers.find((b) => b.channels.some((c) => c.id === voiceChannelId));
+  const watchKeyChannelId = callServer?.channels.find((c) => c.kind === 'text')?.id;
   const theaterKey = useVoice((s) => s.theaterKey);
   const setTheater = useVoice((s) => s.setTheater);
   // the text chat shown below the share in theater mode; follows the last text channel opened
@@ -312,6 +318,15 @@ function Shell() {
     );
   }
 
+  // Ctrl+Shift+T opens the feature test console from anywhere.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 't') { e.preventDefault(); setTestOpen((o) => !o); }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
+
   if (!ready) {
     return (
       <div style={{ display: 'grid', placeItems: 'center', alignContent: 'center', gap: 12, height: '100%' }}>
@@ -329,20 +344,24 @@ function Shell() {
       <ServerSidebar onReload={loadServers} />
       {!hideSidebars && <ChannelList onOpenSettings={() => setSettingsOpen(true)} onReload={loadServers} />}
       <main style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
-        {channel && (
+        {testOpen ? <TestConsole onClose={() => setTestOpen(false)} /> : <>
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '4px 12px', background: 'var(--bg-2)' }}>
             {theaterKey !== null && (
               <button className="icon" onClick={() => setSidebarsCollapsed((c) => !c)} aria-pressed={sidebarsCollapsed}>
                 {sidebarsCollapsed ? 'Show sidebars' : 'Hide sidebars'}
               </button>
             )}
-            <button className="icon" onClick={() => setWatchOpen((o) => !o)} aria-pressed={watchOpen} title="Watch YouTube together">
-              🎬 {watchOpen ? 'Close watch party' : 'Watch together'}
-            </button>
+            <button className="icon" onClick={() => setTestOpen(true)} title="Feature test console (Ctrl+Shift+T)">🧪 Test</button>
+            {channel && (
+              <button className="icon" onClick={() => setWatchOpen((o) => !o)} aria-pressed={watchOpen} title="Watch YouTube together">
+                🎬 {watchOpen ? 'Close watch party' : 'Watch together'}
+              </button>
+            )}
           </div>
-        )}
         {/* Voice channels have no message key of their own, so their watch party rides the server's first text channel. */}
-        {watchChannelId && watchOpen && <WatchPartyPanel key={`watch-${watchChannelId}`} channelId={watchChannelId} />}
+        {watchOpen && (voiceChannelId && watchKeyChannelId
+          ? <WatchPartyPanel key={`watch-${voiceChannelId}`} callChannelId={voiceChannelId} keyChannelId={watchKeyChannelId} />
+          : <div className="muted" style={{ padding: '6px 12px', background: 'var(--bg-2)' }}>Join a voice channel to start a watch party.</div>)}
         {theaterWithChat && callChannel && chatChannel
           ? (
             <TheaterSplit
@@ -369,6 +388,7 @@ function Shell() {
             : channel
               ? <ChatView key={channel.id} channel={channel} />
               : <div style={{ margin: 'auto' }} className="muted">{bundle ? 'Select a channel' : 'Create or join a server to get started'}</div>}
+        </>}
       </main>
       {bundle && !hideSidebars && <MemberList serverId={bundle.server.id} members={bundle.members as Member[]} />}
       {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}

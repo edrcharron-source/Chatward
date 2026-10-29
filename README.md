@@ -5,5 +5,6 @@ Private, end-to-end encrypted Discord-style chat for a small group: text channel
 - `docs/CONTRACT.md` — REST/WS/E2EE contract all features build against
 - `docs/FEATURES.md` — per-feature specs, file ownership, acceptance criteria
 - `docs/LOCAL_TEST.md` — run everything on one Windows PC (written during integration)
+- `docs/HOME_SERVER.md` — host it on a home Ubuntu box (lebserver) reachable from the internet; in the app, **🧪 Test** (Ctrl+Shift+T) opens the feature test console
 
 Dev: `npm install`, `npm run dev:server`, `npm run dev:client`. Typecheck: `npm run typecheck`.
