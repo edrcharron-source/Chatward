@@ -4,7 +4,9 @@ import { VIDEO_ID } from './youtube';
 
 /** Set by whichever member last changed playback. Encrypted with the channel key before it leaves the device. */
 export interface WatchState {
-  videoId: string | null; // null means the party is stopped
+  videoId: string | null; // YouTube id; null with no url means the party is stopped
+  /** https link to a video file (mp4/webm); set instead of videoId for file playback */
+  url?: string | null;
   playing: boolean;
   /** seconds into the video at the moment the change was made */
   position: number;
@@ -14,6 +16,20 @@ export interface WatchState {
 /** A state plus the server ms timestamp it was accepted at. */
 export interface StampedState extends WatchState {
   ts: number;
+}
+
+/** The one thing being watched: a YouTube id or a file url, null when stopped. */
+export const mediaKey = (s: { videoId: string | null; url?: string | null } | null | undefined): string | null =>
+  s?.videoId ?? s?.url ?? null;
+
+/** Returns the https URL for a playable video file link, or null. */
+export function parseVideoUrl(input: string): string | null {
+  try {
+    const u = new URL(input.trim());
+    return u.protocol === 'https:' && u.href.length <= 2000 ? u.href : null;
+  } catch {
+    return null;
+  }
 }
 
 export const RATE_MIN = 0.25;
@@ -46,11 +62,14 @@ export function decodeState(payload: MessagePayload): WatchState | null {
   const s = raw as Record<string, unknown>;
   const videoId = s.videoId === null ? null : typeof s.videoId === 'string' ? s.videoId : undefined;
   if (videoId === undefined || (videoId !== null && !VIDEO_ID.test(videoId))) return null;
+  const url = s.url === undefined || s.url === null ? null : typeof s.url === 'string' ? parseVideoUrl(s.url) : undefined;
+  if (url === undefined || (s.url != null && url === null) || (videoId && url)) return null;
   if (typeof s.playing !== 'boolean') return null;
   if (typeof s.position !== 'number' || !Number.isFinite(s.position) || s.position < 0) return null;
   if (typeof s.rate !== 'number' || !Number.isFinite(s.rate)) return null;
   return {
     videoId,
+    url,
     playing: s.playing,
     position: s.position,
     rate: Math.min(RATE_MAX, Math.max(RATE_MIN, s.rate)),

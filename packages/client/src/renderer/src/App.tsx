@@ -16,6 +16,7 @@ import MemberList from './components/servers/MemberList';
 import ChatView from './components/chat/ChatView';
 import VoiceChannelView from './components/voice/VoiceChannelView';
 import TheaterSplit from './components/voice/TheaterSplit';
+import VaultView from './components/vault/VaultView';
 import { WatchPartyPanel } from './components/watchparty';
 import SettingsModal from './components/settings/SettingsModal';
 import { JellyfinBrowser, useJellyfinEnabled } from './components/jellyfin/JellyfinBrowser';
@@ -77,6 +78,7 @@ function Shell() {
   const [testOpen, setTestOpen] = useState(false);
   const [moviesOpen, setMoviesOpen] = useState(false);
   const jellyfinEnabled = useJellyfinEnabled();
+  const [vaultOpen, setVaultOpen] = useState(false);
   const { servers, activeServerId, activeChannelId } = useSession();
   const bundle = servers.find((s) => s.server.id === activeServerId);
   const channel = bundle?.channels.find((c) => c.id === activeChannelId);
@@ -357,6 +359,11 @@ function Shell() {
             )}
             <button className="icon" onClick={() => setTestOpen(true)} title="Feature test console (Ctrl+Shift+T)">🧪 Test</button>
             {jellyfinEnabled && <button className="icon" onClick={() => setMoviesOpen(true)} title="Browse the Jellyfin library">🍿 Movies</button>}
+            {bundle && (
+              <button className="icon" onClick={() => setVaultOpen((o) => !o)} aria-pressed={vaultOpen} title="Shared photos and videos">
+                🖼 {vaultOpen ? 'Close Vault' : 'Vault'}
+              </button>
+            )}
             {channel && (
               <button className="icon" onClick={() => setWatchOpen((o) => !o)} aria-pressed={watchOpen} title="Watch YouTube together">
                 🎬 {watchOpen ? 'Close watch party' : 'Watch together'}
@@ -367,7 +374,10 @@ function Shell() {
         {watchOpen && (voiceChannelId && watchKeyChannelId
           ? <WatchPartyPanel key={`watch-${voiceChannelId}`} callChannelId={voiceChannelId} keyChannelId={watchKeyChannelId} />
           : <div className="cw-main-note muted">Join a voice channel to start a watch party.</div>)}
-        {theaterWithChat && callChannel && chatChannel
+        {vaultOpen && bundle
+          ? <VaultView key={bundle.server.id} serverId={bundle.server.id} keyChannelId={textChannels[0]?.id}
+              canModerate={['owner', 'admin'].includes((bundle.members as Member[]).find((m) => m.user.id === useSession.getState().user?.id)?.role ?? '')} />
+          : theaterWithChat && callChannel && chatChannel
           ? (
             <TheaterSplit
               top={<VoiceChannelView key={callChannel.id} channel={callChannel} theaterOnly />}

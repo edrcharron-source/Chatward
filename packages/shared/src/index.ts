@@ -121,6 +121,36 @@ export interface LinkPreview {
   embed?: { kind: 'youtube' | 'twitter'; id: string };
 }
 
+/** A Vault photo or video as the server sees it. `ciphertext` seals a VaultDescriptor with the anchor channel's key. */
+export interface VaultItem {
+  id: string;
+  serverId: string;
+  ownerId: string;
+  createdAt: number;
+  /** Bytes on disk for the file plus its thumbnail. */
+  size: number;
+  /** The text channel whose key sealed `ciphertext`. */
+  channelId: string;
+  keyVersion: number;
+  /** base64(iv || AES-GCM ciphertext) of JSON VaultDescriptor */
+  ciphertext: string;
+}
+
+/** Decrypted Vault item details (only ever exists on clients). `key`/`iv` open the file, `thumbKey`/`thumbIv` the thumbnail. */
+export interface VaultDescriptor {
+  name: string;
+  mime: string;
+  kind: 'image' | 'video';
+  size: number;
+  width?: number;
+  height?: number;
+  durationSec?: number;
+  key: string;
+  iv: string;
+  thumbKey: string;
+  thumbIv: string;
+}
+
 export interface SoundboardSound {
   id: string;
   serverId: string;
@@ -159,6 +189,8 @@ export type ServerFrame =
   | { t: 'member.role'; serverId: string; userId: string; role: Member['role'] }
   | { t: 'sound.new'; sound: SoundboardSound }
   | { t: 'sound.delete'; serverId: string; soundId: string }
+  | { t: 'vault.new'; item: VaultItem }
+  | { t: 'vault.delete'; serverId: string; itemId: string }
   | { t: 'sound.play'; serverId: string; channelId: string; soundId: string; userId: string }
   | { t: 'voice.state'; serverId: string; channelId: string; userIds: string[] }
   | { t: 'voice.kicked'; channelId: string }

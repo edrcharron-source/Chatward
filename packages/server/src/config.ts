@@ -43,6 +43,13 @@ function uploadQuotaBytes(): number {
   return Math.round(mb * 1024 * 1024);
 }
 
+function megabytes(name: string, fallback: string): number {
+  const raw = process.env[name] ?? fallback;
+  const mb = Number(raw);
+  if (raw.trim() === '' || !Number.isFinite(mb) || mb < 0) throw new Error(`${name} must be a number of megabytes.`);
+  return Math.round(mb * 1024 * 1024);
+}
+
 export const config = {
   port: Number(process.env.PORT ?? 3000),
   host: process.env.HOST ?? '0.0.0.0',
@@ -51,6 +58,12 @@ export const config = {
   uploadsDir: path.resolve(process.env.UPLOADS_DIR ?? path.join(dataDir, 'uploads')),
   /** Total upload storage each person may keep, in bytes. 0 turns the limit off. Set UPLOAD_QUOTA_MB to change it. */
   uploadQuotaBytes: uploadQuotaBytes(),
+  /** Vault photos and videos. Point VAULT_DIR at bulk storage (the RAID on the home server). */
+  vaultDir: path.resolve(process.env.VAULT_DIR ?? path.join(dataDir, 'vault')),
+  /** Vault space each person may use, in bytes (VAULT_QUOTA_MB, default 20 GB). 0 turns the limit off. */
+  vaultQuotaBytes: megabytes('VAULT_QUOTA_MB', '20480'),
+  /** Largest single Vault upload, in bytes (VAULT_MAX_MB, default 200 MB). Uploads are held in memory while they arrive. */
+  vaultMaxBytes: megabytes('VAULT_MAX_MB', '200'),
   /** Desktop installer, latest.yml and blockmap, served at /updates for the client auto-updater. */
   updatesDir: path.resolve(process.env.UPDATES_DIR ?? path.join(dataDir, 'updates')),
   /** Set by the update script from the installed release tag. */
@@ -84,4 +97,5 @@ export const config = {
   },
 };
 fs.mkdirSync(config.uploadsDir, { recursive: true });
+fs.mkdirSync(config.vaultDir, { recursive: true });
 fs.mkdirSync(config.updatesDir, { recursive: true });
