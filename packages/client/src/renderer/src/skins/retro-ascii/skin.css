@@ -1,0 +1,103 @@
+/* Retro ASCII skin: amber on near-black, monospace type, square boxes with hard offset shadows, a sparse starfield
+   and a faint scanline. Look only: it sets colours, fonts-family, shadows, radii and decoration, and never a size,
+   a position or a box model value, so the layout of the original UI shows through unchanged (see docs/SKINS.md).
+   Every rule sits under :root[data-skin='retro-ascii'], so the pack does nothing until this skin is chosen. */
+
+:root[data-skin='retro-ascii'] {
+  /* Surfaces. Panels are see-through so the starfield shows under them; popovers and modals are solid. */
+  --bg-0: rgba(8, 5, 2, .9); --bg-1: rgba(18, 11, 4, .86); --bg-2: rgba(10, 7, 3, .8);
+  --bg-3: #1c1206; --bg-hover: #2a1a07;
+  --text: #ffb347; --text-muted: #b07a32; --text-strong: #ffe9a8;
+  --accent: #ffb000; --accent-hover: #ffc233; --accent-text: #0a0703;
+  --accent-tint: rgba(255, 176, 0, .14); --hover-tint: rgba(255, 176, 0, .06);
+  --danger: #ff5a2a; --ok: #e8c547; --warn: #ffb000;
+  --border: #4a2f0c;
+  --shadow: 6px 6px 0 #4a2f0c; --shadow-popover: 6px 6px 0 #4a2f0c;
+  --shadow-composer: none; --shadow-header: none;
+  --radius: 0; --radius-sm: 0; --radius-modal: 0;
+  --overlay-bg: rgba(8, 5, 2, .8); --backdrop: rgba(8, 5, 2, .75);
+  --font-body: 'JetBrains Mono', Consolas, 'Cascadia Mono', ui-monospace, monospace;
+  --font-code: var(--font-body); --font-digits: var(--font-body);
+}
+
+/* Starfield and scanline. The stars sit on the window, so they show through the panels above. */
+:root[data-skin='retro-ascii'] body { background: #0a0703; }
+:root[data-skin='retro-ascii'] #root {
+  background-color: #0a0703;
+  background-image:
+    radial-gradient(1px 1px at 12% 18%, #ffe9a8 50%, transparent 51%),
+    radial-gradient(1px 1px at 63% 42%, #9a6a2a 50%, transparent 51%),
+    radial-gradient(1px 1px at 88% 77%, #ffb347 50%, transparent 51%),
+    radial-gradient(1px 1px at 31% 91%, #9a6a2a 50%, transparent 51%);
+  background-size: 640px 420px;
+}
+:root[data-skin='retro-ascii'] #root::after {
+  content: ''; position: fixed; inset: 0; z-index: 1000; pointer-events: none; opacity: .5;
+  background: repeating-linear-gradient(to bottom, transparent 0 2px, rgba(0, 0, 0, .25) 2px 3px);
+}
+
+/* Square corners everywhere, including the round avatars and the server rail. */
+:root[data-skin='retro-ascii'] * { border-radius: 0; }
+:root[data-skin='retro-ascii'] ::selection { background: var(--accent); color: var(--accent-text); }
+:root[data-skin='retro-ascii'] ::-webkit-scrollbar-thumb { background: var(--border); }
+
+/* Phosphor glow on headings and names. Kept faint so the text stays easy to read. */
+:root[data-skin='retro-ascii'] h2,
+:root[data-skin='retro-ascii'] .cv-title,
+:root[data-skin='retro-ascii'] .cv-name { text-shadow: 0 0 6px rgba(255, 176, 0, .35); }
+
+/* Buttons are outlined. An inset shadow draws the outline, so no box gains a pixel. Icon-only buttons stay bare. */
+:root[data-skin='retro-ascii'] button { background: transparent; color: var(--accent); box-shadow: inset 0 0 0 1px var(--border); }
+:root[data-skin='retro-ascii'] button:hover { background: var(--accent-tint); }
+:root[data-skin='retro-ascii'] button.icon { box-shadow: none; }
+:root[data-skin='retro-ascii'] button.primary { background: var(--accent); color: var(--accent-text); box-shadow: none; }
+:root[data-skin='retro-ascii'] button.primary:hover { background: var(--accent-hover); }
+:root[data-skin='retro-ascii'] button.danger { background: transparent; color: var(--danger); box-shadow: inset 0 0 0 1px var(--danger); }
+:root[data-skin='retro-ascii'] button.danger:hover { background: var(--danger); color: var(--danger-text); }
+
+/* Fields get a dark well and an amber rule, with a one-pixel glow on focus. Their border is already 1px in the base. */
+:root[data-skin='retro-ascii'] input:not([type='checkbox']):not([type='radio']):not([type='range']),
+:root[data-skin='retro-ascii'] textarea,
+:root[data-skin='retro-ascii'] select {
+  background: #0a0703; color: var(--text-strong); border-color: var(--border);
+}
+:root[data-skin='retro-ascii'] input:focus,
+:root[data-skin='retro-ascii'] textarea:focus,
+:root[data-skin='retro-ascii'] select:focus { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+
+/* Boxed panels: an outline (which takes no space) and a hard offset shadow. Popovers and modals are solid. */
+:root[data-skin='retro-ascii'] .card,
+:root[data-skin='retro-ascii'] .modal,
+:root[data-skin='retro-ascii'] .cv-actions,
+:root[data-skin='retro-ascii'] .media-popover,
+:root[data-skin='retro-ascii'] .setting-row { outline: 1px solid var(--border); outline-offset: -1px; }
+:root[data-skin='retro-ascii'] .modal,
+:root[data-skin='retro-ascii'] .cv-actions,
+:root[data-skin='retro-ascii'] .media-popover { background: #120b04; }
+:root[data-skin='retro-ascii'] .card,
+:root[data-skin='retro-ascii'] .modal,
+:root[data-skin='retro-ascii'] .cv-actions,
+:root[data-skin='retro-ascii'] .media-popover { box-shadow: 6px 6px 0 #4a2f0c; }
+
+/* Dashed section rules under headers. The base already has a 1px bottom border there. */
+:root[data-skin='retro-ascii'] .cw-channels-head,
+:root[data-skin='retro-ascii'] .cv-header { border-bottom-style: dashed; }
+
+/* Avatars take the amber tint so photos sit in the palette. */
+:root[data-skin='retro-ascii'] .avatar { filter: sepia(.7) saturate(1.1); }
+
+/* ASCII accents. The banner and the cursor are generated text placed outside the flow (absolute), so the empty
+   state keeps its size and position. */
+:root[data-skin='retro-ascii'] .cw-main-empty { position: relative; }
+:root[data-skin='retro-ascii'] .cw-main-empty::before {
+  content: '  .    *       .\A  [ NO CHANNEL OPEN ]\A  .      *    .';
+  position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%);
+  white-space: pre; color: var(--accent); margin-bottom: 8px;
+}
+:root[data-skin='retro-ascii'] .cw-main-empty::after {
+  content: '_'; position: absolute; left: 100%; color: var(--accent); animation: cw-skin-blink 1s steps(2, start) infinite;
+}
+@keyframes cw-skin-blink { to { visibility: hidden; } }
+@media (prefers-reduced-motion: reduce) {
+  :root[data-skin='retro-ascii'] .cw-main-empty::after { animation: none; }
+}

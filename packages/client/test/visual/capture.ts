@@ -1,5 +1,6 @@
 // Screenshots of the built client in demo mode, for the "looks exactly the same" check (docs/SKINS.md).
 // Run with: npm run visual:capture -w @chatward/client -- <out dir> [app dir]
+// (set CHATWARD_VISUAL_SKIN=<id> to capture a skin; unset captures the plain app, as CI does)
 // The app dir defaults to this package; pass another checkout's packages/client to capture its build instead.
 // On Linux run it under xvfb-run. The launch and pinning live in harness.ts, shared with the skin feature check.
 import fs from 'node:fs';
@@ -10,6 +11,8 @@ import { DEFAULT_APP_DIR, closePopups, launch, settle } from './harness';
 const outDir = path.resolve(process.argv[2] ?? 'out/visual/shots');
 const appDir = path.resolve(process.argv[3] ?? DEFAULT_APP_DIR);
 const THEMES = ['dark', 'light'] as const;
+// Set to a skin id (skins/index.ts) to capture that skin instead of the plain app, e.g. CHATWARD_VISUAL_SKIN=retro-ascii.
+const SKIN = process.env.CHATWARD_VISUAL_SKIN ?? '';
 
 async function shot(page: Page, name: string) {
   await settle(page);
@@ -23,7 +26,7 @@ async function shot(page: Page, name: string) {
 }
 
 async function captureTheme(theme: string) {
-  const { app, page } = await launch(theme, appDir);
+  const { app, page } = await launch(theme, appDir, SKIN);
   try {
     const p = (name: string) => `${theme}-${name}`;
     await shot(page, p('auth'));
