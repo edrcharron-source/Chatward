@@ -38,13 +38,6 @@ export function concat(...parts: Bytes[]): Bytes {
   return out;
 }
 
-export function equalBytes(a: Bytes, b: Bytes): boolean {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a[i] ^ b[i];
-  return diff === 0;
-}
-
 export async function sha256(data: Bytes): Promise<Bytes> {
   return new Uint8Array(await subtle.digest('SHA-256', data));
 }
@@ -105,12 +98,6 @@ export async function deriveWrapKey(priv: CryptoKey, peerPub: CryptoKey, salt: B
   const shared = await subtle.deriveBits({ name: 'ECDH', public: peerPub }, priv, 256);
   const hkdfKey = await subtle.importKey('raw', shared, 'HKDF', false, ['deriveKey']);
   return subtle.deriveKey({ name: 'HKDF', hash: 'SHA-256', salt, info }, hkdfKey, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
-}
-
-/** HKDF-SHA-256 over a symmetric key, producing `length` bytes. */
-export async function hkdf(ikm: Bytes, salt: Bytes, info: Bytes, length: number): Promise<Bytes> {
-  const base = await subtle.importKey('raw', ikm, 'HKDF', false, ['deriveBits']);
-  return new Uint8Array(await subtle.deriveBits({ name: 'HKDF', hash: 'SHA-256', salt, info }, base, length * 8));
 }
 
 // ---------- ECDSA P-256 (envelope signatures, device identity) ----------
