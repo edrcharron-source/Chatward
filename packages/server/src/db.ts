@@ -98,6 +98,18 @@ export function openDb(): DB {
     size INTEGER NOT NULL,
     created_at INTEGER NOT NULL
   );
+  CREATE TABLE IF NOT EXISTS vault_items (
+    id TEXT PRIMARY KEY,
+    server_id TEXT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+    owner_id TEXT NOT NULL REFERENCES users(id),
+    channel_id TEXT NOT NULL,
+    key_version INTEGER NOT NULL,
+    ciphertext TEXT NOT NULL,
+    size INTEGER NOT NULL,
+    thumb_size INTEGER NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_vault_server ON vault_items(server_id, created_at DESC);
   CREATE TABLE IF NOT EXISTS sounds (
     id TEXT PRIMARY KEY,
     server_id TEXT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
