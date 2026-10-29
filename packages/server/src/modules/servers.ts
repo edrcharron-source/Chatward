@@ -1,6 +1,3 @@
-import crypto from 'node:crypto';
-import fs from 'node:fs';
-import path from 'node:path';
 import type { Express, NextFunction, Request, Response } from 'express';
 import {
   DEFAULT_VOICE_BITRATE_KBPS,
@@ -13,13 +10,11 @@ import {
 } from '@chatward/shared';
 import type { AuthedRequest, Ctx } from '../ctx.js';
 import { newId } from '../db.js';
-import { soundsDirOf } from './soundboard.js';
+import { mainServerId } from '../singleServer.js';
 import { forgetWatchParty } from './watchparty.js';
-import { clearVoiceChannel, forgetChannelRemovals, forgetMemberRemovals, kickFromCall } from './voice.js';
+import { clearVoiceChannel, endAccountCall, forgetChannelRemovals, forgetMemberRemovals, kickFromCall } from './voice.js';
 
 const { SERVER_NAME_MAX, CHANNEL_NAME_MAX } = LIMITS;
-const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-const INVITE_MAX_USES = 100;
 
 type ServerRow = { id: string; name: string; owner_id: string };
 type ChannelRow = {
@@ -120,31 +115,18 @@ export function peerIds(ctx: Ctx, userId: string): string[] {
     .all(userId) as { id: string }[]).map((r) => r.id);
 }
 
-export function isBanned(ctx: Ctx, serverId: string, userId: string): boolean {
-  return !!ctx.db.prepare('SELECT 1 FROM bans WHERE server_id=? AND user_id=?').get(serverId, userId);
-}
-
 /**
- * Adds `userId` to the invite's server, consuming one use. Must run inside the caller's
- * transaction. Returns null when the invite is unknown, expired or used up.
+ * Consumes one use of an invite made in the app before sign-up codes replaced it. Only invites to the one server
+ * count, and an invite is deleted once its last use is taken. Run inside the sign-up transaction.
  */
-export function redeemInvite(
-  ctx: Ctx,
-  code: string,
-  userId: string,
-): { serverId: string; joined: boolean } | null {
+export function takeLegacyInvite(ctx: Ctx, code: string, serverId: string): boolean {
   const inv = ctx.db
     .prepare('SELECT server_id, expires_at, max_uses, uses FROM invites WHERE code=?')
     .get(code) as InviteRow | undefined;
-  if (!inv) return null;
-  if (ctx.roleIn(inv.server_id, userId)) return { serverId: inv.server_id, joined: false };
-  if (isBanned(ctx, inv.server_id, userId)) throw new ApiError(403, 'you are banned from this server');
-  if (inv.expires_at <= Date.now() || inv.uses >= inv.max_uses) return null;
-  ctx.db.prepare('UPDATE invites SET uses = uses + 1 WHERE code=?').run(code);
-  ctx.db
-    .prepare('INSERT INTO members (server_id, user_id, role, joined_at) VALUES (?, ?, ?, ?)')
-    .run(inv.server_id, userId, 'member', Date.now());
-  return { serverId: inv.server_id, joined: true };
+  if (!inv || inv.server_id !== serverId || inv.expires_at <= Date.now() || inv.uses >= inv.max_uses) return false;
+  if (inv.uses + 1 >= inv.max_uses) ctx.db.prepare('DELETE FROM invites WHERE code=?').run(code);
+  else ctx.db.prepare('UPDATE invites SET uses = uses + 1 WHERE code=?').run(code);
+  return true;
 }
 
 export function announceJoin(ctx: Ctx, serverId: string, userId: string): void {
@@ -165,31 +147,10 @@ export function register(app: Express, ctx: Ctx): void {
     );
   }
 
-  app.post('/api/servers', ctx.requireAuth, route((req, res) => {
-    const uid = userIdOf(req);
-    const name = cleanText(bodyOf(req).name, SERVER_NAME_MAX, 'server name');
-    const serverId = ctx.db.transaction(() => {
-      const id = newId();
-      const now = Date.now();
-      ctx.db
-        .prepare('INSERT INTO servers (id, name, owner_id, created_at) VALUES (?, ?, ?, ?)')
-        .run(id, name, uid, now);
-      ctx.db
-        .prepare('INSERT INTO members (server_id, user_id, role, joined_at) VALUES (?, ?, ?, ?)')
-        .run(id, uid, 'owner', now);
-      insertChannel(ctx, id, 'general', 'text');
-      insertChannel(ctx, id, 'General', 'voice');
-      return id;
-    })();
-    // The creator's other devices learn about the new server the same way they learn about an invite join.
-    announceJoin(ctx, serverId, uid);
-    res.json({ server: serverOf(ctx, serverId), channels: channelsOf(ctx, serverId) });
-  }));
-
   app.get('/api/servers', ctx.requireAuth, route((req, res) => {
-    const ids = ctx.db
-      .prepare('SELECT server_id FROM members WHERE user_id=? ORDER BY joined_at')
-      .all(userIdOf(req)) as { server_id: string }[];
+    // Only the one server is listed. Extra servers from before the single-server release stay in the database unlisted.
+    const main = mainServerId(ctx.db);
+    const ids = main && ctx.roleIn(main, userIdOf(req)) ? [{ server_id: main }] : [];
     res.json({
       servers: ids.map(({ server_id }) => ({
         server: serverOf(ctx, server_id),
@@ -270,48 +231,6 @@ export function register(app: Express, ctx: Ctx): void {
     res.json({ server });
   }));
 
-  // Owner only. Members are told first, because the delete removes them from the member list.
-  app.delete('/api/servers/:id', ctx.requireAuth, route(async (req, res) => {
-    const serverId = String(req.params.id);
-    const role = ctx.roleIn(serverId, userIdOf(req));
-    if (!role) throw new ApiError(404, 'server not found');
-    if (role !== 'owner') throw new ApiError(403, 'only the owner can delete a server');
-    const members = ctx.db.prepare('SELECT user_id FROM members WHERE server_id=?').all(serverId) as { user_id: string }[];
-    const soundIds = ctx.db.prepare('SELECT id FROM sounds WHERE server_id=?').all(serverId) as { id: string }[];
-    const gone: ServerFrame = { t: 'server.delete', serverId };
-    ctx.broadcastToServer(serverId, gone);
-    for (const { user_id } of members) kickFromCall(ctx, serverId, user_id);
-    const channelIds = ctx.db.prepare('SELECT id FROM channels WHERE server_id=?').all(serverId) as { id: string }[];
-    for (const { id } of channelIds) forgetWatchParty(id);
-    ctx.db.prepare('DELETE FROM servers WHERE id=?').run(serverId);
-    for (const { id } of channelIds) forgetChannelRemovals(ctx, id);
-    pruneResetCodes(ctx);
-    // Sound rows cascade with the server, but their audio files live on disk and would be left behind.
-    const soundsDir = soundsDirOf(ctx.config.dataDir);
-    await Promise.all(soundIds.map(({ id }) =>
-      fs.promises.rm(path.join(soundsDir, id), { force: true }).catch((err) => console.error(`sound ${id} cleanup failed`, err)),
-    ));
-    res.json({ ok: true });
-  }));
-
-  // Any member except the owner, who must delete the server instead.
-  app.post('/api/servers/:id/leave', ctx.requireAuth, route((req, res) => {
-    const serverId = String(req.params.id);
-    const uid = userIdOf(req);
-    const role = ctx.roleIn(serverId, uid);
-    if (!role) throw new ApiError(404, 'server not found');
-    if (role === 'owner') bad('the owner cannot leave; delete the server instead');
-    ctx.db.prepare('DELETE FROM members WHERE server_id=? AND user_id=?').run(serverId, uid);
-    forgetMemberRemovals(ctx, serverId, uid);
-    pruneResetCodes(ctx);
-    // Sent after the delete, so the leaving user needs an explicit send.
-    const leave: ServerFrame = { t: 'member.leave', serverId, userId: uid };
-    ctx.broadcastToServer(serverId, leave);
-    ctx.sendToUser(uid, leave);
-    kickFromCall(ctx, serverId, uid);
-    res.json({ ok: true });
-  }));
-
   // Owner only: promote a member to admin or demote an admin back to member.
   app.patch('/api/servers/:id/members/:userId', ctx.requireAuth, route((req, res) => {
     const serverId = String(req.params.id);
@@ -329,93 +248,22 @@ export function register(app: Express, ctx: Ctx): void {
     res.json({ ok: true });
   }));
 
-  // Owner only: hand the server to another member. The old owner becomes an admin.
-  app.post('/api/servers/:id/transfer', ctx.requireAuth, route((req, res) => {
-    const serverId = String(req.params.id);
-    const uid = userIdOf(req);
-    const actorRole = ctx.roleIn(serverId, uid);
-    if (!actorRole) throw new ApiError(404, 'server not found');
-    if (actorRole !== 'owner') throw new ApiError(403, 'only the owner can transfer a server');
-    const targetId = bodyOf(req).userId;
-    if (typeof targetId !== 'string' || !targetId) bad('userId is required');
-    if (targetId === uid) bad('you already own this server');
-    const targetRole = ctx.roleIn(serverId, targetId);
-    if (!targetRole) throw new ApiError(404, 'member not found');
-    ctx.db.transaction(() => {
-      ctx.db.prepare('UPDATE members SET role=? WHERE server_id=? AND user_id=?').run('admin', serverId, uid);
-      ctx.db.prepare('UPDATE members SET role=? WHERE server_id=? AND user_id=?').run('owner', serverId, targetId);
-      ctx.db.prepare('UPDATE servers SET owner_id=? WHERE id=?').run(targetId, serverId);
-      pruneResetCodes(ctx);
-    })();
-    ctx.broadcastToServer(serverId, { t: 'member.role', serverId, userId: uid, role: 'admin' });
-    ctx.broadcastToServer(serverId, { t: 'member.role', serverId, userId: targetId, role: 'owner' });
-    res.json({ ok: true });
-  }));
-
-  app.post('/api/servers/:id/invites', ctx.requireAuth, route((req, res) => {
-    const serverId = String(req.params.id);
-    requireAdmin(ctx, serverId, userIdOf(req));
-    const maxUses = bodyOf(req).maxUses ?? 1;
-    if (typeof maxUses !== 'number' || !Number.isInteger(maxUses) || maxUses < 1 || maxUses > INVITE_MAX_USES) {
-      bad(`maxUses must be an integer 1-${INVITE_MAX_USES}`);
-    }
-    const code = crypto.randomBytes(18).toString('base64url');
-    const expiresAt = Date.now() + INVITE_TTL_MS;
-    ctx.db
-      .prepare('INSERT INTO invites (code, server_id, created_by, expires_at, max_uses) VALUES (?, ?, ?, ?, ?)')
-      .run(code, serverId, userIdOf(req), expiresAt, maxUses);
-    res.json({ code, expiresAt });
-  }));
-
-  app.post('/api/invites/:code/join', ctx.requireAuth, route((req, res) => {
-    const uid = userIdOf(req);
-    const result = ctx.db.transaction(() => redeemInvite(ctx, String(req.params.code), uid))();
-    if (!result) throw new ApiError(404, 'invite is invalid or expired');
-    if (result.joined) announceJoin(ctx, result.serverId, uid);
-    res.json({ server: serverOf(ctx, result.serverId) });
-  }));
-
-  app.get('/api/servers/:id/invites', ctx.requireAuth, route((req, res) => {
-    const serverId = String(req.params.id);
-    requireAdmin(ctx, serverId, userIdOf(req));
-    const rows = ctx.db
-      .prepare('SELECT code, expires_at, max_uses, uses FROM invites WHERE server_id=? AND expires_at > ? AND uses < max_uses ORDER BY expires_at')
-      .all(serverId, Date.now()) as { code: string; expires_at: number; max_uses: number; uses: number }[];
-    res.json({
-      invites: rows.map((r) => ({ code: r.code, expiresAt: r.expires_at, maxUses: r.max_uses, uses: r.uses })),
-    });
-  }));
-
-  app.delete('/api/servers/:id/invites/:code', ctx.requireAuth, route((req, res) => {
-    const serverId = String(req.params.id);
-    requireAdmin(ctx, serverId, userIdOf(req));
-    const { changes } = ctx.db
-      .prepare('DELETE FROM invites WHERE code=? AND server_id=?')
-      .run(String(req.params.code), serverId);
-    if (changes === 0) throw new ApiError(404, 'invite not found');
-    res.json({ ok: true });
-  }));
-
+  // There is one server, so removing someone from it turns their account off. Ban and kick do the same thing; the ban
+  // list is the list of turned-off accounts, and lifting a ban turns the account back on.
   app.delete('/api/servers/:id/members/:userId', ctx.requireAuth, route((req, res) => {
     const serverId = String(req.params.id);
     const targetId = String(req.params.userId);
     assertCanModerate(ctx, serverId, userIdOf(req), targetId);
-    removeMember(ctx, serverId, targetId);
+    disableAccount(ctx, targetId);
     res.json({ ok: true });
   }));
 
   app.post('/api/servers/:id/bans', ctx.requireAuth, route((req, res) => {
     const serverId = String(req.params.id);
-    const actorId = userIdOf(req);
     const targetId = bodyOf(req).userId;
     if (typeof targetId !== 'string') bad('userId is required');
-    assertCanBan(ctx, serverId, actorId, targetId);
-    ctx.db.transaction(() => {
-      ctx.db
-        .prepare('INSERT OR IGNORE INTO bans (server_id, user_id, banned_by, created_at) VALUES (?, ?, ?, ?)')
-        .run(serverId, targetId, actorId, Date.now());
-      removeMember(ctx, serverId, targetId);
-    })();
+    assertCanModerate(ctx, serverId, userIdOf(req), targetId);
+    disableAccount(ctx, targetId);
     res.json({ ok: true });
   }));
 
@@ -423,16 +271,17 @@ export function register(app: Express, ctx: Ctx): void {
     const serverId = String(req.params.id);
     requireAdmin(ctx, serverId, userIdOf(req));
     const rows = ctx.db
-      .prepare('SELECT user_id, created_at FROM bans WHERE server_id=? ORDER BY created_at')
-      .all(serverId) as { user_id: string; created_at: number }[];
+      .prepare('SELECT id, disabled_at FROM users WHERE disabled_at IS NOT NULL AND deleted_at IS NULL ORDER BY disabled_at')
+      .all() as { id: string; disabled_at: number }[];
     const bans = rows.flatMap((r) => {
-      const user = ctx.getUser(r.user_id);
-      return user ? [{ user, bannedAt: r.created_at }] : [];
+      const user = ctx.getUser(r.id);
+      return user ? [{ user, bannedAt: r.disabled_at }] : [];
     });
     res.json({ bans });
   }));
 
-  // People who have posted here but are no longer members, so admins can ban them from the UI.
+  // People who have posted here but are no longer members and whose account is still on. With one server that is
+  // rare, but the moderation panel still offers it.
   app.get('/api/servers/:id/former-members', ctx.requireAuth, route((req, res) => {
     const serverId = String(req.params.id);
     requireAdmin(ctx, serverId, userIdOf(req));
@@ -440,13 +289,14 @@ export function register(app: Express, ctx: Ctx): void {
       .prepare(`
         SELECT m.author_id AS user_id FROM messages m
         JOIN channels c ON c.id = m.channel_id
+        JOIN users u ON u.id = m.author_id
         WHERE c.server_id = ?
           AND m.author_id NOT IN (SELECT user_id FROM members WHERE server_id = ?)
-          AND m.author_id NOT IN (SELECT user_id FROM bans WHERE server_id = ?)
+          AND u.disabled_at IS NULL AND u.deleted_at IS NULL
         GROUP BY m.author_id
         ORDER BY MAX(m.id) DESC
         LIMIT 100`)
-      .all(serverId, serverId, serverId) as { user_id: string }[];
+      .all(serverId, serverId) as { user_id: string }[];
     const users = rows.flatMap((r) => {
       const user = ctx.getUser(r.user_id);
       return user ? [user] : [];
@@ -457,15 +307,12 @@ export function register(app: Express, ctx: Ctx): void {
   app.delete('/api/servers/:id/bans/:userId', ctx.requireAuth, route((req, res) => {
     const serverId = String(req.params.id);
     requireAdmin(ctx, serverId, userIdOf(req));
-    const { changes } = ctx.db
-      .prepare('DELETE FROM bans WHERE server_id=? AND user_id=?')
-      .run(serverId, String(req.params.userId));
-    if (changes === 0) throw new ApiError(404, 'ban not found');
+    if (!restoreAccount(ctx, String(req.params.userId))) throw new ApiError(404, 'ban not found');
     res.json({ ok: true });
   }));
 }
 
-/** Admins can kick or ban members, but never the owner, and only the owner can act on an admin. */
+/** Admins can remove members, but never the owner, and only the owner can act on an admin. */
 function assertCanModerate(ctx: Ctx, serverId: string, actorId: string, targetId: string): void {
   const actorRole = requireAdmin(ctx, serverId, actorId);
   if (targetId === actorId) bad('you cannot remove yourself');
@@ -477,17 +324,42 @@ function assertCanModerate(ctx: Ctx, serverId: string, actorId: string, targetId
 }
 
 /**
- * Bans can target current members (same rules as kicks) or anyone who has left. Past members
- * are not in the member list, so any admin may ban them by user id, but never themselves.
+ * Turns an account off: it is signed out everywhere, leaves the server (so peers drop its devices from every MLS
+ * group) and cannot sign in until restoreAccount. Its messages and devices stay. Returns false if it was already off.
  */
-function assertCanBan(ctx: Ctx, serverId: string, actorId: string, targetId: string): void {
-  if (ctx.roleIn(serverId, targetId)) {
-    assertCanModerate(ctx, serverId, actorId, targetId);
-    return;
-  }
-  requireAdmin(ctx, serverId, actorId);
-  if (targetId === actorId) bad('you cannot ban yourself');
-  if (!ctx.getUser(targetId)) throw new ApiError(404, 'user not found');
+export function disableAccount(ctx: Ctx, userId: string): boolean {
+  const serverId = mainServerId(ctx.db);
+  const changed = ctx.db.transaction(() => {
+    const { changes } = ctx.db
+      .prepare('UPDATE users SET disabled_at=?, session_version=session_version+1 WHERE id=? AND disabled_at IS NULL AND deleted_at IS NULL')
+      .run(Date.now(), userId);
+    if (changes === 0) return false;
+    ctx.db.prepare('DELETE FROM password_resets WHERE user_id=?').run(userId);
+    return true;
+  })();
+  if (!changed) return false;
+  if (serverId && ctx.roleIn(serverId, userId)) removeMember(ctx, serverId, userId);
+  endAccountCall(ctx, userId);
+  ctx.revokeSockets(userId);
+  return true;
+}
+
+/** Turns an account back on and puts it back in the server as a member. Returns false if it was not off. */
+export function restoreAccount(ctx: Ctx, userId: string): boolean {
+  const serverId = mainServerId(ctx.db);
+  const changed = ctx.db.transaction(() => {
+    const { changes } = ctx.db
+      .prepare('UPDATE users SET disabled_at=NULL WHERE id=? AND disabled_at IS NOT NULL AND deleted_at IS NULL')
+      .run(userId);
+    if (changes === 0) return false;
+    if (serverId) {
+      ctx.db.prepare("INSERT OR IGNORE INTO members (server_id, user_id, role, joined_at) VALUES (?, ?, 'member', ?)")
+        .run(serverId, userId, Date.now());
+    }
+    return true;
+  })();
+  if (changed && serverId) announceJoin(ctx, serverId, userId);
+  return changed;
 }
 
 /** A reset code only works while its issuer still owns a server the member is in. */

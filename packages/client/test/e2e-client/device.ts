@@ -26,22 +26,30 @@ const handlers: Record<string, (args: any) => Promise<unknown>> = {
     return { deviceId: device.deviceId };
   },
 
-  async register({ username, inviteCode, setupCode }) {
-    const body = { username, displayName: username, password: PASSWORD, device: getDevice(), inviteCode, setupCode };
+  async register({ username, inviteCode }) {
+    const body = { name: username, password: PASSWORD, device: getDevice(), inviteCode };
     const r = await api.post<{ token: string; user: { id: string } }>('/api/auth/register', body);
     useSession.setState({ token: r.token, user: r.user as never });
     return { userId: r.user.id };
   },
 
-  async createServer({ name }) {
-    const r = await api.post<{ server: { id: string }; channels: { id: string; name: string; kind: string }[] }>('/api/servers', { name });
-    const general = r.channels.find((c) => c.name === 'general' && c.kind === 'text')!;
-    return { serverId: r.server.id, channelId: general.id };
+  /** Signs in again, e.g. after the account was turned off and back on, which signs out every device. */
+  async login({ username }) {
+    const r = await api.post<{ token: string; user: { id: string } }>('/api/auth/login', { name: username, password: PASSWORD, device: getDevice() });
+    useSession.setState({ token: r.token, user: r.user as never });
+    return { userId: r.user.id };
   },
 
-  async invite({ serverId }) {
-    const r = await api.post<{ code: string }>(`/api/servers/${serverId}/invites`, { maxUses: 3 });
-    return { code: r.code };
+  /** The one server and its #general channel. */
+  async server() {
+    const { servers } = await api.get<{ servers: ServerBundle[] }>('/api/servers');
+    const general = servers[0].channels.find((c) => c.name === 'general' && c.kind === 'text')!;
+    return { serverId: servers[0].server.id, channelId: general.id };
+  },
+
+  async createChannel({ serverId, name }) {
+    const r = await api.post<{ channel: { id: string } }>(`/api/servers/${serverId}/channels`, { name, kind: 'text' });
+    return { channelId: r.channel.id };
   },
 
   async sync() {
@@ -107,11 +115,6 @@ const handlers: Record<string, (args: any) => Promise<unknown>> = {
       await realPost(path, body);
       throw new Error('reply lost');
     }) as typeof api.post;
-    return {};
-  },
-
-  async joinInvite({ code }) {
-    await api.post(`/api/invites/${code}/join`, {});
     return {};
   },
 
