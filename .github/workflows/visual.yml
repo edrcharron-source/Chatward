@@ -3,8 +3,8 @@ name: Visual
 # A pull request that is meant to change the look (a new skin, a restyle) gets the "visual-change" label: the check
 # then passes and the before, after and diff screenshots are still uploaded for review. See docs/SKINS.md.
 on:
-  pull_request:
-    types: [opened, synchronize, reopened, labeled, unlabeled]
+  push:
+    branches: [claude/visual-debug]
 jobs:
   screenshots:
     runs-on: ubuntu-latest
@@ -16,8 +16,8 @@ jobs:
       - run: npm run build -w @chatward/shared && npm run build -w @chatward/client
       - name: Build the base branch
         run: |
-          git fetch --no-tags --depth=1 origin ${{ github.event.pull_request.base.sha }}
-          git worktree add "$RUNNER_TEMP/base" ${{ github.event.pull_request.base.sha }}
+          git fetch --no-tags --depth=1 origin 2e9b61f4f99e806cac5204195a8e1ff3e7274acb
+          git worktree add "$RUNNER_TEMP/base" 2e9b61f4f99e806cac5204195a8e1ff3e7274acb
           cd "$RUNNER_TEMP/base"
           npm ci --ignore-scripts
           npm run build -w @chatward/shared && npm run build -w @chatward/client
@@ -26,8 +26,15 @@ jobs:
           xvfb-run -a npm run visual:capture -w @chatward/client -- "$RUNNER_TEMP/shots/before" "$RUNNER_TEMP/base/packages/client"
           xvfb-run -a npm run visual:capture -w @chatward/client -- "$RUNNER_TEMP/shots/after"
       - name: Compare
-        continue-on-error: ${{ contains(github.event.pull_request.labels.*.name, 'visual-change') }}
+        continue-on-error: true
         run: npm run visual:compare -w @chatward/client -- "$RUNNER_TEMP/shots/before" "$RUNNER_TEMP/shots/after" "$RUNNER_TEMP/shots/diff"
+      - name: Same build twice
+        continue-on-error: true
+        run: |
+          xvfb-run -a npm run visual:capture -w @chatward/client -- "$RUNNER_TEMP/shots/after2"
+          npm run visual:compare -w @chatward/client -- "$RUNNER_TEMP/shots/after" "$RUNNER_TEMP/shots/after2" "$RUNNER_TEMP/shots/diff2"
+      - run: node packages/client/test/visual/crops.mjs "$RUNNER_TEMP/shots/before" "$RUNNER_TEMP/shots/after"
+      - run: fc-match system-ui; fc-match ui-monospace; fc-match sans-serif; fc-list | wc -l
       - uses: actions/upload-artifact@v4
         if: always()
         with:
