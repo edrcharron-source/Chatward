@@ -8,6 +8,7 @@ import { newId } from '../db.js';
 const GIFS_PER_SERVER = 1000;
 const GIF_ID = /^[0-9a-z]{1,40}$/;
 const MB = 1024 * 1024;
+const FETCH_TIMEOUT_MS = 10_000;
 
 type GifRow = {
   id: string;
@@ -52,6 +53,19 @@ export function cleanTags(v: unknown): string[] | null {
     if (!tags.includes(tag)) tags.push(tag);
   }
   return tags.length <= LIMITS.LIBRARY_GIF_TAGS_MAX ? tags : null;
+}
+
+/** The URL when it is an https address on klipy.com or one of its subdomains, else null. */
+export function isKlipyUrl(v: unknown): string | null {
+  if (typeof v !== 'string' || v.length > 2000) return null;
+  try {
+    const u = new URL(v);
+    const host = u.hostname.toLowerCase();
+    if (u.protocol !== 'https:' || u.username || u.password || u.port) return null;
+    return host === 'klipy.com' || host.endsWith('.klipy.com') ? u.toString() : null;
+  } catch {
+    return null;
+  }
 }
 
 export const libraryGifsDirOf = (dataDir: string) => path.join(dataDir, 'library-gifs');
@@ -127,41 +141,63 @@ export function register(app: Express, ctx: Ctx): void {
     res.json({ gifs: rows.map(toGif) });
   });
 
-  app.post('/api/servers/:id/library-gifs', ctx.requireAuth, requireMember, readGif, async (req, res, next) => {
-    try {
-      const userId = (req as AuthedRequest).userId;
-      const serverId = req.params.id;
-      const body: unknown = req.body;
-      const name = cleanName(req.query.name);
-      const tags = cleanTags(req.query.tags);
-      if (!name) { res.status(400).json({ error: `Give the GIF a name (up to ${LIMITS.LIBRARY_GIF_NAME_MAX} characters).` }); return; }
-      if (!tags) { res.status(400).json({ error: `Up to ${LIMITS.LIBRARY_GIF_TAGS_MAX} tags, each up to ${LIMITS.LIBRARY_GIF_TAG_MAX} characters.` }); return; }
-      const dims = Buffer.isBuffer(body) ? gifSize(body) : null;
-      if (!Buffer.isBuffer(body) || !dims) { res.status(400).json({ error: "That file isn't a GIF." }); return; }
+  /** Checks the name, tags and bytes, then stores the GIF and tells the server. Answers the request either way. */
+  async function addGif(req: Request, res: Response, body: unknown): Promise<void> {
+    const userId = (req as AuthedRequest).userId;
+    const serverId = req.params.id;
+    const name = cleanName(req.query.name);
+    const tags = cleanTags(req.query.tags);
+    if (!name) { res.status(400).json({ error: `Give the GIF a name (up to ${LIMITS.LIBRARY_GIF_NAME_MAX} characters).` }); return; }
+    if (!tags) { res.status(400).json({ error: `Up to ${LIMITS.LIBRARY_GIF_TAGS_MAX} tags, each up to ${LIMITS.LIBRARY_GIF_TAG_MAX} characters.` }); return; }
+    const dims = Buffer.isBuffer(body) ? gifSize(body) : null;
+    if (!Buffer.isBuffer(body) || !dims) { res.status(400).json({ error: "That file isn't a GIF." }); return; }
 
-      const row: GifRow = {
-        id: newId(), server_id: serverId, owner_id: userId, name, tags: tags.join(','),
-        width: dims.width, height: dims.height, size: body.length, uses: 0, created_at: Date.now(),
-      };
-      const added = insertIfRoom(row);
-      if (added === 'full') { res.status(409).json({ error: `The GIF library is full (${GIFS_PER_SERVER} GIFs). Delete some first.` }); return; }
-      if (added === 'quota') {
-        res.status(413).json({
-          error: `Upload space is full: you have ${Math.round(usedBy(userId) / MB)} MB of ${Math.round(uploadQuotaBytes / MB)} MB used on this server. ` +
-            'Delete some of your GIFs or ask the server owner to raise UPLOAD_QUOTA_MB.',
-        });
+    const row: GifRow = {
+      id: newId(), server_id: serverId, owner_id: userId, name, tags: tags.join(','),
+      width: dims.width, height: dims.height, size: body.length, uses: 0, created_at: Date.now(),
+    };
+    const added = insertIfRoom(row);
+    if (added === 'full') { res.status(409).json({ error: `The GIF library is full (${GIFS_PER_SERVER} GIFs). Delete some first.` }); return; }
+    if (added === 'quota') {
+      res.status(413).json({
+        error: `Upload space is full: you have ${Math.round(usedBy(userId) / MB)} MB of ${Math.round(uploadQuotaBytes / MB)} MB used on this server. ` +
+          'Delete some of your GIFs or ask the server owner to raise UPLOAD_QUOTA_MB.',
+      });
+      return;
+    }
+    try {
+      await fs.promises.writeFile(filePath(row.id), body, { flag: 'wx', mode: 0o600 });
+    } catch (err) {
+      // Give the space back so a failed write does not count against the person's quota.
+      db.prepare('DELETE FROM library_gifs WHERE id=?').run(row.id);
+      throw err;
+    }
+    const gif = toGif(row);
+    ctx.broadcastToServer(serverId, { t: 'gif.new', gif });
+    res.status(201).json({ gif });
+  }
+
+  app.post('/api/servers/:id/library-gifs', ctx.requireAuth, requireMember, readGif, (req, res, next) => {
+    addGif(req, res, req.body).catch(next);
+  });
+
+  // Saves a KLIPY GIF someone sent in chat. The app can't download from KLIPY itself, so the server fetches it.
+  app.post('/api/servers/:id/library-gifs/from-url', ctx.requireAuth, requireMember, async (req, res, next) => {
+    try {
+      const url = isKlipyUrl((req.body as { url?: unknown } | undefined)?.url);
+      if (!url) { res.status(400).json({ error: 'Only KLIPY GIFs can be saved by address.' }); return; }
+      let bytes: Buffer;
+      try {
+        const upstream = await fetch(url, { redirect: 'error', signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+        const declared = Number(upstream.headers.get('content-length') ?? 0);
+        if (!upstream.ok || declared > LIMITS.LIBRARY_GIF_MAX_BYTES) throw new Error(`klipy ${upstream.status}`);
+        bytes = Buffer.from(await upstream.arrayBuffer());
+      } catch {
+        res.status(502).json({ error: "Couldn't download that GIF from KLIPY." });
         return;
       }
-      try {
-        await fs.promises.writeFile(filePath(row.id), body, { flag: 'wx', mode: 0o600 });
-      } catch (err) {
-        // Give the space back so a failed write does not count against the person's quota.
-        db.prepare('DELETE FROM library_gifs WHERE id=?').run(row.id);
-        throw err;
-      }
-      const gif = toGif(row);
-      ctx.broadcastToServer(serverId, { t: 'gif.new', gif });
-      res.status(201).json({ gif });
+      if (bytes.length > LIMITS.LIBRARY_GIF_MAX_BYTES) { res.status(413).json({ error: `GIFs must be ${LIMITS.LIBRARY_GIF_MAX_BYTES / MB} MB or smaller.` }); return; }
+      await addGif(req, res, bytes);
     } catch (err) {
       next(err);
     }

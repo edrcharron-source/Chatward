@@ -127,13 +127,14 @@ export default function ChatView({ channel }: { channel: Channel }) {
               grouped={grouped}
               canEdit={m.authorId === me?.id}
               canDelete={canDelete}
+              serverId={channel.serverId}
             />
           );
         })}
       </div>
 
       <div className="cv-typing muted" aria-live="polite">{typingLabel(names)}</div>
-      <Composer channelId={channel.id} channelName={channel.name} onSent={() => { stick.current = true; }} />
+      <Composer channelId={channel.id} channelName={channel.name} serverId={channel.serverId} onSent={() => { stick.current = true; }} />
     </div>
   );
 }

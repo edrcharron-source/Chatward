@@ -36,6 +36,7 @@
     "electron-vite": "^2.3.0",
     "emoji-picker-element": "^1.26.0",
     "emoji-picker-element-data": "^1.6.0",
+    "gifenc": "^1.0.3",
     "livekit-client": "^2.5.0",
     "playwright-core": "1.63.0",
     "pngjs": "^7.0.0",

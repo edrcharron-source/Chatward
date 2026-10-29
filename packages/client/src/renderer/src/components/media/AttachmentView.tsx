@@ -3,6 +3,8 @@ import type { Attachment } from '@chatward/shared';
 import { api } from '../../api/http';
 import { decryptBlob } from '../../crypto';
 import { INLINE_IMAGE_MIMES } from './upload';
+import SaveGifButton from '../gifs/SaveGifButton';
+import { nameFromFile } from '../gifs/AddGifsDialog';
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -38,7 +40,8 @@ function useDecryptedUrl(attachment: Attachment): { url: string | null; failed: 
   return state;
 }
 
-export function AttachmentView({ attachment }: { attachment: Attachment }): ReactElement | null {
+/** With `serverId`, an animated GIF attachment gets a hover button that saves it to the server's GIF library. */
+export function AttachmentView({ attachment, serverId }: { attachment: Attachment; serverId?: string }): ReactElement | null {
   const { url, failed } = useDecryptedUrl(attachment);
   const [enlarged, setEnlarged] = useState(false);
   const isImage = INLINE_IMAGE_MIMES.has(attachment.mime);
@@ -82,17 +85,26 @@ export function AttachmentView({ attachment }: { attachment: Attachment }): Reac
     );
   }
 
+  const image = (
+    <button type="button" className="media-open" onClick={() => setEnlarged(true)} aria-label={`View ${attachment.name} full size`}>
+      <img
+        className="media-image"
+        src={url}
+        alt={attachment.name}
+        width={attachment.width}
+        height={attachment.height}
+      />
+    </button>
+  );
+
   return (
     <>
-      <button type="button" className="media-open" onClick={() => setEnlarged(true)} aria-label={`View ${attachment.name} full size`}>
-        <img
-          className="media-image"
-          src={url}
-          alt={attachment.name}
-          width={attachment.width}
-          height={attachment.height}
-        />
-      </button>
+      {serverId && attachment.mime === 'image/gif' ? (
+        <span className="media-gif-wrap">
+          {image}
+          <SaveGifButton serverId={serverId} source={{ kind: 'local', url }} defaultName={nameFromFile(attachment.name)} />
+        </span>
+      ) : image}
       {enlarged && (
         <div className="modal-backdrop media-lightbox" role="dialog" aria-modal="true" aria-label={attachment.name} onClick={() => setEnlarged(false)}>
           <img className="media-lightbox-img" src={url} alt={attachment.name} onClick={(e) => e.stopPropagation()} />

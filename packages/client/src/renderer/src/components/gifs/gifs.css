@@ -1,0 +1,77 @@
+/* Server GIF library tab, its dialogs, and the GIF maker. Colors come from the theme variables. */
+
+.gif-tabs { display: flex; gap: 4px; margin-bottom: 8px; }
+.gif-tabs button { flex: 1; padding: 6px 8px; }
+.gif-tabs button[aria-selected='true'] { background: var(--accent); color: var(--accent-text); }
+
+.gif-library { position: relative; }
+.gif-library-bar { display: flex; gap: 6px; align-items: flex-start; }
+.gif-library-search { flex: 1; min-width: 0; }
+.gif-add-anchor { position: relative; flex: none; }
+.gif-add-btn { white-space: nowrap; padding: 9px 10px; }
+.gif-library-sort { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font-size: 13px; }
+.gif-library-sort select { padding: 3px 6px; font-size: 13px; }
+
+.gif-library-tile { position: relative; }
+.gif-library-tile img, .gif-library-tile .gif-loading { width: 100%; height: 100%; object-fit: cover; display: block; }
+.gif-tile-name {
+  position: absolute; left: 0; right: 0; bottom: 0; padding: 2px 6px; font-size: 12px; text-align: left;
+  color: #fff; background: linear-gradient(transparent, rgba(0, 0, 0, .7));
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.gif-loading { display: inline-block; background: var(--bg-3); min-height: 60px; min-width: 60px; border-radius: 8px; }
+.media-gif.gif-loading { width: 200px; height: 120px; }
+.gif-removed { padding: 8px 10px; background: var(--bg-1); border-radius: 8px; }
+
+.gif-drop-hint { font-size: 12px; text-align: center; margin: 6px 0 0; }
+.gif-drop-overlay {
+  position: absolute; inset: 0; display: grid; place-items: center; z-index: 5; text-align: center; padding: 16px;
+  border: 2px dashed var(--accent); border-radius: var(--radius); background: var(--bg-1); color: var(--text-strong); font-weight: 600;
+  pointer-events: none;
+}
+
+.gif-menu {
+  position: absolute; z-index: 10; display: flex; flex-direction: column; min-width: 150px; padding: 4px;
+  background: var(--bg-2); border-radius: 8px; box-shadow: var(--shadow);
+}
+.gif-menu button { text-align: left; background: transparent; padding: 7px 10px; border-radius: 6px; }
+.gif-menu button:hover { background: var(--bg-hover); }
+.gif-menu-danger { color: var(--danger); }
+.gif-add-menu { right: 0; top: calc(100% + 4px); }
+
+.gif-dialog { width: 380px; max-width: calc(100vw - 32px); padding: 20px; display: flex; flex-direction: column; gap: 12px; }
+.gif-dialog-wide { width: 460px; }
+.gif-dialog-title { margin: 0; color: var(--text-strong); }
+.gif-dialog-preview { display: flex; justify-content: center; background: var(--bg-1); border-radius: 8px; padding: 8px; }
+.gif-dialog-img, .gif-dialog-preview img { max-width: 100%; max-height: 220px; border-radius: 6px; }
+.gif-field { display: flex; flex-direction: column; gap: 6px; }
+.gif-note { margin: 0; font-size: 13px; }
+.gif-dialog-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
+
+.gif-add-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; max-height: 300px; overflow-y: auto; }
+.gif-add-row { display: flex; gap: 10px; align-items: center; }
+.gif-add-thumb { width: 64px; height: 48px; object-fit: cover; border-radius: 6px; background: var(--bg-3); flex: none; }
+.gif-add-fields { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; font-size: 13px; }
+
+.gif-maker { width: 640px; }
+.gif-maker-pick {
+  display: flex; flex-direction: column; gap: 8px; align-items: center; text-align: center;
+  padding: 32px 16px; border: 2px dashed var(--border); border-radius: 10px;
+}
+.gif-maker-crop { position: relative; height: 300px; background: #000; border-radius: 8px; overflow: hidden; }
+.gif-maker-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.gif-maker-row button { padding: 5px 10px; }
+.gif-maker-row input[type='range'] { flex: 1; min-width: 100px; }
+.gif-maker-label { font-size: 13px; margin-right: 2px; }
+.gif-maker-trim { display: flex; flex-direction: column; gap: 6px; }
+.gif-maker-trim label { display: grid; grid-template-columns: 110px 1fr; align-items: center; gap: 8px; }
+.gif-maker-progress { display: flex; align-items: center; gap: 10px; }
+.gif-maker-progress progress { flex: 1; }
+.gif-maker-file { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.media-gif-wrap { position: relative; display: inline-block; max-width: 100%; }
+.gif-save-btn {
+  position: absolute; top: 6px; right: 6px; padding: 4px 8px; font-size: 12px; border-radius: 6px;
+  background: var(--bg-2); color: var(--text); box-shadow: var(--shadow); opacity: 0; transition: opacity .1s;
+}
+.media-gif-wrap:hover .gif-save-btn, .gif-save-btn:focus-visible { opacity: 1; }

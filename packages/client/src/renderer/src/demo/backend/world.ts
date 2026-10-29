@@ -1,7 +1,7 @@
 // In-memory state for the demo. Rebuilt from scratch every time demo mode is entered.
-import { DEFAULT_VOICE_BITRATE_KBPS, type Channel, type Member, type Message, type MessagePayload, type Server, type SoundboardSound, type User } from '@chatward/shared';
+import { DEFAULT_VOICE_BITRATE_KBPS, type Channel, type Member, type Message, type MessagePayload, type LibraryGif, type Server, type SoundboardSound, type User } from '@chatward/shared';
 import { demoEncode } from '../codec';
-import { gifDataUrl, sunsetSvg, toneWav } from './assets';
+import { gifDataUrl, sunsetSvg, sweepGif, toneWav } from './assets';
 
 export interface World {
   you: User;
@@ -11,7 +11,8 @@ export interface World {
   bans: { user: User; bannedAt: number }[];
   messages: Record<string, Message[]>; // channelId -> oldest first
   sounds: SoundboardSound[];
-  blobs: Map<string, { bytes: Uint8Array; mime: string }>; // uploads and sound files
+  gifs: LibraryGif[]; // the server's GIF library, newest first
+  blobs: Map<string, { bytes: Uint8Array; mime: string }>; // uploads, sound files and library GIFs
   voice: Record<string, string[]>; // voice channelId -> userIds
   watch: Record<string, { ciphertext: string; keyVersion: number; authorId: string; ts: number }>;
   bots: { user: User; hue: number }[];
@@ -59,10 +60,11 @@ export function createWorld(): World {
   }));
 
   const world: World = {
-    you, server, channels, members, bans: [], messages: {}, sounds: [], blobs: new Map(), voice: {}, watch: {}, bots, nextId: 1,
+    you, server, channels, members, bans: [], messages: {}, sounds: [], gifs: [], blobs: new Map(), voice: {}, watch: {}, bots, nextId: 1,
   };
   seedMessages(world);
   seedSounds(world);
+  seedGifs(world);
   world.voice = { 'demo-vc-lounge': ['demo-avery', 'demo-blake'], 'demo-vc-gaming': [] };
   return world;
 }
@@ -131,4 +133,22 @@ function seedSounds(world: World) {
     world.blobs.set(id, { bytes: toneWav(c.freq, c.ms), mime: 'audio/wav' });
     world.sounds.push({ id, serverId: SERVER_ID, ownerId: YOU_ID, name: c.name, emoji: c.emoji, url: `/api/sounds/${id}/file`, durationMs: c.ms });
   });
+}
+
+function seedGifs(world: World) {
+  const seeds = [
+    { name: 'Lets go', tags: ['hype'], hue: 140, owner: 'demo-avery' },
+    { name: 'Nope', tags: ['reaction'], hue: 0, owner: 'demo-blake' },
+    { name: 'Big brain', tags: ['reaction', 'smart'], hue: 260, owner: YOU_ID },
+  ];
+  seeds.forEach((g, i) => {
+    const id = `demo-gif-${i + 1}`;
+    const bytes = sweepGif(g.hue);
+    world.blobs.set(id, { bytes, mime: 'image/gif' });
+    world.gifs.push({
+      id, serverId: SERVER_ID, ownerId: g.owner, name: g.name, tags: g.tags, width: 96, height: 64,
+      size: bytes.byteLength, uses: seeds.length - i, createdAt: DEMO_EPOCH + i * HOUR,
+    });
+  });
+  world.gifs.reverse();
 }

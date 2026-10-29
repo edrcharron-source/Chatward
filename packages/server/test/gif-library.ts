@@ -12,7 +12,7 @@ const { default: express } = await import('express');
 const { openDb } = await import('../src/db.js');
 const { config } = await import('../src/config.js');
 const { LIMITS } = await import('@chatward/shared');
-const { register, libraryGifsDirOf } = await import('../src/modules/gifLibrary.js');
+const { register, libraryGifsDirOf, isKlipyUrl } = await import('../src/modules/gifLibrary.js');
 
 const log = (msg: string) => console.log(`  ok  ${msg}`);
 const db = openDb();
@@ -112,6 +112,14 @@ try {
   assert.equal(frames.at(-1)?.t, 'gif.delete');
   assert.equal((await call('u4', 'GET', `/api/library-gifs/${g1.id}/file`)).status, 404);
   log('an admin deletes it and the file goes away');
+
+  for (const bad of ['http://klipy.com/a.gif', 'https://evil.com/a.gif', 'https://klipy.com.evil.com/a.gif', 'https://user@klipy.com/a.gif', 'https://klipy.com:8443/a.gif', 42]) {
+    assert.equal(isKlipyUrl(bad), null, String(bad));
+  }
+  assert.ok(isKlipyUrl('https://static.klipy.com/x/y.gif'));
+  const notKlipy = await call('u2', 'POST', '/api/servers/s1/library-gifs/from-url?name=x', { url: 'https://example.com/a.gif' });
+  assert.equal(notKlipy.status, 400);
+  log('saving by address only fetches from KLIPY');
 
   console.log('gif library: all checks passed');
 } catch (err) {
