@@ -13,7 +13,7 @@ export const DEFAULT_APP_DIR = path.resolve(import.meta.dirname, '../..');
 
 // Runs in the page before the app's own code. Timers of 5 s or more are held, which keeps the demo bots from
 // typing or posting mid-capture; nothing the screens below show depends on a timer that long.
-const pinPage = (theme: string, skin: string) => `(() => {
+const pinPage = (theme: string, skin: string, layout?: object) => `(() => {
   const FIXED = Date.UTC(2026, 0, 15, 18, 0, 0);
   const RealDate = Date;
   class FixedDate extends RealDate {
@@ -31,10 +31,11 @@ const pinPage = (theme: string, skin: string) => `(() => {
   const realSetTimeout = window.setTimeout.bind(window);
   window.setTimeout = (fn, ms, ...rest) => (Number(ms) >= 5000 ? 0 : realSetTimeout(fn, ms, ...rest));
   localStorage.setItem('chatward.settings', JSON.stringify({ theme: ${JSON.stringify(theme)}, skin: ${JSON.stringify(skin)} }));
+  ${layout ? `window.__chatwardLayout = ${JSON.stringify(layout)};` : ''}
 })();`;
 
-// skin is a registered skin id, or '' for the plain app.
-export async function launch(theme: string, appDir: string, skin = ''): Promise<{ app: ElectronApplication; page: Page }> {
+// skin is a registered skin id, or '' for the plain app. layout, when given, replaces the app's layout manifest (see layout/useLayout.ts).
+export async function launch(theme: string, appDir: string, skin = '', layout?: object): Promise<{ app: ElectronApplication; page: Page }> {
   const userData = fs.mkdtempSync(path.join(fs.realpathSync(process.env.RUNNER_TEMP ?? '/tmp'), 'chatward-visual-'));
   const app = await _electron.launch({
     executablePath: electronPath,
@@ -53,7 +54,7 @@ export async function launch(theme: string, appDir: string, skin = ''): Promise<
     }));
   });
   const page = await app.firstWindow();
-  await page.context().addInitScript(pinPage(theme, skin));
+  await page.context().addInitScript(pinPage(theme, skin, layout));
   await page.setViewportSize(SIZE);
   await page.reload();
   await page.waitForLoadState('load');

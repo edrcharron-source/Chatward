@@ -12,6 +12,8 @@ interface TestSkin {
   id: string;
   // A stylesheet under the package, scoped to :root[data-skin='<id>'] the way a real skin is.
   css?: string;
+  // A layout manifest under the package, as a skin's layout.ts would declare it.
+  layout?: string;
 }
 
 interface Run {
@@ -21,8 +23,9 @@ interface Run {
 }
 
 const BASE: TestSkin = { id: 'base' };
-// Skins that must pass: a layout skin that moves every panel and changes nothing else.
-const SKINS: TestSkin[] = [{ id: 'test-layout', css: 'test/skins/fixtures/test-layout.css' }];
+// Skins that must pass: a layout skin that moves every panel, reorders the bar and regroups settings, and changes
+// nothing else. Its manifest runs through the app's own layout code, so the walk sees the moved layout.
+const SKINS: TestSkin[] = [{ id: 'test-layout', layout: 'test/skins/fixtures/test-layout.json' }];
 // Skins that must fail: each one drops or hides something the check must notice.
 const BROKEN_SKINS: TestSkin[] = [{ id: 'hides-action', css: 'test/skins/broken/hides-action.css' }];
 
@@ -125,7 +128,8 @@ async function runSkin(skin: TestSkin, appDir: string, outDir: string): Promise<
     await settle(page);
     await page.screenshot({ path: path.join(shotDir, `${name}.png`), animations: 'disabled', caret: 'hide' });
   };
-  const { app, page } = await launch('dark', appDir);
+  const layout = skin.layout ? JSON.parse(fs.readFileSync(path.join(DEFAULT_APP_DIR, skin.layout), 'utf8')) : undefined;
+  const { app, page } = await launch('dark', appDir, '', layout);
   try {
     if (skin.css) {
       // Inserted by hand: the app's CSP blocks the connection Playwright's addStyleTag makes.

@@ -1,5 +1,7 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState, type ComponentType } from 'react';
 import { signOut } from '../../state/session';
+import { SETTINGS_TABS, type SettingsTabId } from '../../layout/manifest';
+import { useLayout } from '../../layout/useLayout';
 import AccountTab from './AccountTab';
 import AppearanceTab from './AppearanceTab';
 import VoiceVideoTab from './VoiceVideoTab';
@@ -8,20 +10,21 @@ import PrivacyTab from './PrivacyTab';
 import SecurityTab from './SecurityTab';
 import './settings.css';
 
-const TABS = [
-  { id: 'account', label: 'Account', Panel: AccountTab },
-  { id: 'appearance', label: 'Appearance', Panel: AppearanceTab },
-  { id: 'voice', label: 'Voice & Video', Panel: VoiceVideoTab },
-  { id: 'notifications', label: 'Notifications', Panel: NotificationsTab },
-  { id: 'privacy', label: 'Privacy', Panel: PrivacyTab },
-  { id: 'security', label: 'Security', Panel: SecurityTab },
-] as const;
-
-type TabId = (typeof TABS)[number]['id'];
+// Panels and labels by tab id. The order and grouping come from the active layout.
+const PANELS: Record<SettingsTabId, ComponentType> = {
+  account: AccountTab,
+  appearance: AppearanceTab,
+  voice: VoiceVideoTab,
+  notifications: NotificationsTab,
+  privacy: PrivacyTab,
+  security: SecurityTab,
+};
+const LABELS = Object.fromEntries(SETTINGS_TABS.map((t) => [t.id, t.label])) as Record<SettingsTabId, string>;
 
 export default function SettingsModal({ onClose }: { onClose: () => void }) {
-  const [tab, setTab] = useState<TabId>('account');
-  const current = TABS.find((t) => t.id === tab) ?? TABS[0];
+  const layout = useLayout();
+  const [tab, setTab] = useState<SettingsTabId>(() => layout.settingsGroups[0].tabs[0]);
+  const Panel = PANELS[tab];
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -37,19 +40,24 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
     <div className="modal-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="modal settings" role="dialog" aria-modal="true" aria-label="Settings">
         <nav className="settings-nav" role="tablist" aria-orientation="vertical">
-          {TABS.map((t) => (
-            <button key={t.id} type="button" role="tab" aria-selected={tab === t.id}
-              className={tab === t.id ? 'active' : undefined} onClick={() => setTab(t.id)}>
-              {t.label}
-            </button>
+          {layout.settingsGroups.map((group) => (
+            <Fragment key={group.id}>
+              {group.label && <div className="settings-group-label" role="presentation">{group.label}</div>}
+              {group.tabs.map((id) => (
+                <button key={id} type="button" role="tab" aria-selected={tab === id}
+                  className={tab === id ? 'active' : undefined} onClick={() => setTab(id)}>
+                  {LABELS[id]}
+                </button>
+              ))}
+            </Fragment>
           ))}
           <div className="spacer" />
           <button type="button" className="danger" onClick={logOut}>Log out</button>
         </nav>
 
-        <section className="settings-body" role="tabpanel" aria-label={current.label}>
-          <h2>{current.label}</h2>
-          <current.Panel />
+        <section className="settings-body" role="tabpanel" aria-label={LABELS[tab]}>
+          <h2>{LABELS[tab]}</h2>
+          <Panel />
         </section>
 
         <button type="button" className="icon settings-close" aria-label="Close settings" onClick={onClose}>✕</button>

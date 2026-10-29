@@ -1,0 +1,12 @@
+{
+  "grid": {
+    "columns": "auto minmax(0, 1fr) auto auto",
+    "rows": "minmax(0, 1fr)",
+    "areas": [["channels", "main", "members", "servers"]]
+  },
+  "mainBar": ["watch", "test", "sidebars"],
+  "settingsGroups": [
+    { "id": "you", "label": "You", "tabs": ["account", "privacy", "security"] },
+    { "id": "app", "label": "App", "tabs": ["appearance", "voice", "notifications"] }
+  ]
+}

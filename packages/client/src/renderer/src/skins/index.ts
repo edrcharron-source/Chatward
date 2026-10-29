@@ -1,7 +1,10 @@
 /**
  * Visual skins, see docs/SKINS.md. A skin is a CSS pack in skins/<id>/skin.css whose rules all sit under
  * :root[data-skin='<id>'], plus one entry in SKINS. Only the id the settings store holds is active.
+ * A skin may also declare its layout in skins/<id>/layout.ts.
  */
+
+import type { LayoutManifest } from '../layout/manifest';
 
 export interface SkinInfo {
   id: string;
@@ -17,6 +20,14 @@ export const SKINS: SkinInfo[] = [
 
 // Packs load on first use, so a skin nobody picks costs nothing.
 const packs = import.meta.glob('./*/skin.css');
+// Layouts are small data, so they load with the app and a skin never shows the base layout for a frame.
+const layouts = import.meta.glob<{ default: Partial<LayoutManifest> }>('./*/layout.ts', { eager: true });
+
+/** The layout a skin declares in skins/<id>/layout.ts. Undefined for no skin, an unknown id, or a skin without one. */
+export function skinLayout(id: string): Partial<LayoutManifest> | undefined {
+  const skin = SKINS.find((s) => s.id === id);
+  return skin ? layouts[`./${skin.id}/layout.ts`]?.default : undefined;
+}
 
 let latest = 0;
 
