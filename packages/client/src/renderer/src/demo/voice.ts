@@ -3,6 +3,7 @@
 // short bundled recordings, and camera/screen are local previews.
 // Nothing is published anywhere. Outgoing audio stays inside voiceAudio, so mute, deafen, master
 // volume, output device and the soundboard behave as they do in a real call.
+import { CHATTER_TIMING, chatterClip, chatterWait } from '@chatward/shared';
 import { useSession } from '../state/session';
 import { useSettings } from '../state/settings';
 import { attachRemote, detachRemote, openMic, startPlayback } from '../state/voiceAudio';
@@ -90,7 +91,7 @@ function startBot(userId: string, ctx: AudioContext): Bot {
 }
 
 /** Decodes the bundled recordings for this call's AudioContext. A clip that fails to decode is skipped. */
-async function loadClips(ctx: AudioContext): Promise<AudioBuffer[]> {
+export async function loadClips(ctx: AudioContext): Promise<AudioBuffer[]> {
   const decoded = await Promise.all(VOICE_CLIPS.map(async (clip) => {
     try {
       return await ctx.decodeAudioData(base64Bytes(clip));
@@ -109,7 +110,7 @@ function base64Bytes(b64: string): ArrayBuffer {
 }
 
 /** After a random pause, a random chatter plays a random recording (never the same one twice in a row), then repeat. */
-function scheduleChatter(delayMs = 1500 + Math.random() * 4500): void {
+function scheduleChatter(delayMs = chatterWait(CHATTER_TIMING.nextClip)): void {
   const c = call;
   if (!c) return;
   window.clearTimeout(c.chatterTimer);
@@ -121,8 +122,7 @@ function scheduleChatter(delayMs = 1500 + Math.random() * 4500): void {
       scheduleChatter();
       return;
     }
-    let pick = Math.floor(Math.random() * clips.length);
-    if (clips.length > 1 && pick === c.lastClip) pick = (pick + 1 + Math.floor(Math.random() * (clips.length - 1))) % clips.length;
+    const pick = chatterClip(clips.length, c.lastClip);
     c.lastClip = pick;
     bots[Math.floor(Math.random() * bots.length)].say(clips[pick], () => {
       if (call === c) scheduleChatter();
@@ -211,7 +211,7 @@ export const demoVoice = {
     void loadClips(ctx).then((clips) => {
       c.clips = clips;
     });
-    scheduleChatter(600 + Math.random() * 1200);
+    scheduleChatter(chatterWait(CHATTER_TIMING.firstClip));
   },
 
   leave(): void {

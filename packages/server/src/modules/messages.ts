@@ -5,6 +5,7 @@ import { LIMITS, type Channel, type KeyEnvelope, type Message } from '@chatward/
 import type { AuthedRequest, Ctx } from '../ctx.js';
 import { newId } from '../db.js';
 import { perMember } from '../userLimit.js';
+import { guestsHearMessage } from './guests.js';
 
 interface MessageRow {
   id: string;
@@ -239,6 +240,7 @@ export function register(app: Express, ctx: Ctx): void {
     })();
     const message = toMessage(row);
     ctx.broadcastToServer(ch.serverId, { t: 'message.new', message });
+    guestsHearMessage(ch.serverId, ch.id);
     res.status(201).json({ message });
   });
 

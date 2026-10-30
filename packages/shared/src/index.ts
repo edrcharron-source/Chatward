@@ -228,7 +228,60 @@ export type ServerFrame =
   | { t: 'group.commit'; channelId: string; epoch: number }
   | { t: 'group.welcome'; channelId: string; epoch: number }
   | { t: 'keypackages.low'; deviceId: string; remaining: number }
+  | { t: 'guests.state'; state: GuestState }
+  | { t: 'guests.typing'; serverId: string; channelId: string; guest: number }
+  | { t: 'guests.say'; serverId: string; channelId: string; guest: number; id: string; createdAt: number; line: number; reply: boolean }
+  | { t: 'guests.speak'; serverId: string; channelId: string; guest: number; clip: number }
   | { t: 'pong' };
+
+// ---------- Demo chatter ----------
+// The demo's chatter bots, shared by the offline demo and the server so both behave the same.
+// Frames only carry indexes into these lists: the text always comes from the app's own copy.
+export const CHATTER_LINES = [
+  'anyone seen the patch notes?', 'lol that is so true', 'brb getting snacks', 'gg that was close',
+  'who wants to hop in the Lounge', 'this app feels snappy 👀', 'not gonna lie, that gif got me', 'ok I am back',
+];
+export const CHATTER_REPLIES = ['lol', 'ha yes', 'agreed 😂', 'nice one', 'wait say that again', 'ok fair'];
+/** Lengths of the demo voice recordings (client demo/voiceClips.ts), in the same order. */
+export const CHATTER_CLIP_MS = [2097, 3907, 4707, 2609];
+/** Waits, in ms, as [min, max]. A wait is min + random * (max - min). */
+export const CHATTER_TIMING = {
+  firstLine: [8_000, 8_000],
+  nextLine: [20_000, 45_000],
+  lineTyping: [1_500, 3_000],
+  replyPause: [1_500, 3_000],
+  replyTyping: [1_200, 2_000],
+  firstClip: [600, 1_800],
+  nextClip: [1_500, 6_000],
+  firstChurn: [45_000, 45_000],
+  nextChurn: [40_000, 70_000],
+} as const;
+/** The guests a server can have at once. Guest n uses the demo's nth chatter profile. */
+export const GUESTS_MAX = 3;
+/** Demo's voice behaviour: the first two sit in voice, the third drops in and out. */
+export const GUEST_CHURNS = 2;
+
+/** GET/POST/DELETE /api/servers/:id/guests */
+export interface GuestState {
+  serverId: string;
+  /** Guest numbers, in the order they arrived. */
+  guests: number[];
+  /** The voice channel guests sit in, or null when the server has none. */
+  voiceChannelId: string | null;
+  /** Guest numbers currently in that voice channel. */
+  inVoice: number[];
+}
+
+/** A random clip number out of count, never the same as last twice in a row. */
+export function chatterClip(count: number, last: number): number {
+  const pick = Math.floor(Math.random() * count);
+  if (count > 1 && pick === last) return (pick + 1 + Math.floor(Math.random() * (count - 1))) % count;
+  return pick;
+}
+
+export function chatterWait([min, max]: readonly [number, number]): number {
+  return min + Math.random() * (max - min);
+}
 
 // ---------- Auto-update ----------
 /** GET /api/version (public, no auth). Clients compare their own version against these. */

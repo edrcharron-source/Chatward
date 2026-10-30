@@ -6,6 +6,7 @@ import { DEMO_URL } from '../../demo';
 import { demoVoice } from '../../demo/voice';
 import { useSession } from '../../state/session';
 import { useVoice } from '../../state/voice';
+import { GUEST_USERS, isGuest, useGuests, useGuestsInVoice } from '../../state/guests';
 import ProfileTrigger from '../profile/ProfileTrigger';
 import { useMemberMenu } from './MemberMenu';
 
@@ -97,6 +98,8 @@ export default function VoiceChannelView({ channel, theaterOnly = false }: { cha
   const error = useVoice((s) => s.error);
   const room = useVoice((s) => s.room);
   const speaking = useVoice((s) => s.speaking);
+  const guestSpeaking = useGuests((s) => s.speaking);
+  const guestIds = useGuestsInVoice(channel.id);
   const muted = useVoice((s) => s.muted);
   const deafened = useVoice((s) => s.deafened);
   // re-render on room changes; the participant list is read from the room below
@@ -110,7 +113,7 @@ export default function VoiceChannelView({ channel, theaterOnly = false }: { cha
   const menu = useMemberMenu();
   const [stageRef, stage] = useContentSize<HTMLDivElement>();
 
-  const users = new Map((members ?? []).map((m) => [m.user.id, m.user]));
+  const users = new Map([...(members ?? []).map((m) => m.user), ...GUEST_USERS].map((u) => [u.id, u]));
   const feeds = demo && inCall ? demoVoice.snapshot() : null;
   const entries: Entry[] = inCall && room
     ? [liveEntry(room.localParticipant, true), ...[...room.remoteParticipants.values()].map((p) => liveEntry(p, false))]
@@ -121,12 +124,14 @@ export default function VoiceChannelView({ channel, theaterOnly = false }: { cha
         ...occupants.filter((id) => id !== selfId).map((id) => ({ id, joined: true, local: false, micOff: false })),
       ]
       : occupants.map((id) => ({ id, joined: false, local: false, micOff: false }));
+  // guests play recordings through the speakers: they are in the call but have no video
+  if (!demo) entries.push(...guestIds.map((id) => ({ id, joined: true, local: false, micOff: false })));
 
   const specs: Spec[] = entries.flatMap((e) => {
     const user = users.get(e.id);
     // your own tiles have no menu: there is nothing to mute or kick
-    const onMenu = e.local ? undefined : (ev: ReactMouseEvent) => menu.openMenu(ev, { userId: e.id, channelId: channel.id, serverId: channel.serverId });
-    const base = { user, joined: e.joined, local: e.local, micOff: e.micOff, speaking: speaking.includes(e.id), onMenu };
+    const onMenu = e.local || isGuest(e.id) ? undefined : (ev: ReactMouseEvent) => menu.openMenu(ev, { userId: e.id, channelId: channel.id, serverId: channel.serverId });
+    const base = { user, joined: e.joined, local: e.local, micOff: e.micOff, speaking: speaking.includes(e.id) || guestSpeaking.includes(e.id), onMenu };
     const screenKey = `${e.id}:screen`;
     const tiles: Spec[] = [
       { key: e.id, props: { ...base, video: e.camera } },

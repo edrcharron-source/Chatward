@@ -3,6 +3,7 @@ import { LIMITS, type Channel, type User } from '@chatward/shared';
 import { api } from '../../api/http';
 import { useSession } from '../../state/session';
 import { useVoice } from '../../state/voice';
+import { GUEST_USERS, isGuest, useGuests } from '../../state/guests';
 import { useMemberMenu } from '../voice/MemberMenu';
 import VoiceDock from '../voice/VoiceDock';
 import Avatar from './Avatar';
@@ -26,6 +27,8 @@ export default function ChannelList({ onOpenSettings, onReload }: { onOpenSettin
   const unread = useSession((s) => s.unread);
   const joinedVoiceId = useVoice((s) => s.channelId);
   const speaking = useVoice((s) => s.speaking);
+  const guestSpeaking = useGuests((s) => s.speaking);
+  const guestRoom = useGuests((s) => (activeServerId ? s.rooms[activeServerId] : undefined));
   const [dialog, setDialog] = useState<DialogKind>(null);
   const [voiceError, setVoiceError] = useState<string | null>(null);
   const [settingsChannel, setSettingsChannel] = useState<Channel | null>(null);
@@ -59,7 +62,7 @@ export default function ChannelList({ onOpenSettings, onReload }: { onOpenSettin
     return listed.flatMap((id) => {
       const m = bundle?.members.find((x) => x.user.id === id);
       return m ? [m.user] : [];
-    });
+    }).concat(channelId === guestRoom?.voiceChannelId ? guestRoom.inVoice.flatMap((g) => GUEST_USERS[g] ?? []) : []);
   }
 
   return (
@@ -130,8 +133,8 @@ export default function ChannelList({ onOpenSettings, onReload }: { onOpenSettin
                         {occupants.map((u) => (
                           <li
                             key={u.id}
-                            data-speaking={speaking.includes(u.id) || undefined}
-                            onContextMenu={u.id === user?.id ? undefined : (e) => memberMenu.openMenu(e, { userId: u.id, channelId: c.id, serverId: c.serverId })}
+                            data-speaking={speaking.includes(u.id) || guestSpeaking.includes(u.id) || undefined}
+                            onContextMenu={u.id === user?.id || isGuest(u.id) ? undefined : (e) => memberMenu.openMenu(e, { userId: u.id, channelId: c.id, serverId: c.serverId })}
                           >
                             <ProfileTrigger user={u}>
                               <Avatar user={u} size={18} />

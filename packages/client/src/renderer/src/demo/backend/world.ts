@@ -26,7 +26,7 @@ const HOUR = 3_600_000;
 const DEMO_EPOCH = Date.UTC(2025, 2, 14);
 
 // Profile seeds: bio, pronouns and colors make the profile cards look different from each other.
-const BOT_SEEDS = [
+export const BOT_SEEDS = [
   { id: 'demo-avery', name: 'Avery', hue: 200, profile: { bio: 'Keeps the playlist. Will not stop talking about it.', pronouns: 'she/her', accentColor: '#4aa3ff', bannerColor: '#1d3b5c' } },
   { id: 'demo-blake', name: 'Blake', hue: 320, profile: { bio: 'Night owl. Speedrunner in training.', pronouns: 'he/him', accentColor: '#e0588a', bannerColor: '#5c1d3b' } },
   { id: 'demo-casey', name: 'Casey', hue: 40, profile: { bio: '', pronouns: '', accentColor: '#e0a33c', bannerColor: null } },
