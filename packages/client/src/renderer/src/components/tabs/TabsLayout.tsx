@@ -69,6 +69,9 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTes
   const setSettings = useSettings((s) => s.set);
   const tabs = orderTabs(savedOrder);
   const [dragging, setDragging] = useState<TabId | null>(null);
+  // where a dragged tab would land: the tab it would go before (null = the end), shown as a marker in the bar
+  const [dropBefore, setDropBefore] = useState<TabId | null | undefined>(undefined);
+  const tabNav = useRef<HTMLElement>(null);
   // the split view's two tabs sit in the tab bar's order
   const at = (t: TabId) => tabs.findIndex((x) => x.id === t);
   const [leftTab, rightTab] = at(recent[0]) < at(recent[1]) ? recent : [recent[1], recent[0]];
@@ -80,6 +83,29 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTes
     ids.splice(at < 0 ? ids.length : at, 0, t);
     setSettings({ tabOrder: ids });
   };
+  /**
+   * The drop spot nearest the pointer, anywhere over the tab bar: the closest tab, then its left or right half.
+   * Returns undefined when dropping there would leave the order as it is.
+   */
+  const dropSpot = (x: number, y: number): TabId | null | undefined => {
+    if (!dragging) return undefined;
+    let best: { id: TabId; after: boolean; d: number } | null = null;
+    for (const el of tabNav.current?.querySelectorAll<HTMLElement>('[data-tab]') ?? []) {
+      const r = el.getBoundingClientRect();
+      const dx = x < r.left ? r.left - x : x > r.right ? x - r.right : 0;
+      const dy = y < r.top ? r.top - y : y > r.bottom ? y - r.bottom : 0;
+      const d = dx * dx + dy * dy * 4; // prefer the row the pointer is on when the tabs wrap
+      if (!best || d < best.d) best = { id: el.dataset.tab as TabId, after: x > r.left + r.width / 2, d };
+    }
+    if (!best) return undefined;
+    const ids = tabs.map((t) => t.id);
+    const before = best.after ? ids[ids.indexOf(best.id) + 1] ?? null : best.id;
+    const from = ids.indexOf(dragging);
+    // dropping on itself, or just after the tab already in front of it, changes nothing
+    if (before === dragging || before === (ids[from + 1] ?? null)) return undefined;
+    return before;
+  };
+  const endDrag = () => { setDragging(null); setDropBefore(undefined); };
   const nudgeTab = (t: TabId, by: -1 | 1) => {
     const ids = tabs.map((x) => x.id);
     const i = ids.indexOf(t);
@@ -171,28 +197,33 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTes
 
   return (
     <div className="cw-tabs-shell" data-region="shell" data-layout="tabs">
-      <header className="cw-tabs-bar" data-region="tabs">
+      <header className="cw-tabs-bar" data-region="tabs"
+        onDragOver={(e) => {
+          if (!dragging) return;
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+          const spot = dropSpot(e.clientX, e.clientY);
+          if (spot !== dropBefore) setDropBefore(spot);
+        }}
+        onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDropBefore(undefined); }}
+        onDrop={(e) => {
+          if (!dragging) return;
+          e.preventDefault();
+          const spot = dropSpot(e.clientX, e.clientY);
+          if (spot !== undefined) moveTab(dragging, spot);
+          endDrag();
+        }}>
         <strong className="cw-tabs-server">{bundle?.server.name ?? 'Chatward'}</strong>
-        <nav className="cw-tabs" aria-label="Views">
+        <nav className="cw-tabs" aria-label="Views" ref={tabNav}>
           {tabs.map((t) => (
             <span
               key={t.id}
-              className={`cw-tab${shownTabs.has(t.id) ? ' active' : ''}${dragging === t.id ? ' dragging' : ''}`}
+              data-tab={t.id}
+              className={`cw-tab${shownTabs.has(t.id) ? ' active' : ''}${dragging === t.id ? ' dragging' : ''}${dropBefore === t.id ? ' drop-before' : ''}${dropBefore === null && t.id === tabs[tabs.length - 1].id ? ' drop-after' : ''}`}
               draggable
               title="Shift+click to show beside the open tab. Drag to reorder (or Alt + arrow keys)"
               onDragStart={(e) => { setDragging(t.id); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', t.id); }}
-              onDragEnd={() => setDragging(null)}
-              onDragOver={(e) => { if (dragging) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; } }}
-              onDrop={(e) => {
-                e.preventDefault();
-                if (!dragging || dragging === t.id) return;
-                // dropped on the right half of a tab: go after it
-                const r = e.currentTarget.getBoundingClientRect();
-                const after = e.clientX > r.left + r.width / 2;
-                const i = tabs.findIndex((x) => x.id === t.id);
-                moveTab(dragging, after ? tabs[i + 1]?.id ?? null : t.id);
-                setDragging(null);
-              }}
+              onDragEnd={endDrag}
             >
               <button type="button" className="cw-tab-main" aria-current={shownTabs.has(t.id) ? 'page' : undefined}
                 aria-keyshortcuts="Alt+ArrowLeft Alt+ArrowRight"

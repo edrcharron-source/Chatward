@@ -79,3 +79,11 @@
 /* Tabs can be dragged into a new order. */
 .cw-tab[draggable='true'] { cursor: grab; }
 .cw-tab.dragging { opacity: .5; }
+/* While dragging, the whole tab bar is a drop area; a bar in the gap shows where the tab will land. */
+.cw-tab { position: relative; }
+.cw-tab.drop-before::before, .cw-tab.drop-after::after {
+  content: ''; position: absolute; top: -3px; bottom: -3px; width: 3px; border-radius: 2px;
+  background: var(--accent); box-shadow: 0 0 6px var(--accent); pointer-events: none;
+}
+.cw-tab.drop-before::before { left: -5px; }
+.cw-tab.drop-after::after { right: -5px; }
