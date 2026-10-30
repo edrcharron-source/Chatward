@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { Channel, Member } from '@chatward/shared';
 import { useSession } from '../../state/session';
 import { loadHistory, useChat } from '../../state/chat';
-import { isGuest, useGuestMembers, useGuests, type GuestMessage } from '../../state/guests';
+import { guestMember, isGuest, useGuestMembers, useGuests, type GuestMessage } from '../../state/guests';
 import Composer from './Composer';
 import MessageItem from './MessageItem';
 import './chat.css';
@@ -45,7 +45,7 @@ export default function ChatView({ channel }: { channel: Channel }) {
   // From history only, so a guest line never looks like a prepended older page.
   const firstId = chat?.messages[0]?.id;
   const myRole = members.find((m) => m.user.id === me?.id)?.role;
-  const memberOf = (id: string) => members.find((m) => m.user.id === id);
+  const memberOf = (id: string) => members.find((m) => m.user.id === id) ?? guestMember(id);
 
   useEffect(() => {
     stick.current = true;

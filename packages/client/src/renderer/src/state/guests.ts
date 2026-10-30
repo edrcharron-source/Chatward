@@ -47,6 +47,8 @@ const NONE: Member[] = [];
 export const useGuests = create<GuestsStore>(() => ({ rooms: {}, messages: {}, speaking: [] }));
 
 export const isGuest = (userId: string) => GUEST_USERS.some((u) => u.id === userId);
+/** A guest's member entry, also after they left, so their lines keep a name. */
+export const guestMember = (userId: string) => GUEST_MEMBERS.find((m) => m.user.id === userId);
 
 /** The server's guests as members, for display only. */
 export function useGuestMembers(serverId: string | undefined): Member[] {
