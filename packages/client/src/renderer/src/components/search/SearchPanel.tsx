@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNod
 import type { Attachment, Channel, Member, MessagePayload } from '@chatward/shared';
 import { useChat } from '../../state/chat';
 import { buildIndex, closeSearch, EMPTY_FILTERS, indexedEntries, jumpTo, setFilters, statusOf, useSearch } from '../../state/search';
+import { INLINE_IMAGE_MIMES } from '../media/upload';
 import { isMediaAttachment, isSearching, searchEntries, searchWords, snippet, type SearchEntry, type SearchKind } from '../../state/searchMatch';
 import { useDecryptedUrl } from '../media/AttachmentView';
 import { GifView } from '../media';
@@ -49,7 +50,7 @@ function Extras({ payload }: { payload: MessagePayload }) {
   if (!atts.length && !payload.gif && !payload.linkPreviews?.length) return null;
   return (
     <div className="sr-extras">
-      {atts.map((a) => a.mime.startsWith('image/')
+      {atts.map((a) => INLINE_IMAGE_MIMES.has(a.mime)
         ? <WhenVisible key={a.uploadId} className="sr-thumb"><ImageThumb attachment={a} /></WhenVisible>
         : <span key={a.uploadId} className="sr-chip" title={a.name}>{isMediaAttachment(a) ? '🎞' : '📄'} {a.name}</span>)}
       {payload.gif && <WhenVisible className="sr-thumb"><GifView gif={payload.gif} /></WhenVisible>}

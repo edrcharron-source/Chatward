@@ -1,8 +1,10 @@
-/* The search box opens over the right side of the chat, below its header. */
+/* The search box sits beside the chat, so the chat and message box stay usable. In a narrow chat it covers it. */
 .sr-panel {
-  position: absolute; top: 48px; right: 0; bottom: 0; z-index: 5; width: min(400px, 100%);
-  display: flex; flex-direction: column; min-height: 0;
-  background: var(--bg-1); border-left: 1px solid var(--border); box-shadow: var(--shadow);
+  flex: none; width: min(400px, 42%); display: flex; flex-direction: column; min-height: 0;
+  background: var(--bg-1); border-left: 1px solid var(--border);
+}
+@container cv-body (max-width: 640px) {
+  .sr-panel { position: absolute; inset: 0; z-index: 5; width: auto; border-left: 0; }
 }
 .sr-top { display: flex; align-items: center; gap: 6px; padding: 10px 10px 6px 12px; }
 .sr-field {

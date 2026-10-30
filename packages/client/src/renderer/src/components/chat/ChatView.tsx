@@ -143,49 +143,53 @@ export default function ChatView({ channel }: { channel: Channel }) {
           <PixelIcon name="search" />
         </button>
       </header>
-      {searchOpen && <SearchPanel channel={channel} members={members} />}
 
-      <div className="cv-list" ref={listRef} onScroll={onScroll}>
-        {chat?.hasMore === false && chat.loaded && (
-          <div className="cv-start">This is the start of #{channel.name}</div>
-        )}
-        {chat?.loadingOlder && <div className="cv-hint muted">Loading older messages…</div>}
-        {(chat?.error || chat?.olderError) && (
-          <div className="cv-error">
-            {chat.error ?? chat.olderError}
-            <button
-              className="cv-retry"
-              disabled={chat.loading}
-              onClick={() => loadHistory(channel.id, chat.loaded ? 'older' : 'initial').catch(() => {})}
-            >
-              Retry
-            </button>
+      <div className="cv-body">
+        <div className="cv-col">
+          <div className="cv-list" ref={listRef} onScroll={onScroll}>
+            {chat?.hasMore === false && chat.loaded && (
+              <div className="cv-start">This is the start of #{channel.name}</div>
+            )}
+            {chat?.loadingOlder && <div className="cv-hint muted">Loading older messages…</div>}
+            {(chat?.error || chat?.olderError) && (
+              <div className="cv-error">
+                {chat.error ?? chat.olderError}
+                <button
+                  className="cv-retry"
+                  disabled={chat.loading}
+                  onClick={() => loadHistory(channel.id, chat.loaded ? 'older' : 'initial').catch(() => {})}
+                >
+                  Retry
+                </button>
+              </div>
+            )}
+            {chat?.loaded && messages.length === 0 && <div className="cv-empty muted">No messages yet. Say hi 👋</div>}
+            {messages.map((m, i) => {
+              const before = messages[i - 1];
+              const grouped = !!before && before.authorId === m.authorId && m.createdAt - before.createdAt < GROUP_MS;
+              const canDelete = m.authorId === me?.id || myRole === 'owner' || myRole === 'admin';
+              return (
+                <MessageItem
+                  key={m.id}
+                  message={m}
+                  payload={payloads[m.id]}
+                  author={memberOf(m.authorId)?.user}
+                  grouped={grouped}
+                  canEdit={m.authorId === me?.id}
+                  canDelete={canDelete}
+                  serverId={channel.serverId}
+                  flash={flash?.id === m.id}
+                />
+              );
+            })}
           </div>
-        )}
-        {chat?.loaded && messages.length === 0 && <div className="cv-empty muted">No messages yet. Say hi 👋</div>}
-        {messages.map((m, i) => {
-          const before = messages[i - 1];
-          const grouped = !!before && before.authorId === m.authorId && m.createdAt - before.createdAt < GROUP_MS;
-          const canDelete = m.authorId === me?.id || myRole === 'owner' || myRole === 'admin';
-          return (
-            <MessageItem
-              key={m.id}
-              message={m}
-              payload={payloads[m.id]}
-              author={memberOf(m.authorId)?.user}
-              grouped={grouped}
-              canEdit={m.authorId === me?.id}
-              canDelete={canDelete}
-              serverId={channel.serverId}
-              flash={flash?.id === m.id}
-            />
-          );
-        })}
-      </div>
 
-      {jumpNote && <div className="cv-error" role="status">{jumpNote}</div>}
-      <div className="cv-typing muted" aria-live="polite">{typingLabel(names)}</div>
-      <Composer channelId={channel.id} channelName={channel.name} serverId={channel.serverId} onSent={() => { stick.current = true; }} />
+          {jumpNote && <div className="cv-error" role="status">{jumpNote}</div>}
+          <div className="cv-typing muted" aria-live="polite">{typingLabel(names)}</div>
+          <Composer channelId={channel.id} channelName={channel.name} serverId={channel.serverId} onSent={() => { stick.current = true; }} />
+        </div>
+        {searchOpen && <SearchPanel channel={channel} members={members} />}
+      </div>
     </div>
   );
 }
