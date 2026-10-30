@@ -106,7 +106,19 @@ export interface MessagePayload {
   /** A library GIF carries `libraryId` and empty urls; the file is fetched from the server's GIF library. */
   gif?: { url: string; previewUrl: string; title: string; provider: 'klipy' | 'tenor' | 'library'; libraryId?: string };
   linkPreviews?: LinkPreview[];
+  /** Set on demo chatter guest messages (client state/guests.ts). Absent on everything people write. */
+  chatter?: ChatterTag;
 }
+
+/**
+ * line: one of the sender's guests says CHATTER_LINES[line] (or CHATTER_REPLIES[line] for a reply).
+ * roster: the sender's guests right now. remove: asks `host` to send guest `guest` away.
+ * `session` is one run of the sender's app, so a restarted app can tell its old guests from its new ones.
+ */
+export type ChatterTag =
+  | { kind: 'line'; session: string; roster: number[]; guest: number; line: number; reply: boolean }
+  | { kind: 'roster'; session: string; roster: number[] }
+  | { kind: 'remove'; host: string; guest: number };
 
 export interface Attachment {
   uploadId: string;
@@ -229,6 +241,40 @@ export type ServerFrame =
   | { t: 'group.welcome'; channelId: string; epoch: number }
   | { t: 'keypackages.low'; deviceId: string; remaining: number }
   | { t: 'pong' };
+
+// ---------- Demo chatter ----------
+// The demo's chatter bots, shared by the offline demo and the guests in client state/guests.ts.
+// A guest message names a line by its index: the text shown always comes from the app's own copy.
+export const CHATTER_LINES = [
+  'anyone seen the patch notes?', 'lol that is so true', 'brb getting snacks', 'gg that was close',
+  'who wants to hop in the Lounge', 'this app feels snappy 👀', 'not gonna lie, that gif got me', 'ok I am back',
+];
+export const CHATTER_REPLIES = ['lol', 'ha yes', 'agreed 😂', 'nice one', 'wait say that again', 'ok fair'];
+/** Waits, in ms, as [min, max]. A wait is min + random * (max - min). */
+export const CHATTER_TIMING = {
+  firstLine: [8_000, 8_000],
+  nextLine: [20_000, 45_000],
+  lineTyping: [1_500, 3_000],
+  replyPause: [1_500, 3_000],
+  replyTyping: [1_200, 2_000],
+  firstClip: [600, 1_800],
+  nextClip: [1_500, 6_000],
+  firstChurn: [45_000, 45_000],
+  nextChurn: [40_000, 70_000],
+} as const;
+/** The guests a server can have at once. Guest n uses the demo's nth chatter profile. */
+export const GUESTS_MAX = 3;
+
+/** A random clip number out of count, never the same as last twice in a row. */
+export function chatterClip(count: number, last: number): number {
+  const pick = Math.floor(Math.random() * count);
+  if (count > 1 && pick === last) return (pick + 1 + Math.floor(Math.random() * (count - 1))) % count;
+  return pick;
+}
+
+export function chatterWait([min, max]: readonly [number, number]): number {
+  return min + Math.random() * (max - min);
+}
 
 // ---------- Auto-update ----------
 /** GET /api/version (public, no auth). Clients compare their own version against these. */

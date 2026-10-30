@@ -1,5 +1,5 @@
 // Offline stand-in for the server. Implements docs/CONTRACT.md REST routes and the WS frame stream in memory.
-import { DEFAULT_VOICE_BITRATE_KBPS, LIMITS, VOICE_BITRATES_KBPS, type Channel, type Member, type Message, type LibraryGif, type ServerFrame, type SoundboardSound, type User } from '@chatward/shared';
+import { CHATTER_LINES, CHATTER_REPLIES, CHATTER_TIMING, chatterWait, DEFAULT_VOICE_BITRATE_KBPS, LIMITS, VOICE_BITRATES_KBPS, type Channel, type Member, type Message, type LibraryGif, type ServerFrame, type SoundboardSound, type User } from '@chatward/shared';
 import { avatarPng } from './assets';
 import { createWorld, makeMessage, newId, SERVER_ID, YOU_ID } from './world';
 
@@ -44,11 +44,6 @@ function later(ms: number, fn: () => void) {
 
 // ---------- bots ----------
 
-const BOT_LINES = [
-  'anyone seen the patch notes?', 'lol that is so true', 'brb getting snacks', 'gg that was close',
-  'who wants to hop in the Lounge', 'this app feels snappy 👀', 'not gonna lie, that gif got me', 'ok I am back',
-];
-const BOT_REPLIES = ['lol', 'ha yes', 'agreed 😂', 'nice one', 'wait say that again', 'ok fair'];
 
 function randomBot() {
   const bots = activeBots();
@@ -63,11 +58,11 @@ function scheduleBotChatter() {
     if (bot) {
       const channel = pick(['demo-ch-general', 'demo-ch-memes']);
       emit({ t: 'typing', channelId: channel, userId: bot.user.id });
-      later(1500 + Math.random() * 1500, () => postBotMessage(channel, bot.user.id, pick(BOT_LINES)));
+      later(chatterWait(CHATTER_TIMING.lineTyping), () => postBotMessage(channel, bot.user.id, pick(CHATTER_LINES)));
     }
-    later(20_000 + Math.random() * 25_000, loop);
+    later(chatterWait(CHATTER_TIMING.nextLine), loop);
   };
-  later(8_000, loop);
+  later(chatterWait(CHATTER_TIMING.firstLine), loop);
 }
 
 function scheduleVoiceChurn() {
@@ -79,9 +74,9 @@ function scheduleVoiceChurn() {
       world.voice['demo-vc-lounge'] = inLounge ? lounge.filter((id) => id !== 'demo-casey') : [...lounge, 'demo-casey'];
       emit({ t: 'voice.state', serverId: SERVER_ID, channelId: 'demo-vc-lounge', userIds: world.voice['demo-vc-lounge'] });
     }
-    later(40_000 + Math.random() * 30_000, loop);
+    later(chatterWait(CHATTER_TIMING.nextChurn), loop);
   };
-  later(45_000, loop);
+  later(chatterWait(CHATTER_TIMING.firstChurn), loop);
 }
 
 function isMember(userId: string): boolean {
@@ -138,9 +133,9 @@ function postBotMessage(channelId: string, authorId: string, text: string) {
 function botReplyToUser(channelId: string) {
   const bot = randomBot();
   if (!bot) return;
-  later(1500 + Math.random() * 1500, () => {
+  later(chatterWait(CHATTER_TIMING.replyPause), () => {
     emit({ t: 'typing', channelId, userId: bot.user.id });
-    later(1200 + Math.random() * 800, () => postBotMessage(channelId, bot.user.id, pick(BOT_REPLIES)));
+    later(chatterWait(CHATTER_TIMING.replyTyping), () => postBotMessage(channelId, bot.user.id, pick(CHATTER_REPLIES)));
   });
 }
 

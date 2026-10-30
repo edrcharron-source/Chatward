@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { Channel, Member } from '@chatward/shared';
 import { useSession } from '../../state/session';
 import { loadHistory, loadUntil, useChat } from '../../state/chat';
+import { chatterView, guestMember, useGuestMembers } from '../../state/guests';
 import { clearJump, closeSearch, openSearch, useSearch } from '../../state/search';
 import PixelIcon from '../icons/PixelIcon';
 import SearchPanel from '../search/SearchPanel';
@@ -27,7 +28,9 @@ export default function ChatView({ channel }: { channel: Channel }) {
   const payloads = useChat((s) => s.payloads);
   const typing = useChat((s) => s.typing[channel.id]);
   const me = useSession((s) => s.user);
-  const members = useSession((s) => s.servers.find((b) => b.server.id === channel.serverId)?.members ?? NO_MEMBERS);
+  const accounts = useSession((s) => s.servers.find((b) => b.server.id === channel.serverId)?.members ?? NO_MEMBERS);
+  const guests = useGuestMembers(channel.serverId);
+  const members = guests.length ? [...accounts, ...guests] : accounts;
   const [now, setNow] = useState(() => Date.now());
   const searchOpen = useSearch((s) => !!s.panels[channel.id]);
   const jump = useSearch((s) => (s.jump?.channelId === channel.id ? s.jump : null));
@@ -43,7 +46,12 @@ export default function ChatView({ channel }: { channel: Channel }) {
   const messages = chat?.messages ?? [];
   const firstId = messages[0]?.id;
   const myRole = members.find((m) => m.user.id === me?.id)?.role;
-  const memberOf = (id: string) => members.find((m) => m.user.id === id);
+  // Guest lines show as the guest; their hosts' bookkeeping messages are not shown at all.
+  const shown = messages.flatMap((m) => {
+    const view = chatterView(payloads[m.id]);
+    return view.hidden ? [] : [{ m, view, authorId: view.author?.id ?? m.authorId }];
+  });
+  const memberOf = (id: string) => members.find((m) => m.user.id === id) ?? guestMember(id);
 
   useEffect(() => {
     stick.current = true;
@@ -163,19 +171,19 @@ export default function ChatView({ channel }: { channel: Channel }) {
                 </button>
               </div>
             )}
-            {chat?.loaded && messages.length === 0 && <div className="cv-empty muted">No messages yet. Say hi 👋</div>}
-            {messages.map((m, i) => {
-              const before = messages[i - 1];
-              const grouped = !!before && before.authorId === m.authorId && m.createdAt - before.createdAt < GROUP_MS;
+            {chat?.loaded && shown.length === 0 && <div className="cv-empty muted">No messages yet. Say hi 👋</div>}
+            {shown.map(({ m, view, authorId }, i) => {
+              const before = shown[i - 1];
+              const grouped = !!before && before.authorId === authorId && m.createdAt - before.m.createdAt < GROUP_MS;
               const canDelete = m.authorId === me?.id || myRole === 'owner' || myRole === 'admin';
               return (
                 <MessageItem
                   key={m.id}
                   message={m}
-                  payload={payloads[m.id]}
-                  author={memberOf(m.authorId)?.user}
+                  payload={view.payload ?? payloads[m.id]}
+                  author={view.author ?? memberOf(m.authorId)?.user}
                   grouped={grouped}
-                  canEdit={m.authorId === me?.id}
+                  canEdit={m.authorId === me?.id && !view.author}
                   canDelete={canDelete}
                   serverId={channel.serverId}
                   flash={flash?.id === m.id}

@@ -8,6 +8,7 @@ import { useSettings, applyTheme } from './state/settings';
 import { applySkin } from './skins';
 import { useVoice, rekeyActiveCall, resumeVoiceSlot, clearLeftoverVoiceSlot, leaveCallOnExit } from './state/voice';
 import { forgetChatChannels, useChat } from './state/chat';
+import { installGuestKeys } from './state/guests';
 import { accountKey, adoptLegacyIfOwned, initDevice, syncChannelKeys, handleEnvelope, handleMemberLeave, forgetChannels } from './crypto';
 import { installNotifications } from './notify/notify';
 import AuthScreen from './components/auth/AuthScreen';
@@ -341,6 +342,7 @@ function Shell() {
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, []);
+  useEffect(() => installGuestKeys(), []);
 
   if (!ready) {
     return (

@@ -3,6 +3,7 @@ import type { Member } from '@chatward/shared';
 import { api } from '../../api/http';
 import { useSession } from '../../state/session';
 import { useVoice } from '../../state/voice';
+import { isGuest, useGuestMembers, useGuestVoice } from '../../state/guests';
 import PixelIcon from '../icons/PixelIcon';
 import Avatar from './Avatar';
 import './servers.css';
@@ -11,7 +12,10 @@ import { errorText } from './util';
 
 type Presence = 'online' | 'idle' | 'dnd' | 'offline';
 
-export default function MemberList({ serverId, members }: { serverId: string; members: Member[] }) {
+export default function MemberList({ serverId, members: accounts }: { serverId: string; members: Member[] }) {
+  const guests = useGuestMembers(serverId);
+  const guestVoice = useGuestVoice(serverId);
+  const members = guests.length ? [...accounts, ...guests] : accounts;
   const presence = useSession((s) => s.presence);
   const meId = useSession((s) => s.user?.id);
   const [error, setError] = useState<string | null>(null);
@@ -19,12 +23,12 @@ export default function MemberList({ serverId, members }: { serverId: string; me
   const occupants = useSession((s) => s.voiceOccupants);
   const myCallId = useVoice((s) => s.channelId);
   // Our own socket can miss its own presence frame, so count yourself as online by default.
-  const statusOf = (m: Member): Presence => presence[m.user.id] ?? (m.user.id === meId ? 'online' : 'offline');
+  const statusOf = (m: Member): Presence => (isGuest(m.user.id) ? 'online' : presence[m.user.id] ?? (m.user.id === meId ? 'online' : 'offline'));
 
   const myRole = members.find((m) => m.user.id === meId)?.role;
   // Admins can remove members; only the owner can act on an admin. The server enforces this too.
   const canActOn = (m: Member) =>
-    m.user.id !== meId && (myRole === 'owner' || (myRole === 'admin' && m.role === 'member'));
+    m.user.id !== meId && !isGuest(m.user.id) && (myRole === 'owner' || (myRole === 'admin' && m.role === 'member'));
 
   // There is one server, so removing someone turns their account off. Settings lists them to turn back on.
   async function remove(m: Member) {
@@ -49,6 +53,7 @@ export default function MemberList({ serverId, members }: { serverId: string; me
     if (c.kind !== 'voice') continue;
     for (const id of occupants[c.id] ?? []) voiceOf.set(id, c.name);
     if (meId && c.id === myCallId) voiceOf.set(meId, c.name);
+    for (const [id, ch] of guestVoice) if (ch === c.id) voiceOf.set(id, c.name);
   }
 
   const online = members.filter((m) => statusOf(m) !== 'offline');
