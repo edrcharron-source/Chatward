@@ -4,6 +4,7 @@
 // app only shows it, and drops it once the host goes offline. Line text always comes from the app's own lists.
 import { useMemo } from 'react';
 import { create } from 'zustand';
+import { RoomEvent, type RemoteParticipant, type Room } from 'livekit-client';
 import {
   CHATTER_LINES,
   CHATTER_REPLIES,
@@ -301,39 +302,38 @@ function removeGuest(serverId: string) {
 let clips: { ctx: AudioContext; list: Promise<AudioBuffer[]> } | null = null;
 const playing = new Map<string, () => void>();
 let lastClip = -1;
+const CLIP_TOPIC = 'chatter-clip';
 
 function setSpeaking(userId: string, on: boolean) {
   useGuests.setState((s) => ({ speaking: on ? [...s.speaking.filter((id) => id !== userId), userId] : s.speaking.filter((id) => id !== userId) }));
 }
 
-/**
- * While we are in a call, one of our guests plays a recording. It goes out through our own voice like the
- * soundboard does, so everyone in the call hears it, and plays here too. Returns how long it lasts, in ms.
- */
-async function speak(serverId: string): Promise<number> {
-  const mine = useGuests.getState().mine[serverId] ?? [];
-  const v = useVoice.getState();
+/** Decoded recordings for the call's audio context, in the demo's order. */
+async function clipList(): Promise<{ ctx: AudioContext; list: AudioBuffer[] } | null> {
   const ctx = voiceAudio.ctx;
-  const mix = voiceAudio.mixIn;
-  if (!mine.length || v.serverId !== serverId || v.status !== 'connected' || !ctx || !mix) return 0;
+  if (!ctx) return null;
   if (clips?.ctx !== ctx) clips = { ctx, list: loadClips(ctx) };
   const list = await clips.list;
-  if (!list.length || voiceAudio.ctx !== ctx) return 0;
-  const pick = chatterClip(list.length, lastClip);
-  lastClip = pick;
-  const user = GUEST_USERS[mine[Math.floor(Math.random() * mine.length)]];
-  if (!user) return 0;
+  return voiceAudio.ctx === ctx && list.length ? { ctx, list } : null;
+}
 
+/** Plays a recording here as the guest's own voice: their tile lights up, and their volume and mute apply. */
+async function play(guest: number, clip: number) {
+  const user = GUEST_USERS[guest];
+  const audio = await clipList();
+  const buffer = audio?.list[clip];
+  if (!user || !audio || !buffer) return;
+  const { ctx } = audio;
   const src = ctx.createBufferSource();
-  src.buffer = list[pick];
+  src.buffer = buffer;
   const level = ctx.createGain();
   level.gain.value = 0.9;
   src.connect(level);
-  level.connect(mix);
-  const here = ctx.createMediaStreamDestination();
-  level.connect(here);
+  const out = ctx.createMediaStreamDestination();
+  level.connect(out);
   const key = `guest:${user.id}`;
-  attachRemote(key, user.id, here.stream.getAudioTracks()[0]);
+  playing.get(user.id)?.();
+  attachRemote(key, user.id, out.stream.getAudioTracks()[0]);
   const stop = () => {
     src.onended = null;
     try { src.stop(); } catch { /* already ended */ }
@@ -343,12 +343,50 @@ async function speak(serverId: string): Promise<number> {
     setSpeaking(user.id, false);
   };
   src.onended = stop;
-  playing.get(user.id)?.();
   playing.set(user.id, stop);
   setSpeaking(user.id, true);
   src.start();
-  return list[pick].duration * 1000;
 }
+
+/**
+ * While we are in a call, one of our guests plays a recording. The call's data channel tells everyone else in the
+ * call which guest and which recording, and each app plays it as that guest. Returns how long it lasts, in ms.
+ */
+async function speak(serverId: string): Promise<number> {
+  const mine = useGuests.getState().mine[serverId] ?? [];
+  const { room, status } = useVoice.getState();
+  if (!mine.length || useVoice.getState().serverId !== serverId || status !== 'connected' || !room) return 0;
+  const audio = await clipList();
+  if (!audio) return 0;
+  const clip = chatterClip(audio.list.length, lastClip);
+  lastClip = clip;
+  const guest = mine[Math.floor(Math.random() * mine.length)];
+  void room.localParticipant
+    .publishData(new TextEncoder().encode(JSON.stringify({ guest, clip })), { reliable: true, topic: CLIP_TOPIC })
+    .catch(() => undefined);
+  void play(guest, clip);
+  return audio.list[clip].duration * 1000;
+}
+
+/** Another host's guest speaks in our call. Only the guest's own host can make it speak. */
+function onClipData(payload: Uint8Array, from?: RemoteParticipant, _kind?: unknown, topic?: string) {
+  const { serverId } = useVoice.getState();
+  if (topic !== CLIP_TOPIC || !from || !serverId) return;
+  let msg: { guest?: unknown; clip?: unknown };
+  try { msg = JSON.parse(new TextDecoder().decode(payload)) as typeof msg; } catch { return; }
+  if (!validGuest(msg.guest) || !Number.isInteger(msg.clip)) return;
+  const guest = msg.guest;
+  if (!currentSeats(serverId).some((s) => s.guest === guest && s.host === from.identity)) return;
+  void play(guest, msg.clip as number);
+}
+
+let listening: Room | null = null;
+useVoice.subscribe((s) => {
+  if (s.room === listening) return;
+  listening?.off(RoomEvent.DataReceived, onClipData);
+  listening = s.room;
+  listening?.on(RoomEvent.DataReceived, onClipData);
+});
 
 function stopVoice() {
   for (const stop of [...playing.values()]) stop();

@@ -124,7 +124,7 @@ export default function VoiceChannelView({ channel, theaterOnly = false }: { cha
         ...occupants.filter((id) => id !== selfId).map((id) => ({ id, joined: true, local: false, micOff: false })),
       ]
       : occupants.map((id) => ({ id, joined: false, local: false, micOff: false }));
-  // guests sit with their host; their recordings go out through the host's voice, and they have no video
+  // guests sit with their host and have no video; each app plays their recordings as them
   if (!demo) entries.push(...guestIds.map((id) => ({ id, joined: true, local: false, micOff: false })));
 
   const specs: Spec[] = entries.flatMap((e) => {
