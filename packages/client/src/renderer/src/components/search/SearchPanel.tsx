@@ -100,7 +100,8 @@ export default function SearchPanel({ channel, members }: { channel: Channel; me
       const payload = payloads[m.id];
       if (payload !== undefined) all.set(m.id, { message: m, payload });
     }
-    return searchEntries(all.values(), filters);
+    // demo chatter guests (state/guests.ts) are not part of the conversation, so they are left out
+    return searchEntries([...all.values()].filter((e) => !e.payload?.chatter), filters);
   }, [channel.id, filters, held, payloads, status.version]);
 
   const words = searchWords(filters.text);

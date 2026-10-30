@@ -1,190 +1,378 @@
-// The demo's chatter bots on a real server. The server only names a guest and a line or clip number; the profiles,
-// text and recordings are the demo's own, bundled in the app. Guest messages are kept in memory and never sent anywhere.
+// The demo's chatter bots ("guests") on a real server, run by the app that added them. Nothing on the server
+// changes: a guest's line, its host's roster and a request to send a guest away are ordinary end-to-end encrypted
+// messages with a `chatter` tag. The app that added a guest is its host and does all its talking; everyone else's
+// app only shows it, and drops it once the host goes offline. Line text always comes from the app's own lists.
 import { useMemo } from 'react';
 import { create } from 'zustand';
 import {
   CHATTER_LINES,
   CHATTER_REPLIES,
-  type GuestState,
+  CHATTER_TIMING,
+  chatterClip,
+  chatterWait,
+  GUESTS_MAX,
+  type ChatterTag,
   type Member,
   type Message,
   type MessagePayload,
-  type ServerFrame,
   type User,
 } from '@chatward/shared';
 import { api } from '../api/http';
 import { onFrame } from '../api/ws';
+import { decryptMessage, encryptPayload } from '../crypto';
 import { isDemo } from '../demo';
 import { BOT_SEEDS } from '../demo/backend/world';
 import { loadClips } from '../demo/voice';
-import { useChat } from './chat';
+import { loadHistory, useChat } from './chat';
 import { onBeforeSignOut, useSession } from './session';
 import { useVoice } from './voice';
-import { attachRemote, detachRemote } from './voiceAudio';
+import { attachRemote, detachRemote, voiceAudio } from './voiceAudio';
 
-export interface GuestMessage { message: Message; payload: MessagePayload }
+interface Roster { session: string; guests: number[]; at: number }
 
 interface GuestsStore {
-  /** serverId -> who is here */
-  rooms: Record<string, GuestState>;
-  /** channelId -> oldest first */
-  messages: Record<string, GuestMessage[]>;
-  /** guest user ids playing a clip in our call */
+  /** serverId -> host userId -> that host's latest roster */
+  hosts: Record<string, Record<string, Roster>>;
+  /** serverId -> the guests this app hosts, oldest first */
+  mine: Record<string, number[]>;
+  /** guest user ids playing a clip in our call (this app's guests only) */
   speaking: string[];
 }
 
-const KEPT_PER_CHANNEL = 200;
+/** One run of this app. A restarted app is a new session, so its earlier guests are gone. */
+const SESSION = crypto.randomUUID();
 const KEY_GAP_MS = 1500;
 const JOINED = Date.UTC(2025, 2, 14);
 
-export const GUEST_USERS: User[] = BOT_SEEDS.map((b) => ({
+export const GUEST_USERS: User[] = BOT_SEEDS.slice(0, GUESTS_MAX).map((b) => ({
   id: `guest-${b.name.toLowerCase()}`, username: b.name.toLowerCase(), displayName: b.name, avatarUrl: null,
   profile: { ...b.profile, bannerUrl: null, createdAt: JOINED },
 }));
 const GUEST_MEMBERS: Member[] = GUEST_USERS.map((user) => ({ user, role: 'member', devices: [] }));
 const NONE: Member[] = [];
 
-export const useGuests = create<GuestsStore>(() => ({ rooms: {}, messages: {}, speaking: [] }));
+export const useGuests = create<GuestsStore>(() => ({ hosts: {}, mine: {}, speaking: [] }));
 
 export const isGuest = (userId: string) => GUEST_USERS.some((u) => u.id === userId);
 /** A guest's member entry, also after they left, so their lines keep a name. */
 export const guestMember = (userId: string) => GUEST_MEMBERS.find((m) => m.user.id === userId);
 
+// ---------- who is here ----------
+
+interface Seat { guest: number; host: string; at: number }
+
+/** Guests on a server: this app's own, plus those of other hosts who are still online. */
+function seatsOf(serverId: string, g: GuestsStore, meId: string | undefined, presence: Record<string, string>): Seat[] {
+  const seats: Seat[] = (g.mine[serverId] ?? []).map((guest, i) => ({ guest, host: meId ?? '', at: i }));
+  for (const [host, r] of Object.entries(g.hosts[serverId] ?? {})) {
+    if (host === meId || (presence[host] ?? 'offline') === 'offline') continue;
+    for (const guest of r.guests) if (!seats.some((s) => s.guest === guest)) seats.push({ guest, host, at: r.at });
+  }
+  return seats;
+}
+
+function currentSeats(serverId: string): Seat[] {
+  const { user, presence } = useSession.getState();
+  return seatsOf(serverId, useGuests.getState(), user?.id, presence);
+}
+
+function useSeats(serverId: string | undefined): Seat[] {
+  const g = useGuests();
+  const meId = useSession((s) => s.user?.id);
+  const presence = useSession((s) => s.presence);
+  return useMemo(() => (serverId ? seatsOf(serverId, g, meId, presence) : []), [serverId, g, meId, presence]);
+}
+
 /** The server's guests as members, for display only. */
 export function useGuestMembers(serverId: string | undefined): Member[] {
-  const room = useGuests((s) => (serverId ? s.rooms[serverId] : undefined));
-  return useMemo(() => room?.guests.flatMap((g) => GUEST_MEMBERS[g] ?? []) ?? NONE, [room]);
+  const seats = useSeats(serverId);
+  return useMemo(() => (seats.length ? seats.flatMap((s) => GUEST_MEMBERS[s.guest] ?? []) : NONE), [seats]);
+}
+
+/** Guest user id -> the voice channel they sit in: the one their host is in. */
+export function useGuestVoice(serverId: string | undefined): Map<string, string> {
+  const seats = useSeats(serverId);
+  const occupants = useSession((s) => s.voiceOccupants);
+  const meId = useSession((s) => s.user?.id);
+  const myCall = useVoice((s) => s.channelId);
+  return useMemo(() => {
+    const out = new Map<string, string>();
+    for (const s of seats) {
+      const call = s.host === meId ? myCall : Object.keys(occupants).find((ch) => occupants[ch]?.includes(s.host));
+      if (call && GUEST_USERS[s.guest]) out.set(GUEST_USERS[s.guest].id, call);
+    }
+    return out;
+  }, [seats, occupants, meId, myCall]);
 }
 
 /** Guest user ids in a voice channel. */
-export function useGuestsInVoice(channelId: string | undefined): string[] {
-  const rooms = useGuests((s) => s.rooms);
-  return useMemo(() => {
-    const room = Object.values(rooms).find((r) => r.voiceChannelId === channelId);
-    return room?.inVoice.flatMap((g) => GUEST_USERS[g]?.id ?? []) ?? [];
-  }, [rooms, channelId]);
+export function useGuestsInVoice(serverId: string | undefined, channelId: string): string[] {
+  const voice = useGuestVoice(serverId);
+  return useMemo(() => [...voice].filter(([, ch]) => ch === channelId).map(([id]) => id), [voice, channelId]);
 }
 
-function setRoom(state: GuestState) {
-  useGuests.setState((s) => ({ rooms: { ...s.rooms, [state.serverId]: state } }));
-  // a guest who left the call stops talking
-  for (const [userId, stop] of playing) {
-    const n = GUEST_USERS.findIndex((u) => u.id === userId);
-    if (!state.inVoice.includes(n)) stop();
+/** What a chatter message shows: the guest as its author and the line from the app's own list. */
+export function chatterView(payload: MessagePayload | null | undefined): { hidden: boolean; author?: User; payload?: MessagePayload } {
+  const tag = payload?.chatter;
+  if (!tag) return { hidden: false };
+  if (tag.kind !== 'line' || !validGuest(tag.guest)) return { hidden: true };
+  const text = (tag.reply ? CHATTER_REPLIES : CHATTER_LINES)[tag.line];
+  return text === undefined ? { hidden: true } : { hidden: false, author: GUEST_USERS[tag.guest], payload: { text } };
+}
+
+// ---------- reading tags ----------
+
+const validGuest = (n: unknown): n is number => Number.isInteger(n) && (n as number) >= 0 && (n as number) < GUESTS_MAX;
+const validRoster = (r: unknown): r is number[] => Array.isArray(r) && r.length <= GUESTS_MAX && r.every(validGuest);
+
+function serverOfChannel(channelId: string): string | undefined {
+  return useSession.getState().servers.find((b) => b.channels.some((c) => c.id === channelId))?.server.id;
+}
+
+function textChannels(serverId: string): string[] {
+  return useSession.getState().servers.find((b) => b.server.id === serverId)?.channels.filter((c) => c.kind === 'text').map((c) => c.id) ?? [];
+}
+
+const seen = new Set<string>();
+/** serverId -> the newest roster this account sent from an earlier run, found in history */
+const leftovers = new Map<string, Roster>();
+
+/** Applies one decrypted message. `live` is true for a message that just arrived rather than one read from history. */
+function readTag(m: Message, payload: MessagePayload | null, live: boolean) {
+  const tag = payload?.chatter;
+  if (seen.has(m.id)) return;
+  seen.add(m.id);
+  const serverId = serverOfChannel(m.channelId);
+  const meId = useSession.getState().user?.id;
+  if (!serverId || !meId) return;
+  if (!tag) {
+    if (live) answer(serverId, m.channelId);
+    return;
   }
-}
-
-async function refresh() {
-  for (const b of useSession.getState().servers) {
-    try {
-      setRoom(await api.get<GuestState>(`/api/servers/${b.server.id}/guests`));
-    } catch { /* a server without guests support */ }
+  if (live && tag.kind !== 'line' && m.authorId !== meId) unbump(m.channelId);
+  if (tag.kind === 'remove') {
+    if (live && tag.host === meId && validGuest(tag.guest)) dismiss(serverId, tag.guest);
+    return;
   }
-}
-
-function addMessage(f: Extract<ServerFrame, { t: 'guests.say' }>) {
-  const text = (f.reply ? CHATTER_REPLIES : CHATTER_LINES)[f.line];
-  const author = GUEST_USERS[f.guest];
-  if (text === undefined || !author) return;
-  const message: Message = { id: f.id, channelId: f.channelId, authorId: author.id, createdAt: f.createdAt, editedAt: null, keyVersion: 0, ciphertext: '' };
-  useGuests.setState((s) => ({
-    messages: { ...s.messages, [f.channelId]: [...(s.messages[f.channelId] ?? []), { message, payload: { text } }].slice(-KEPT_PER_CHANNEL) },
-  }));
-  useChat.setState((s) => {
-    const typing = { ...s.typing[f.channelId] };
-    delete typing[author.id];
-    return { typing: { ...s.typing, [f.channelId]: typing } };
+  if (typeof tag.session !== 'string' || !validRoster(tag.roster)) return;
+  const roster: Roster = { session: tag.session, guests: [...new Set(tag.roster)], at: m.createdAt };
+  if (m.authorId === meId) {
+    if (tag.session !== SESSION && (leftovers.get(serverId)?.at ?? -1) < roster.at) leftovers.set(serverId, roster);
+    return;
+  }
+  useGuests.setState((s) => {
+    const prev = s.hosts[serverId]?.[m.authorId];
+    if (prev && prev.at > roster.at) return {};
+    return { hosts: { ...s.hosts, [serverId]: { ...s.hosts[serverId], [m.authorId]: roster } } };
   });
-  const session = useSession.getState();
-  const onScreen = session.activeChannelId === f.channelId || session.theaterChatId === f.channelId;
-  if (onScreen && !document.hidden) session.clearUnread(f.channelId);
-  else session.bumpUnread(f.channelId);
+}
+
+/** Roster and remove messages are hidden, so they should not leave an unread count behind. */
+function unbump(channelId: string) {
+  window.setTimeout(() => {
+    const { unread } = useSession.getState();
+    if (unread[channelId]) useSession.setState({ unread: { ...unread, [channelId]: unread[channelId] - 1 } });
+  }, 0);
+}
+
+/** Reads the newest page of each server's first text channel, where rosters are sent, and tidies up after an earlier run. */
+async function catchUpRosters() {
+  for (const b of useSession.getState().servers) {
+    const channelId = textChannels(b.server.id)[0];
+    if (!channelId) continue;
+    await loadHistory(channelId).catch(() => {});
+    const messages = useChat.getState().channels[channelId]?.messages ?? [];
+    await Promise.all(messages.map(async (m) => readTag(m, await decryptMessage(m).catch(() => null), false)));
+    // Our previous run may have quit with guests still listed. If so, say they are gone.
+    const old = leftovers.get(b.server.id);
+    if (old?.guests.length && !(useGuests.getState().mine[b.server.id] ?? []).length) {
+      leftovers.delete(b.server.id);
+      void sendTag(channelId, { kind: 'roster', session: SESSION, roster: [] });
+    }
+  }
+}
+
+// ---------- sending ----------
+
+async function sendTag(channelId: string, tag: ChatterTag) {
+  const meId = useSession.getState().user?.id;
+  if (!meId) return;
+  // The text is for apps from before guests existed; current apps show the line from their own list.
+  const text = tag.kind === 'line' ? (tag.reply ? CHATTER_REPLIES : CHATTER_LINES)[tag.line] : '';
+  try {
+    const { ciphertext, keyVersion } = await encryptPayload(channelId, meId, { text, chatter: tag });
+    await api.post(`/api/channels/${channelId}/messages`, { ciphertext, keyVersion, attachmentIds: [], clientId: crypto.randomUUID() });
+  } catch { /* no channel key yet, or offline: guests are best effort */ }
+}
+
+function sendRoster(serverId: string) {
+  const channelId = textChannels(serverId)[0];
+  if (channelId) void sendTag(channelId, { kind: 'roster', session: SESSION, roster: useGuests.getState().mine[serverId] ?? [] });
+}
+
+function say(serverId: string, channelId: string, reply: boolean) {
+  const mine = useGuests.getState().mine[serverId] ?? [];
+  if (!mine.length) return;
+  const guest = mine[Math.floor(Math.random() * mine.length)];
+  const line = Math.floor(Math.random() * (reply ? CHATTER_REPLIES.length : CHATTER_LINES.length));
+  void sendTag(channelId, { kind: 'line', session: SESSION, roster: mine, guest, line, reply });
+}
+
+// ---------- hosting ----------
+
+const timers = new Map<string, number[]>();
+
+function later(serverId: string, ms: number, fn: () => void) {
+  const list = timers.get(serverId) ?? [];
+  const t = window.setTimeout(() => {
+    timers.set(serverId, (timers.get(serverId) ?? []).filter((x) => x !== t));
+    if ((useGuests.getState().mine[serverId] ?? []).length) fn();
+  }, ms);
+  timers.set(serverId, [...list, t]);
+}
+
+function stopHosting(serverId: string) {
+  for (const t of timers.get(serverId) ?? []) window.clearTimeout(t);
+  timers.delete(serverId);
+}
+
+/** Same timing as the demo: a line in a random text channel now and then, and clips in our call. */
+function startHosting(serverId: string) {
+  const textLoop = () => {
+    const channels = textChannels(serverId);
+    if (channels.length) say(serverId, channels[Math.floor(Math.random() * channels.length)], false);
+    later(serverId, chatterWait(CHATTER_TIMING.nextLine), textLoop);
+  };
+  later(serverId, chatterWait(CHATTER_TIMING.firstLine), textLoop);
+  const voiceLoop = () => {
+    void speak(serverId).then((ms) => later(serverId, ms + chatterWait(CHATTER_TIMING.nextClip), voiceLoop));
+  };
+  later(serverId, chatterWait(CHATTER_TIMING.firstClip), voiceLoop);
+}
+
+/** Someone wrote in a text channel: like the demo, one guest answers. Only one host answers, so it is one reply. */
+function answer(serverId: string, channelId: string) {
+  const mine = useGuests.getState().mine[serverId] ?? [];
+  const meId = useSession.getState().user?.id;
+  if (!mine.length || !meId) return;
+  const lead = [...new Set(currentSeats(serverId).map((s) => s.host))].sort()[0];
+  if (lead !== meId) return;
+  later(serverId, chatterWait(CHATTER_TIMING.replyPause) + chatterWait(CHATTER_TIMING.replyTyping), () => say(serverId, channelId, true));
+}
+
+function setMine(serverId: string, guests: number[]) {
+  const before = useGuests.getState().mine[serverId] ?? [];
+  useGuests.setState((s) => ({ mine: { ...s.mine, [serverId]: guests } }));
+  if (!before.length && guests.length) startHosting(serverId);
+  if (before.length && !guests.length) {
+    stopHosting(serverId);
+    stopVoice();
+  }
+  sendRoster(serverId);
+}
+
+function dismiss(serverId: string, guest: number) {
+  const mine = useGuests.getState().mine[serverId] ?? [];
+  if (mine.includes(guest)) setMine(serverId, mine.filter((g) => g !== guest));
+}
+
+function addGuest(serverId: string) {
+  const taken = currentSeats(serverId).map((s) => s.guest);
+  if (taken.length >= GUESTS_MAX) return;
+  const guest = [...Array(GUESTS_MAX).keys()].find((g) => !taken.includes(g));
+  if (guest === undefined) return;
+  setMine(serverId, [...(useGuests.getState().mine[serverId] ?? []), guest]);
+}
+
+/** Sends the newest guest away: our own if we host any, otherwise asks the host whose guest arrived last. */
+function removeGuest(serverId: string) {
+  const mine = useGuests.getState().mine[serverId] ?? [];
+  if (mine.length) {
+    setMine(serverId, mine.slice(0, -1));
+    return;
+  }
+  const newest = currentSeats(serverId).sort((a, b) => a.at - b.at).at(-1);
+  const channelId = textChannels(serverId)[0];
+  if (newest && channelId) void sendTag(channelId, { kind: 'remove', host: newest.host, guest: newest.guest });
 }
 
 // ---------- voice ----------
 
-let audio: { ctx: AudioContext; clips: Promise<AudioBuffer[]> } | null = null;
+let clips: { ctx: AudioContext; list: Promise<AudioBuffer[]> } | null = null;
 const playing = new Map<string, () => void>();
+let lastClip = -1;
 
 function setSpeaking(userId: string, on: boolean) {
   useGuests.setState((s) => ({ speaking: on ? [...s.speaking.filter((id) => id !== userId), userId] : s.speaking.filter((id) => id !== userId) }));
 }
 
-/** Plays a recording as the guest's voice, through the call's own output so volume, mute and deafen apply. */
-async function speak(guest: number, clipNumber: number) {
-  const user = GUEST_USERS[guest];
-  if (!user) return;
-  if (!audio) {
-    const ctx = new AudioContext();
-    audio = { ctx, clips: loadClips(ctx) };
-  }
-  const { ctx } = audio;
-  const clip = (await audio.clips)[clipNumber];
-  if (!clip || audio?.ctx !== ctx) return;
-  void ctx.resume();
-  playing.get(user.id)?.();
-  const dest = ctx.createMediaStreamDestination();
+/**
+ * While we are in a call, one of our guests plays a recording. It goes out through our own voice like the
+ * soundboard does, so everyone in the call hears it, and plays here too. Returns how long it lasts, in ms.
+ */
+async function speak(serverId: string): Promise<number> {
+  const mine = useGuests.getState().mine[serverId] ?? [];
+  const v = useVoice.getState();
+  const ctx = voiceAudio.ctx;
+  const mix = voiceAudio.mixIn;
+  if (!mine.length || v.serverId !== serverId || v.status !== 'connected' || !ctx || !mix) return 0;
+  if (clips?.ctx !== ctx) clips = { ctx, list: loadClips(ctx) };
+  const list = await clips.list;
+  if (!list.length || voiceAudio.ctx !== ctx) return 0;
+  const pick = chatterClip(list.length, lastClip);
+  lastClip = pick;
+  const user = GUEST_USERS[mine[Math.floor(Math.random() * mine.length)]];
+  if (!user) return 0;
+
+  const src = ctx.createBufferSource();
+  src.buffer = list[pick];
   const level = ctx.createGain();
   level.gain.value = 0.9;
-  level.connect(dest);
-  const src = ctx.createBufferSource();
-  src.buffer = clip;
   src.connect(level);
+  level.connect(mix);
+  const here = ctx.createMediaStreamDestination();
+  level.connect(here);
   const key = `guest:${user.id}`;
-  attachRemote(key, user.id, dest.stream.getAudioTracks()[0]);
+  attachRemote(key, user.id, here.stream.getAudioTracks()[0]);
   const stop = () => {
     src.onended = null;
     try { src.stop(); } catch { /* already ended */ }
+    level.disconnect();
     detachRemote(key);
     playing.delete(user.id);
     setSpeaking(user.id, false);
   };
   src.onended = stop;
+  playing.get(user.id)?.();
   playing.set(user.id, stop);
   setSpeaking(user.id, true);
   src.start();
+  return list[pick].duration * 1000;
 }
 
 function stopVoice() {
   for (const stop of [...playing.values()]) stop();
-  void audio?.ctx.close();
-  audio = null;
 }
 
 useVoice.subscribe((s, prev) => {
   if (prev.channelId && s.channelId !== prev.channelId) stopVoice();
 });
 
-// ---------- frames ----------
+// ---------- wiring ----------
 
 onFrame((f) => {
-  switch (f.t) {
-    case 'ready':
-      void refresh();
-      return;
-    case 'guests.state':
-      setRoom(f.state);
-      return;
-    case 'guests.typing': {
-      const user = GUEST_USERS[f.guest];
-      if (!user) return;
-      useChat.setState((s) => ({ typing: { ...s.typing, [f.channelId]: { ...s.typing[f.channelId], [user.id]: Date.now() } } }));
-      return;
-    }
-    case 'guests.say':
-      addMessage(f);
-      return;
-    case 'guests.speak': {
-      const v = useVoice.getState();
-      if (v.channelId === f.channelId && v.status === 'connected') void speak(f.guest, f.clip);
-      return;
-    }
-  }
+  if (f.t === 'ready') void catchUpRosters();
+  if (f.t !== 'message.new') return;
+  const m = f.message;
+  void decryptMessage(m).then((p) => readTag(m, p, true), () => undefined);
 });
 
 function clear() {
+  for (const serverId of [...timers.keys()]) stopHosting(serverId);
   stopVoice();
-  useGuests.setState({ rooms: {}, messages: {}, speaking: [] });
+  seen.clear();
+  leftovers.clear();
+  useGuests.setState({ hosts: {}, mine: {}, speaking: [] });
 }
 onBeforeSignOut(clear);
 useSession.subscribe((s, prev) => {
@@ -201,13 +389,10 @@ function isTextField(target: EventTarget | null): boolean {
   return target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName);
 }
 
-async function change(method: 'post' | 'del') {
+function activeServer(): string | undefined {
   const { token, activeServerId, servers } = useSession.getState();
-  const serverId = activeServerId ?? servers[0]?.server.id;
-  if (!token || !serverId || isDemo()) return;
-  try {
-    setRoom(await api[method]<GuestState>(`/api/servers/${serverId}/guests`));
-  } catch { /* a server without guests support */ }
+  if (!token || isDemo()) return undefined;
+  return activeServerId ?? servers[0]?.server.id;
 }
 
 /** Typed in the main window, outside any text box: - - - + and + + + -. */
@@ -222,12 +407,13 @@ export function installGuestKeys(win: Window = window): () => void {
     if (now - lastKey > KEY_GAP_MS) typed = '';
     lastKey = now;
     typed = (typed + e.key).slice(-4);
+    const serverId = activeServer();
     if (typed === '---+') {
       typed = '';
-      void change('post');
+      if (serverId) addGuest(serverId);
     } else if (typed === '+++-') {
       typed = '';
-      void change('del');
+      if (serverId) removeGuest(serverId);
     }
   };
   win.addEventListener('keydown', onKey);

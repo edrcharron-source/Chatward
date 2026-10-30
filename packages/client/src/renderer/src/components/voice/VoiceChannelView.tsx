@@ -99,7 +99,7 @@ export default function VoiceChannelView({ channel, theaterOnly = false }: { cha
   const room = useVoice((s) => s.room);
   const speaking = useVoice((s) => s.speaking);
   const guestSpeaking = useGuests((s) => s.speaking);
-  const guestIds = useGuestsInVoice(channel.id);
+  const guestIds = useGuestsInVoice(channel.serverId, channel.id);
   const muted = useVoice((s) => s.muted);
   const deafened = useVoice((s) => s.deafened);
   // re-render on room changes; the participant list is read from the room below
@@ -124,7 +124,7 @@ export default function VoiceChannelView({ channel, theaterOnly = false }: { cha
         ...occupants.filter((id) => id !== selfId).map((id) => ({ id, joined: true, local: false, micOff: false })),
       ]
       : occupants.map((id) => ({ id, joined: false, local: false, micOff: false }));
-  // guests play recordings through the speakers: they are in the call but have no video
+  // guests sit with their host; their recordings go out through the host's voice, and they have no video
   if (!demo) entries.push(...guestIds.map((id) => ({ id, joined: true, local: false, micOff: false })));
 
   const specs: Spec[] = entries.flatMap((e) => {

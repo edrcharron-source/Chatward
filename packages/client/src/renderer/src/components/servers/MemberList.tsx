@@ -3,7 +3,7 @@ import type { Member } from '@chatward/shared';
 import { api } from '../../api/http';
 import { useSession } from '../../state/session';
 import { useVoice } from '../../state/voice';
-import { GUEST_USERS, isGuest, useGuestMembers, useGuests } from '../../state/guests';
+import { isGuest, useGuestMembers, useGuestVoice } from '../../state/guests';
 import PixelIcon from '../icons/PixelIcon';
 import Avatar from './Avatar';
 import './servers.css';
@@ -14,7 +14,7 @@ type Presence = 'online' | 'idle' | 'dnd' | 'offline';
 
 export default function MemberList({ serverId, members: accounts }: { serverId: string; members: Member[] }) {
   const guests = useGuestMembers(serverId);
-  const guestRoom = useGuests((s) => s.rooms[serverId]);
+  const guestVoice = useGuestVoice(serverId);
   const members = guests.length ? [...accounts, ...guests] : accounts;
   const presence = useSession((s) => s.presence);
   const meId = useSession((s) => s.user?.id);
@@ -53,7 +53,7 @@ export default function MemberList({ serverId, members: accounts }: { serverId: 
     if (c.kind !== 'voice') continue;
     for (const id of occupants[c.id] ?? []) voiceOf.set(id, c.name);
     if (meId && c.id === myCallId) voiceOf.set(meId, c.name);
-    if (c.id === guestRoom?.voiceChannelId) for (const g of guestRoom.inVoice) if (GUEST_USERS[g]) voiceOf.set(GUEST_USERS[g].id, c.name);
+    for (const [id, ch] of guestVoice) if (ch === c.id) voiceOf.set(id, c.name);
   }
 
   const online = members.filter((m) => statusOf(m) !== 'offline');

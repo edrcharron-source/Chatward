@@ -2,6 +2,7 @@
 // Owner: settings-notify. Subscribes to frames; plays message and voice join/leave tones; returns unsubscribe.
 import type { Message } from '@chatward/shared';
 import { onFrame } from '../api/ws';
+import { decryptMessage } from '../crypto';
 import { useSession } from '../state/session';
 import { useSettings } from '../state/settings';
 import { useVoice } from '../state/voice';
@@ -91,7 +92,8 @@ export function installNotifications(): () => void {
     for (const c of b.channels) occupants[c.id] = useSession.getState().voiceOccupants[c.id] ?? [];
   }
   return onFrame((f) => {
-    if (f.t === 'message.new') onNewMessage(f.message);
+    // demo chatter guests (state/guests.ts) talk often, so their messages make no sound or flash
+    if (f.t === 'message.new') void decryptMessage(f.message).catch(() => null).then((p) => { if (!p?.chatter) onNewMessage(f.message); });
     else if (f.t === 'voice.state') onVoiceState(f.channelId, f.userIds);
   });
 }
