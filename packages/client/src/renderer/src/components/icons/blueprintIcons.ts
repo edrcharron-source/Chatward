@@ -43,4 +43,5 @@ export const BLUEPRINT: Record<IconName, VectorIcon> = {
   shareoff: { body: '<path d="M2 4h20v13H2zM8 21h8M12 17v4M9 8l6 6M15 8l-6 6"/>' },
   loopback: { body: '<path d="M20 13v5l-3 3H7l-3-3V6l3-3h9l3 3"/><path d="M20 2v5h-5"/><path d="M11 11h2v2h-2z"/>' },
   dot: { body: '<path d="M9 9h6v6H9z" fill="currentColor"/>' },
+  search: { body: '<path d="M7 3h6l4 4v6l-4 4H7l-4-4V7zM15 15l6 6"/>' },
 };

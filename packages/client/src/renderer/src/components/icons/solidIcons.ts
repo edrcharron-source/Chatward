@@ -43,4 +43,5 @@ export const SOLID: Record<IconName, VectorIcon> = {
   shareoff: { body: '<rect x="2" y="3.5" width="20" height="14" rx="2.5"/><path d="M7 21h10" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>', cut: '<path fill="none" stroke="#000" d="M9.4 7.9l5.2 5.2M14.6 7.9l-5.2 5.2" style="stroke-width:2.2;stroke-linecap:round"/>' },
   loopback: { body: '<path d="M20.5 12a8.5 8.5 0 1 1-8.5-8.5c2.4 0 4.6 1 6.3 2.6" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M21.5 2.5v7h-7z"/><circle cx="12" cy="12" r="3"/>' },
   dot: { body: '<circle cx="12" cy="12" r="5"/>' },
+  search: { body: '<circle cx="10" cy="10" r="7.5"/><path d="M14.6 16.7l2.1-2.1 5 5a1.5 1.5 0 0 1-2.1 2.1z"/>', cut: '<circle fill="#000" cx="10" cy="10" r="4.6"/>' },
 };

@@ -16,6 +16,8 @@ interface Props {
   canDelete: boolean;
   /** The server the message is in, so GIFs in it can be saved to that server's GIF library. */
   serverId?: string;
+  /** Lit up for a moment, after a jump from search. */
+  flash?: boolean;
 }
 
 function formatTime(ms: number): string {
@@ -26,7 +28,7 @@ function formatTime(ms: number): string {
     : d.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
-export default function MessageItem({ message, payload, author, grouped, canEdit, canDelete, serverId }: Props) {
+export default function MessageItem({ message, payload, author, grouped, canEdit, canDelete, serverId, flash }: Props) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -84,7 +86,7 @@ export default function MessageItem({ message, payload, author, grouped, canEdit
   }
 
   return (
-    <div className={`cv-msg${grouped ? ' cv-grouped' : ''}`}>
+    <div className={`cv-msg${grouped ? ' cv-grouped' : ''}${flash ? ' cv-flash' : ''}`} data-message-id={message.id}>
       {grouped ? (
         <time className="cv-time-gutter">{new Date(message.createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</time>
       ) : (

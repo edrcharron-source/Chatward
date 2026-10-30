@@ -13,7 +13,7 @@ function formatSize(bytes: number): string {
 }
 
 /** Fetches the encrypted blob and decrypts it in memory. Returns an object URL, or null while loading/failed. */
-function useDecryptedUrl(attachment: Attachment): { url: string | null; failed: boolean } {
+export function useDecryptedUrl(attachment: Attachment): { url: string | null; failed: boolean } {
   const [state, setState] = useState<{ url: string | null; failed: boolean }>({ url: null, failed: false });
 
   useEffect(() => {

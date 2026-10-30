@@ -3,7 +3,7 @@ export const ICON_NAMES = [
   'text', 'voice', 'mic', 'micoff', 'deafen', 'share', 'camera', 'leave', 'watch', 'movies', 'vault', 'gear', 'plus',
   'attach', 'gif', 'emoji', 'send', 'edit', 'trash', 'sounds', 'fullscreen', 'theater', 'popout', 'user', 'shield', 'bell',
   'eye', 'palette', 'crown', 'test', 'lock', 'play', 'stop', 'upload', 'close', 'deafenoff', 'cameraoff', 'shareoff',
-  'loopback', 'dot',
+  'loopback', 'dot', 'search',
 ] as const;
 
 export type IconName = (typeof ICON_NAMES)[number];

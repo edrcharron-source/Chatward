@@ -211,6 +211,38 @@ export async function loadHistory(channelId: string, mode: 'initial' | 'older' =
   }
 }
 
+function whenIdle(channelId: string): Promise<void> {
+  return new Promise((resolve) => {
+    if (!channelOf(channelId).loading) return resolve();
+    const stop = useChat.subscribe((s) => {
+      if (!(s.channels[channelId] ?? EMPTY).loading) { stop(); resolve(); }
+    });
+  });
+}
+
+/**
+ * Loads older pages until the channel holds the message, for a jump from search. Gives up once the held history
+ * reaches back past the message's time (it was deleted) or the start of the channel. Returns whether it is held.
+ */
+export async function loadUntil(channelId: string, messageId: string, createdAt: number): Promise<boolean> {
+  for (;;) {
+    if (!isLiveChannel(channelId)) return false;
+    const c = channelOf(channelId);
+    if (c.messages.some((m) => m.id === messageId)) return true;
+    if (c.loading) { await whenIdle(channelId); continue; }
+    if (c.loaded && (!c.hasMore || (c.messages.length > 0 && c.messages[0].createdAt < createdAt))) return false;
+    const oldest = c.messages[0]?.id;
+    try {
+      await loadHistory(channelId, c.loaded ? 'older' : 'initial');
+    } catch {
+      return false;
+    }
+    // An older page that added nothing would loop forever.
+    const after = channelOf(channelId);
+    if (c.loaded && after.messages[0]?.id === oldest) return after.messages.some((m) => m.id === messageId);
+  }
+}
+
 /**
  * After a reconnect, frames may have been missed. Fetch only what is newer than the newest message we hold, one
  * page at a time, so a gap of any length is filled. Then read the latest page once more and merge it, so edits
