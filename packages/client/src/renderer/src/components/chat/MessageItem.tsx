@@ -36,7 +36,16 @@ export default function MessageItem({ message, payload, author, grouped, canEdit
   const [editing, setEditing] = useState(false);
   const meId = useSession((s) => s.user?.id);
   // Someone else's message that pings this user (by name or @everyone) is lit up for them.
-  const pinged = !!payload && message.authorId !== meId && pings(payload.mentions, meId);
+  // @everyone lights up for everyone, the sender included. A named mention pings the person named, not the sender.
+  const pinged = !!payload && (!!payload.mentions?.everyone || (message.authorId !== meId && pings(payload.mentions, meId)));
+  const members = useSession((s) => (serverId ? s.servers.find((b) => b.server.id === serverId)?.members : undefined));
+  // The names this message pings, so they can be shown as pills.
+  const mentionNames = payload?.mentions
+    ? [
+        ...(payload.mentions.everyone ? ['everyone'] : []),
+        ...(members ?? []).filter((m) => payload.mentions?.userIds.includes(m.user.id)).map((m) => m.user.displayName),
+      ]
+    : undefined;
   const [draft, setDraft] = useState('');
   const [error, setError] = useState<string | null>(null);
   const canStartEdit = canEdit && payload != null;
@@ -92,7 +101,7 @@ export default function MessageItem({ message, payload, author, grouped, canEdit
       <>
         {payload.text && (
           <div className={`cv-text${isEmojiOnly(payload.text) ? ' cv-text-emoji' : ''}`}>
-            <MessageText text={payload.text} />
+            <MessageText text={payload.text} names={mentionNames} />
             {message.editedAt != null && <span className="cv-edited"> (edited)</span>}
           </div>
         )}
