@@ -108,6 +108,8 @@ export interface MessagePayload {
   linkPreviews?: LinkPreview[];
   /** Set on demo chatter guest messages (client state/guests.ts). Absent on everything people write. */
   chatter?: ChatterTag;
+  /** Who the message pings: @everyone, and/or specific members by user id. Absent when nobody is pinged. Client-only meaning. */
+  mentions?: { everyone?: boolean; userIds: string[] };
 }
 
 /**
