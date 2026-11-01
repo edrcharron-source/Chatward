@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { User } from '@chatward/shared';
 import { fetchObjectUrl } from '../../api/http';
 import Avatar from '../servers/Avatar';
+import ListeningNow from '../spotify/ListeningNow';
 import './profile.css';
 
 const DEFAULT_BANNER = 'var(--accent)';
@@ -50,6 +51,7 @@ export default function ProfileCard({ user, style }: { user: User; style: React.
         <div className="profile-name">{user.displayName}</div>
         {user.profile.pronouns && <div className="profile-handle"><span className="profile-pronouns">{user.profile.pronouns}</span></div>}
         {user.profile.bio && <p className="profile-bio">{user.profile.bio}</p>}
+        <ListeningNow userId={user.id} />
         <div className="profile-since">Member since {memberSince(user.profile.createdAt)}</div>
       </div>
     </div>

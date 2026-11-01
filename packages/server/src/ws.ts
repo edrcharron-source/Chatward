@@ -198,5 +198,17 @@ export function cleanActivity(raw: unknown): Activity | null | undefined {
   if (!title) return undefined;
   const out: Activity = { kind: 'spotify', title, artist };
   if (typeof a.url === 'string' && /^https:\/\/open\.spotify\.com\/track\/[A-Za-z0-9]{1,64}$/.test(a.url)) out.url = a.url;
+  if (typeof a.coverUrl === 'string' && COVER_URL.test(a.coverUrl)) out.coverUrl = a.coverUrl;
+  const duration = milliseconds(a.durationMs);
+  if (duration !== undefined && duration > 0) out.durationMs = duration;
+  const progress = milliseconds(a.progressMs);
+  if (progress !== undefined) out.progressMs = duration ? Math.min(progress, duration) : progress;
   return out;
+}
+
+/** Album covers come only from Spotify's image host. */
+const COVER_URL = /^https:\/\/i\.scdn\.co\/image\/[A-Za-z0-9]{1,64}$/;
+/** A length or position in ms, or undefined when it isn't a sane number (more than a day is refused). */
+function milliseconds(v: unknown): number | undefined {
+  return typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 24 * 60 * 60 * 1000 ? Math.round(v) : undefined;
 }
