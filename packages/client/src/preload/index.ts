@@ -44,6 +44,8 @@ const api = {
     connect: (): Promise<void> => ipcRenderer.invoke('spotify:connect'),
     disconnect: (): Promise<void> => ipcRenderer.invoke('spotify:disconnect'),
     nowPlaying: (): Promise<NowPlaying> => ipcRenderer.invoke('spotify:now-playing'),
+    // The Jam behind a spotify.link short link, or null. Sender side only, like link previews.
+    resolveJam: (url: string): Promise<string | null> => ipcRenderer.invoke('spotify:resolve-jam', url),
   },
   // Tells the main process which server the page may connect to. Resolves true when the page must reload first.
   server: {

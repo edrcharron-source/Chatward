@@ -4,7 +4,7 @@ import { pathToFileURL } from 'node:url';
 import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync, renameSync } from 'node:fs';
 import { fetchLinkPreview } from './linkPreview';
 import { searchGifs } from './klipy';
-import { connectSpotify, disconnectSpotify, nowPlaying, spotifyStatus, type TokenStore } from './spotify';
+import { connectSpotify, disconnectSpotify, nowPlaying, resolveJamLink, spotifyStatus, type TokenStore } from './spotify';
 import { setupUpdater } from './updater';
 import { APP_ORIGIN, buildCsp, loadServerOrigin, saveServerOrigin, serverOrigin } from './serverPolicy';
 import { fitWindow } from './windowBounds';
@@ -224,6 +224,7 @@ app.whenReady().then(() => {
   ipcMain.handle('spotify:connect', () => connectSpotify(spotifyStore));
   ipcMain.handle('spotify:disconnect', () => disconnectSpotify(spotifyStore));
   ipcMain.handle('spotify:now-playing', () => nowPlaying(spotifyStore));
+  ipcMain.handle('spotify:resolve-jam', (_e, url: string) => resolveJamLink(String(url ?? '')));
   ipcMain.handle('screen:sources', async () => {
     const sources = await desktopCapturer.getSources({ types: ['screen', 'window'], thumbnailSize: { width: 320, height: 180 }, fetchWindowIcons: true });
     return sources.map((s) => ({ id: s.id, name: s.name, thumbnail: s.thumbnail.toDataURL(), appIcon: s.appIcon?.toDataURL() ?? null, isScreen: s.id.startsWith('screen:') }));
