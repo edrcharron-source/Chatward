@@ -4,6 +4,8 @@ import { AttachmentView, GifView, LinkPreviewCard } from '../media';
 import { deleteMessage, editMessage } from '../../state/chat';
 import { pings } from '../../state/mentions';
 import { useSession } from '../../state/session';
+import { useSettings } from '../../state/settings';
+import { useConfirm } from '../confirm/ConfirmDialog';
 import Avatar from './Avatar';
 import MessageText, { isEmojiOnly } from './MessageText';
 import ProfileTrigger from '../profile/ProfileTrigger';
@@ -65,8 +67,19 @@ export default function MessageItem({ message, payload, author, grouped, canEdit
     }
   };
 
-  const remove = () => {
-    if (!window.confirm('Delete this message?')) return;
+  const confirm = useConfirm();
+  const remove = async () => {
+    if (useSettings.getState().confirmDeleteMessages) {
+      const r = await confirm({
+        title: 'Delete this message?',
+        message: 'This cannot be undone.',
+        confirmLabel: 'Delete',
+        danger: true,
+        checkboxLabel: "Don't ask me again",
+      });
+      if (!r.ok) return;
+      if (r.checked) useSettings.getState().set({ confirmDeleteMessages: false });
+    }
     setError(null);
     deleteMessage(message).catch((e: unknown) => setError(e instanceof Error ? e.message : 'Could not delete'));
   };

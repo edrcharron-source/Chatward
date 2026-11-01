@@ -24,6 +24,8 @@ export interface Settings {
   soundVolume: number;      // 0..1 for notification + join/leave sounds
   autoLoadEmbeds: boolean;  // YouTube/X embeds load without click
   linkPreviews: boolean;
+  /** ask "Delete this message?" before deleting one; off = delete straight away */
+  confirmDeleteMessages: boolean;
   /** per remote user volume 0..3 (1 = 100%, up to 300% boost); keyed by userId */
   userVolumes: Record<string, number>;
   /** people you have muted for yourself only; keyed by userId */
@@ -38,7 +40,7 @@ const defaults = {
   theme: 'dark' as const, skin: 'lebserver', layout: 'tabs' as 'tabs' | 'classic', splitRatio: 0.5, tabOrder: [] as string[], inputDeviceId: '', outputDeviceId: '', cameraDeviceId: '',
   masterVolume: 1, micGain: 1, noiseSuppression: true, echoCancellation: true,
   messageSounds: true, mutedChannels: [] as string[], voiceJoinLeaveSounds: true, silenceAll: false, soundVolume: 0.6,
-  autoLoadEmbeds: false, linkPreviews: true, userVolumes: {} as Record<string, number>, mutedUsers: {} as Record<string, boolean>,
+  autoLoadEmbeds: false, linkPreviews: true, confirmDeleteMessages: true, userVolumes: {} as Record<string, number>, mutedUsers: {} as Record<string, boolean>,
 };
 const saved = (() => { try { return JSON.parse(localStorage.getItem(LS) ?? '{}'); } catch { return {}; } })();
 // Settings saved before the tabs layout existed have no layout. Their empty skin is the old default rather than a
