@@ -7,10 +7,51 @@ export interface WatchState {
   videoId: string | null; // YouTube id; null with no url means the party is stopped
   /** https link to a video file (mp4/webm); set instead of videoId for file playback */
   url?: string | null;
+  /** Jellyfin item id (32 hex); each viewer asks the server for their own ticket, so no credential is shared */
+  jellyfinId?: string | null;
+  /** display name of the current item (Jellyfin items have no readable id) */
+  title?: string | null;
+  /** items waiting after the current one, played in order */
+  queue?: QueueItem[];
+  /** how many items have started in this party; lets the clients agree on who already advanced the queue */
+  n?: number;
   playing: boolean;
   /** seconds into the video at the moment the change was made */
   position: number;
   rate: number;
+}
+
+/** One entry in the shared queue. `ref` is a YouTube id, an https file url or a Jellyfin item id, by `kind`. */
+export interface QueueItem {
+  kind: 'youtube' | 'url' | 'jellyfin';
+  ref: string;
+  title?: string;
+}
+
+export const QUEUE_MAX = 50;
+const JELLYFIN_ID = /^[0-9a-f]{32}$/i;
+const cleanTitle = (t: unknown): string | undefined => (typeof t === 'string' && t.trim() ? t.trim().slice(0, 120) : undefined);
+
+function parseQueueItem(raw: unknown): QueueItem | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+  if (typeof r.ref !== 'string') return null;
+  const title = cleanTitle(r.title);
+  if (r.kind === 'youtube') return VIDEO_ID.test(r.ref) ? { kind: 'youtube', ref: r.ref, title } : null;
+  if (r.kind === 'url') { const u = parseVideoUrl(r.ref); return u ? { kind: 'url', ref: u, title } : null; }
+  if (r.kind === 'jellyfin') return JELLYFIN_ID.test(r.ref) ? { kind: 'jellyfin', ref: r.ref.toLowerCase(), title } : null;
+  return null;
+}
+
+/** The state that starts playing `item` from `position`, carrying the rest of the queue. */
+export function stateForItem(item: QueueItem, rest: QueueItem[], n: number, rate = 1, position = 0): WatchState {
+  return {
+    videoId: item.kind === 'youtube' ? item.ref : null,
+    url: item.kind === 'url' ? item.ref : null,
+    jellyfinId: item.kind === 'jellyfin' ? item.ref : null,
+    title: item.title ?? null,
+    queue: rest, n, playing: true, position, rate,
+  };
 }
 
 /** A state plus the server ms timestamp it was accepted at. */
@@ -19,8 +60,8 @@ export interface StampedState extends WatchState {
 }
 
 /** The one thing being watched: a YouTube id or a file url, null when stopped. */
-export const mediaKey = (s: { videoId: string | null; url?: string | null } | null | undefined): string | null =>
-  s?.videoId ?? s?.url ?? null;
+export const mediaKey = (s: { videoId: string | null; url?: string | null; jellyfinId?: string | null } | null | undefined): string | null =>
+  s?.videoId ?? s?.url ?? s?.jellyfinId ?? null;
 
 /** Returns the https URL for a playable video file link, or null. */
 export function parseVideoUrl(input: string): string | null {
@@ -64,12 +105,24 @@ export function decodeState(payload: MessagePayload): WatchState | null {
   if (videoId === undefined || (videoId !== null && !VIDEO_ID.test(videoId))) return null;
   const url = s.url === undefined || s.url === null ? null : typeof s.url === 'string' ? parseVideoUrl(s.url) : undefined;
   if (url === undefined || (s.url != null && url === null) || (videoId && url)) return null;
+  const jellyfinId = s.jellyfinId == null ? null : typeof s.jellyfinId === 'string' && JELLYFIN_ID.test(s.jellyfinId) ? s.jellyfinId.toLowerCase() : undefined;
+  if (jellyfinId === undefined || (jellyfinId && (videoId || url))) return null;
+  const queue: QueueItem[] = [];
+  if (s.queue !== undefined) {
+    if (!Array.isArray(s.queue) || s.queue.length > QUEUE_MAX) return null;
+    for (const raw of s.queue) { const it = parseQueueItem(raw); if (!it) return null; queue.push(it); }
+  }
+  const n = typeof s.n === 'number' && Number.isInteger(s.n) && s.n >= 0 ? s.n : 0;
   if (typeof s.playing !== 'boolean') return null;
   if (typeof s.position !== 'number' || !Number.isFinite(s.position) || s.position < 0) return null;
   if (typeof s.rate !== 'number' || !Number.isFinite(s.rate)) return null;
   return {
     videoId,
     url,
+    jellyfinId,
+    title: cleanTitle(s.title) ?? null,
+    queue,
+    n,
     playing: s.playing,
     position: s.position,
     rate: Math.min(RATE_MAX, Math.max(RATE_MIN, s.rate)),
