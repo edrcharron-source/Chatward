@@ -212,6 +212,12 @@ export interface Activity {
   artist: string;
   /** The track on open.spotify.com, if known. */
   url?: string;
+  /** Album cover image (https://i.scdn.co/image/<id>), if Spotify gave one. */
+  coverUrl?: string;
+  /** Length of the track in milliseconds. */
+  durationMs?: number;
+  /** Where the track was when the sender last checked, in milliseconds. Readers add the time since they received it. */
+  progressMs?: number;
 }
 /** Longest title or artist the server relays. */
 export const ACTIVITY_TEXT_MAX = 200;

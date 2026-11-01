@@ -14,7 +14,14 @@ const SIGN_IN_TIMEOUT_MS = 5 * 60_000;
 const TIMEOUT_MS = 8000;
 export const SPOTIFY_TOKEN_STORE = 'spotifyRefreshToken';
 
-export interface SpotifyTrack { title: string; artist: string; url?: string }
+export interface SpotifyTrack {
+  title: string;
+  artist: string;
+  url?: string;
+  coverUrl?: string;
+  durationMs?: number;
+  progressMs?: number;
+}
 export type NowPlaying =
   | { ok: true; track: SpotifyTrack | null }
   | { ok: false; error: string; signedOut?: boolean };
@@ -111,6 +118,7 @@ async function accessToken(store: TokenStore): Promise<string> {
 }
 
 const TRACK_URL = /^https:\/\/open\.spotify\.com\/track\/[A-Za-z0-9]{1,64}$/;
+const COVER_URL = /^https:\/\/i\.scdn\.co\/image\/[A-Za-z0-9]{1,64}$/;
 
 /** The track playing right now on any of the person's Spotify devices, or null when nothing is playing. */
 export async function nowPlaying(store: TokenStore): Promise<NowPlaying> {
@@ -126,16 +134,29 @@ export async function nowPlaying(store: TokenStore): Promise<NowPlaying> {
       if (res.status === 403) return { ok: false, error: 'Spotify refused this account. Ask the Chatward owner to add your Spotify email to the app.' };
       if (!res.ok) return { ok: false, error: `Spotify answered ${res.status}.` };
       const body = (await res.json()) as {
-        is_playing?: boolean; currently_playing_type?: string;
-        item?: { name?: string; artists?: { name?: string }[]; external_urls?: { spotify?: string } } | null;
+        is_playing?: boolean; currently_playing_type?: string; progress_ms?: number | null;
+        item?: {
+          name?: string; duration_ms?: number;
+          artists?: { name?: string }[];
+          album?: { images?: { url?: string; width?: number }[] };
+          external_urls?: { spotify?: string };
+        } | null;
       };
       const item = body.item;
       if (!body.is_playing || body.currently_playing_type !== 'track' || !item?.name) return { ok: true, track: null };
       const url = item.external_urls?.spotify;
+      // Spotify sends several sizes of the cover; the 300 px one is the right size for a profile card.
+      const images = item.album?.images ?? [];
+      const cover = (images.find((i) => i.width === 300) ?? images[0])?.url;
+      const duration = item.duration_ms;
+      const progress = body.progress_ms;
       return { ok: true, track: {
         title: item.name,
         artist: (item.artists ?? []).map((a) => a.name).filter(Boolean).join(', '),
         ...(url && TRACK_URL.test(url) ? { url } : {}),
+        ...(cover && COVER_URL.test(cover) ? { coverUrl: cover } : {}),
+        ...(typeof duration === 'number' && duration > 0 ? { durationMs: duration } : {}),
+        ...(typeof progress === 'number' && progress >= 0 ? { progressMs: progress } : {}),
       } };
     }
     return { ok: false, error: 'Spotify sign-in expired. Connect again.', signedOut: true };

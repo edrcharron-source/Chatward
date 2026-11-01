@@ -5,6 +5,8 @@ import { useSession } from './session';
 
 // How often the app asks Spotify what is playing while sharing is on. Spotify's limits are per app, shared by the group.
 const POLL_MS = 20_000;
+// A position this far off what we expect means the song was skipped or scrubbed, so the new position is sent.
+const SEEK_MS = 10_000;
 const SHARE_KEY = 'chatward.spotify.share';
 
 interface SpotifyState {
@@ -15,6 +17,8 @@ interface SpotifyState {
   share: boolean;
   /** userId -> what they are listening to now. Our own entry is what we last sent. */
   activities: Record<string, Activity>;
+  /** userId -> when (our clock) the current activity arrived. Used to move the song position on. */
+  since: Record<string, number>;
   /** The last problem talking to Spotify, shown in Settings. */
   error: string | null;
   setActivity: (userId: string, activity: Activity | null) => void;
@@ -27,24 +31,50 @@ export const useSpotify = create<SpotifyState>((set) => ({
   connected: false,
   share: savedShare,
   activities: {},
+  since: {},
   error: null,
   setActivity: (userId, activity) => set((s) => {
     const activities = { ...s.activities };
-    if (activity) activities[userId] = activity; else delete activities[userId];
-    return { activities };
+    const since = { ...s.since };
+    if (activity) { activities[userId] = activity; since[userId] = Date.now(); } else { delete activities[userId]; delete since[userId]; }
+    return { activities, since };
   }),
 }));
 
+/**
+ * Where the song is now, in ms: the position the sender reported, moved on by the time since it arrived here.
+ * Undefined when the sender didn't report a position. Capped at the length of the song.
+ */
+export function listenPosition(activity: Activity, since: number | undefined, now: number): number | undefined {
+  if (activity.progressMs === undefined) return undefined;
+  const pos = activity.progressMs + (since === undefined ? 0 : Math.max(0, now - since));
+  return activity.durationMs ? Math.min(pos, activity.durationMs) : pos;
+}
+
 const bridge = () => (typeof window !== 'undefined' ? window.chatward?.spotify : undefined);
 
-/** What we last told the server, so an unchanged song isn't sent again every poll. */
+/** What we last told the server, and when, so an unchanged song isn't sent again every poll. */
 let sent: Activity | null = null;
+let sentAt = 0;
+
+const sameSong = (a: Activity, b: Activity) =>
+  a.title === b.title && a.artist === b.artist && a.url === b.url && a.coverUrl === b.coverUrl && a.durationMs === b.durationMs;
+
+/** Send when the song changed, or when the position jumped (a skip or scrub). Normal playback is not sent again. */
+function shouldSend(activity: Activity | null): boolean {
+  if (!activity || !sent) return activity !== sent;
+  if (!sameSong(activity, sent)) return true;
+  if (activity.progressMs === undefined || sent.progressMs === undefined) return false;
+  const expected = sent.progressMs + (Date.now() - sentAt);
+  return Math.abs(activity.progressMs - expected) > SEEK_MS;
+}
 
 function publish(activity: Activity | null) {
   const me = useSession.getState().user?.id;
   if (me) useSpotify.getState().setActivity(me, activity);
-  if (JSON.stringify(activity) === JSON.stringify(sent)) return;
+  if (!shouldSend(activity)) return;
   sent = activity;
+  sentAt = Date.now();
   sendFrame({ t: 'activity', activity });
 }
 
@@ -107,7 +137,7 @@ export function installSpotifyActivity(): () => void {
     else if (f.t === 'presence' && f.status === 'offline') st.setActivity(f.userId, null);
     else if (f.t === 'ready') {
       // A new connection starts with nothing shared for us; the server sends everyone else's right after.
-      useSpotify.setState({ activities: {} });
+      useSpotify.setState({ activities: {}, since: {} });
       const mine = sent;
       sent = null;
       publish(mine);
@@ -118,6 +148,6 @@ export function installSpotifyActivity(): () => void {
     off();
     // Signing out: whatever was shown goes away with the socket.
     sent = null;
-    useSpotify.setState({ activities: {} });
+    useSpotify.setState({ activities: {}, since: {} });
   };
 }

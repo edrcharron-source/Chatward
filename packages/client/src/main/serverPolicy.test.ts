@@ -23,9 +23,9 @@ test('with no server, connect-src is the app only', () => {
   assert.equal(connectSrc(buildCsp(null)), "connect-src 'self' blob:");
 });
 
-test('img-src allows inline images and the GIF provider only, not any https host', () => {
+test('img-src allows inline images, the GIF provider and Spotify album covers only, not any https host', () => {
   const imgSrc = buildCsp('https://chat.example.com').split('; ').find((d) => d.startsWith('img-src'));
-  assert.equal(imgSrc, "img-src 'self' data: blob: https://klipy.com https://*.klipy.com");
+  assert.equal(imgSrc, "img-src 'self' data: blob: https://klipy.com https://*.klipy.com https://i.scdn.co");
 });
 
 test('other directives are unchanged', () => {

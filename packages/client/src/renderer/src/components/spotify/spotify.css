@@ -20,3 +20,18 @@ a.spotify-listening:hover { text-decoration: underline; }
 }
 /* Let the member's button shrink so a long song name ends in "…" instead of running past the panel. */
 .cw-member-profile:has(.spotify-listening) { flex: 1; min-width: 0; }
+
+/* "Listening now" block on a profile card. */
+.spotify-now { display: flex; flex-direction: column; gap: 4px; margin-top: 10px; }
+.spotify-now-cover { width: 100%; max-width: 240px; aspect-ratio: 1; object-fit: cover; border-radius: 8px; }
+.spotify-now-heading { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ok); }
+.spotify-now-track { font-weight: 600; color: var(--text-strong); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.spotify-now-artist { font-size: 13px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.spotify-now-progress { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }
+.spotify-now-bar { height: 4px; border-radius: 2px; background: var(--bg-2, rgba(128, 128, 128, 0.3)); overflow: hidden; }
+.spotify-now-bar span { display: block; height: 100%; background: var(--ok); transition: width 0.9s linear; }
+.spotify-now-times { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.spotify-now a.spotify-now-listen {
+  align-self: flex-start; margin-top: 6px; padding: 6px 14px; border-radius: 999px; font-weight: 600; text-decoration: none;
+  background: var(--ok); color: var(--bg-1);
+}
