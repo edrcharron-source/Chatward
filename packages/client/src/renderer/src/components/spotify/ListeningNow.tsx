@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { listenPosition, useSpotify } from '../../state/spotify';
+import { joinListenAlong, leaveListenAlong, listenPosition, useSpotify } from '../../state/spotify';
+import { useSession } from '../../state/session';
 import './spotify.css';
 
 const clock = (ms: number) => {
@@ -16,6 +17,11 @@ export default function ListeningNow({ userId }: { userId: string }) {
   const since = useSpotify((s) => s.since[userId]);
   const [now, setNow] = useState(() => Date.now());
   const sharing = !!activity;
+  const isMe = useSession((s) => s.user?.id === userId);
+  const joined = useSpotify((s) => s.alongWith === userId);
+  const alongError = useSpotify((s) => s.alongError);
+  // In the app, Listen along plays their song on your Spotify. Elsewhere it just opens the song.
+  const canJoin = !!window.chatward?.spotify && !isMe && !activity?.alongWith;
 
   // Tick once a second while there is a song, so the bar and times move on.
   useEffect(() => {
@@ -42,7 +48,13 @@ export default function ListeningNow({ userId }: { userId: string }) {
           <div className="spotify-now-times"><span>{clock(pos)}</span><span>{clock(length)}</span></div>
         </div>
       )}
-      {activity.url && (
+      {canJoin && (
+        <button type="button" className="spotify-now-listen" onClick={() => (joined ? leaveListenAlong() : joinListenAlong(userId))}>
+          {joined ? 'Leave Listen along' : 'Listen along'}
+        </button>
+      )}
+      {joined && alongError && <p className="error-text" role="status">{alongError}</p>}
+      {!canJoin && !isMe && activity.url && (
         <a className="spotify-now-listen" href={activity.url} target="_blank" rel="noopener noreferrer" title="Open this song in Spotify">
           Listen along
         </a>

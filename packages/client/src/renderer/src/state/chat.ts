@@ -337,7 +337,7 @@ function membersForChannel(channelId: string) {
   return useSession.getState().servers.find((b) => b.channels.some((c) => c.id === channelId))?.members ?? [];
 }
 
-async function buildPayload(channelId: string, text: string, attachments?: Attachment[], gif?: Gif): Promise<MessagePayload> {
+async function buildPayload(channelId: string, text: string, attachments?: Attachment[], gif?: Gif, listenAlong?: boolean): Promise<MessagePayload> {
   const urls = extractUrls(text);
   const [linkPreviews, spotifyJams] = urls.length ? await Promise.all([buildLinkPreviews(urls), resolveSpotifyJams(urls)]) : [[], []];
   const mentions = parseMentions(text, membersForChannel(channelId));
@@ -348,13 +348,14 @@ async function buildPayload(channelId: string, text: string, attachments?: Attac
     ...(gif ? { gif } : {}),
     ...(linkPreviews.length ? { linkPreviews } : {}),
     ...(spotifyJams.length ? { spotifyJams } : {}),
+    ...(listenAlong ? { listenAlong: true as const } : {}),
   };
 }
 
-export async function sendMessage(channelId: string, input: { text: string; files: File[]; gif?: Gif }) {
+export async function sendMessage(channelId: string, input: { text: string; files: File[]; gif?: Gif; listenAlong?: boolean }) {
   const me = requireMe();
   const attachments = input.files.length ? await Promise.all(input.files.map((f) => uploadAttachment(f))) : undefined;
-  const built = await buildPayload(channelId, input.text, attachments, input.gif);
+  const built = await buildPayload(channelId, input.text, attachments, input.gif, input.listenAlong);
   const { payload, ciphertext, keyVersion } = await encryptWithinLimit(channelId, me, built);
   const attachmentIds = attachments?.map((a) => a.uploadId) ?? [];
   // One id for every try of this send, so the server returns the first copy instead of storing a second.

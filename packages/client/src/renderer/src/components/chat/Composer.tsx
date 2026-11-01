@@ -1,5 +1,6 @@
 import { useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent } from 'react';
 import { EmojiPickerButton, GifPickerButton, GifView } from '../media';
+import ListenAlongButton from '../spotify/ListenAlongButton';
 import type { Member } from '@chatward/shared';
 import { sendMessage, sendTyping, useChat, type Gif } from '../../state/chat';
 import { activeMention, mentionOptions, type MentionOption } from '../../state/mentions';
@@ -203,6 +204,7 @@ export default function Composer({ channelId, channelName, serverId, onSent }: P
           onKeyDown={onKeyDown}
           onPaste={onPaste}
         />
+        <ListenAlongButton channelId={channelId} onError={setError} />
         <GifPickerButton serverId={serverId} onPick={setGif} />
         <EmojiPickerButton onPick={insertEmoji} />
         <button className="primary cv-send" disabled={!canSend} onClick={() => void submit()}>Send</button>

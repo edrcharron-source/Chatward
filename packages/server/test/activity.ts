@@ -37,6 +37,11 @@ try {
   assert.equal(cleanActivity({ kind: 'spotify', title: 'a', artist: 'b', durationMs: -1, progressMs: 'x' })?.durationMs, undefined);
   assert.equal(cleanActivity({ kind: 'spotify', title: 'a', artist: 'b', durationMs: 1000, progressMs: 5000 })?.progressMs, 1000, 'position is capped at the length');
   log('bad covers and numbers are dropped, position never passes the length');
+  assert.equal(cleanActivity({ kind: 'spotify', title: 'a', artist: 'b', alongWith: 'c0ffee-12' })?.alongWith, 'c0ffee-12');
+  for (const alongWith of [5, '', 'x'.repeat(65), 'a b', '<script>']) {
+    assert.equal(cleanActivity({ kind: 'spotify', title: 'a', artist: 'b', alongWith })?.alongWith, undefined, `refuses alongWith ${String(alongWith)}`);
+  }
+  log('alongWith keeps only a user id');
   console.log('\nActivity: all checks passed');
 } catch (err) {
   console.error('\nActivity FAILED:', err);

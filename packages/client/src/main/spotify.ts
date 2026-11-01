@@ -9,10 +9,14 @@ const CLIENT_ID = __SPOTIFY_CLIENT_ID__;
 // Must match the Redirect URI saved in the Spotify app's settings exactly.
 const PORT = 43821;
 const REDIRECT_URI = `http://127.0.0.1:${PORT}/callback`;
-const SCOPE = 'user-read-currently-playing';
+// Reading the song, plus starting and pausing it for Listen Along.
+const SCOPE = 'user-read-currently-playing user-read-playback-state user-modify-playback-state';
+const PLAYBACK_SCOPE = 'user-modify-playback-state';
 const SIGN_IN_TIMEOUT_MS = 5 * 60_000;
 const TIMEOUT_MS = 8000;
 export const SPOTIFY_TOKEN_STORE = 'spotifyRefreshToken';
+// The permissions Spotify granted, so an account connected before Listen Along can be asked to connect again.
+export const SPOTIFY_SCOPE_STORE = 'spotifyScope';
 
 export interface SpotifyTrack {
   title: string;
@@ -38,12 +42,15 @@ let access: { token: string; expiresAt: number } | null = null;
 let pendingSignIn: Promise<void> | null = null;
 
 export function spotifyStatus(store: TokenStore) {
-  return { available: !!CLIENT_ID, connected: !!CLIENT_ID && !!store.get(SPOTIFY_TOKEN_STORE) };
+  const connected = !!CLIENT_ID && !!store.get(SPOTIFY_TOKEN_STORE);
+  const canPlay = connected && (store.get(SPOTIFY_SCOPE_STORE) ?? '').split(' ').includes(PLAYBACK_SCOPE);
+  return { available: !!CLIENT_ID, connected, canPlay };
 }
 
 export function disconnectSpotify(store: TokenStore) {
   access = null;
   store.remove(SPOTIFY_TOKEN_STORE);
+  store.remove(SPOTIFY_SCOPE_STORE);
 }
 
 /** Opens Spotify's sign-in page in the browser and waits for it to come back to 127.0.0.1. */
@@ -96,7 +103,7 @@ async function tokenRequest(store: TokenStore, params: Record<string, string>) {
     body: new URLSearchParams({ ...params, client_id: CLIENT_ID }).toString(),
     signal: AbortSignal.timeout(TIMEOUT_MS),
   });
-  const body = (await res.json().catch(() => ({}))) as { access_token?: string; expires_in?: number; refresh_token?: string; error?: string };
+  const body = (await res.json().catch(() => ({}))) as { access_token?: string; expires_in?: number; refresh_token?: string; scope?: string; error?: string };
   if (!res.ok || !body.access_token) {
     // invalid_grant: the saved sign-in was revoked or expired, so the person has to connect again.
     if (body.error === 'invalid_grant') disconnectSpotify(store);
@@ -107,6 +114,7 @@ async function tokenRequest(store: TokenStore, params: Record<string, string>) {
   access = { token: body.access_token, expiresAt: Date.now() + (body.expires_in ?? 3600) * 1000 - 60_000 };
   // Spotify may hand out a new refresh token each time; the old one then stops working.
   if (body.refresh_token) store.set(SPOTIFY_TOKEN_STORE, body.refresh_token);
+  if (typeof body.scope === 'string') store.set(SPOTIFY_SCOPE_STORE, body.scope);
 }
 
 async function accessToken(store: TokenStore): Promise<string> {
@@ -201,4 +209,54 @@ export async function resolveJamLink(raw: string): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+export type PlayResult = { ok: true } | { ok: false; error: string; needsReconnect?: boolean };
+
+const RECONNECT = 'Reconnect Spotify in Settings → Privacy to allow Listen Along.';
+
+async function playerCall(store: TokenStore, method: 'PUT' | 'GET', path: string, body?: unknown): Promise<Response> {
+  return fetch(`https://api.spotify.com/v1/me/player${path}`, {
+    method,
+    headers: { Authorization: `Bearer ${await accessToken(store)}`, ...(body ? { 'Content-Type': 'application/json' } : {}) },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+    signal: AbortSignal.timeout(TIMEOUT_MS),
+  });
+}
+
+async function playerError(res: Response): Promise<PlayResult> {
+  const body = (await res.json().catch(() => ({}))) as { error?: { message?: string; reason?: string } };
+  if (res.status === 401 || (res.status === 403 && /scope/i.test(body.error?.message ?? ''))) return { ok: false, error: RECONNECT, needsReconnect: true };
+  if (res.status === 403 && body.error?.reason === 'PREMIUM_REQUIRED') return { ok: false, error: 'Listen Along needs Spotify Premium.' };
+  if (res.status === 404) return { ok: false, error: 'Open Spotify on your PC or phone first, then press Join again.' };
+  return { ok: false, error: `Spotify answered ${res.status}.` };
+}
+
+/**
+ * Plays a track on the person's Spotify from a position (Listen Along). When no device is playing, Spotify answers 404,
+ * so the first open device is picked and the call made again on it.
+ */
+export async function playTrack(store: TokenStore, trackUrl: string, positionMs: number): Promise<PlayResult> {
+  if (!CLIENT_ID) return { ok: false, error: 'This Chatward build has no Spotify app set up.' };
+  if (!TRACK_URL.test(trackUrl)) return { ok: false, error: 'That song has no Spotify link.' };
+  const body = { uris: [`spotify:track:${trackUrl.split('/').pop()}`], position_ms: Math.max(0, Math.round(positionMs) || 0) };
+  try {
+    let res = await playerCall(store, 'PUT', '/play', body);
+    if (res.status === 404) {
+      const list = await playerCall(store, 'GET', '/devices');
+      const devices = list.ok ? ((await list.json()) as { devices?: { id?: string | null; is_restricted?: boolean }[] }).devices ?? [] : [];
+      const device = devices.find((d) => d.id && !d.is_restricted);
+      if (device?.id) res = await playerCall(store, 'PUT', `/play?device_id=${encodeURIComponent(device.id)}`, body);
+    }
+    return res.ok ? { ok: true } : await playerError(res);
+  } catch (err) {
+    if ((err as { signedOut?: boolean }).signedOut) return { ok: false, error: RECONNECT, needsReconnect: true };
+    return { ok: false, error: err instanceof Error ? err.message : 'Could not reach Spotify.' };
+  }
+}
+
+/** Pauses the person's Spotify (the host stopped). Best effort: nothing to do if nothing is playing. */
+export async function pausePlayback(store: TokenStore): Promise<void> {
+  if (!CLIENT_ID) return;
+  try { await playerCall(store, 'PUT', '/pause'); } catch { /* nothing playing, or offline */ }
 }
