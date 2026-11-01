@@ -7,11 +7,11 @@ import './spotify.css';
 
 /** Settings → Privacy: connect Spotify and choose whether others see what you're listening to. */
 export default function SpotifySetting() {
-  const { available, connected, share, error } = useSpotify();
+  const { available, connected, canPlay, share, error } = useSpotify();
   const meId = useSession((s) => s.user?.id);
   // The status can change outside the page (a sign-in finishing in the browser), so ask again when Settings opens.
   useEffect(() => {
-    void window.chatward?.spotify?.status().then((s) => useSpotify.setState({ available: s.available, connected: s.connected })).catch(() => {});
+    void window.chatward?.spotify?.status().then((s) => useSpotify.setState({ available: s.available, connected: s.connected, canPlay: s.canPlay })).catch(() => {});
   }, []);
 
   return (
@@ -24,14 +24,16 @@ export default function SpotifySetting() {
             <span className="setting-text">
               <span>{connected ? 'Spotify is connected' : 'Connect Spotify'}</span>
               <small className="muted">
-                {connected
-                  ? 'Chatward can see the song you are playing, on any device. Nothing else.'
-                  : 'Opens Spotify in your browser to sign in. Your Spotify email must be on the group\'s Spotify app list.'}
+                {!connected
+                  ? 'Opens Spotify in your browser to sign in. Your Spotify email must be on the group\'s Spotify app list.'
+                  : canPlay
+                    ? 'Chatward can see the song you are playing, and start songs when you join a Listen Along. Nothing else.'
+                    : 'Connected before Listen Along existed. Reconnect to let Chatward start songs when you join one.'}
               </small>
             </span>
-            {connected
-              ? <button type="button" onClick={() => void disconnectSpotify()}>Disconnect</button>
-              : <button type="button" className="primary" onClick={() => void connectSpotify()}>Connect</button>}
+            {connected && canPlay && <button type="button" onClick={() => void disconnectSpotify()}>Disconnect</button>}
+            {connected && !canPlay && <button type="button" className="primary" onClick={() => void connectSpotify()}>Reconnect</button>}
+            {!connected && <button type="button" className="primary" onClick={() => void connectSpotify()}>Connect</button>}
           </div>
           <Toggle label="Show what I'm listening to"
             hint="Everyone in the server sees the song next to your name while it plays. It isn't end-to-end encrypted: the server relays it but never saves it."

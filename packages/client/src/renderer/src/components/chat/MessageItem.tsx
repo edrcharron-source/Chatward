@@ -10,6 +10,7 @@ import Avatar from './Avatar';
 import MessageText, { isEmojiOnly } from './MessageText';
 import ProfileTrigger from '../profile/ProfileTrigger';
 import JamCards, { jamLinks } from '../spotify/JamCard';
+import ListenAlongCard from '../spotify/ListenAlongCard';
 
 interface Props {
   message: Message;
@@ -109,6 +110,7 @@ export default function MessageItem({ message, payload, author, grouped, canEdit
           </div>
         )}
         <JamCards payload={payload} />
+        {payload.listenAlong && author && <ListenAlongCard host={author} serverId={serverId} />}
         {payload.attachments?.map((a) => <AttachmentView key={a.uploadId} attachment={a} serverId={serverId} />)}
         {payload.gif && <GifView gif={payload.gif} serverId={serverId} />}
         {payload.linkPreviews?.filter((p) => !jamLinkSet.has(p.url)).map((p) => <LinkPreviewCard key={p.url} preview={p} />)}

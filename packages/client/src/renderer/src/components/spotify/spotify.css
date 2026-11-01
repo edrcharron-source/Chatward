@@ -31,7 +31,28 @@ a.spotify-listening:hover { text-decoration: underline; }
 .spotify-now-bar { height: 4px; border-radius: 2px; background: var(--bg-2, rgba(128, 128, 128, 0.3)); overflow: hidden; }
 .spotify-now-bar span { display: block; height: 100%; background: var(--ok); transition: width 0.9s linear; }
 .spotify-now-times { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
-.spotify-now a.spotify-now-listen {
+.spotify-now a.spotify-now-listen, .spotify-now button.spotify-now-listen {
   align-self: flex-start; margin-top: 6px; padding: 6px 14px; border-radius: 999px; font-weight: 600; text-decoration: none;
   background: var(--ok); color: var(--bg-1);
 }
+
+/* "Invite to Listen Along" card in chat */
+.spotify-along {
+  display: flex; flex-direction: column; gap: 10px; max-width: 420px; margin-top: 6px;
+  background: var(--bg-1); border-left: 3px solid var(--ok); border-radius: 8px; padding: 10px 12px;
+}
+.spotify-along-heading { font-size: 12px; font-weight: 600; color: var(--text-muted); }
+.spotify-along-body { display: flex; gap: 12px; align-items: center; min-width: 0; }
+.spotify-along-cover { width: 64px; height: 64px; border-radius: 6px; object-fit: cover; flex: none; }
+.spotify-along-cover-empty { display: grid; place-items: center; font-size: 26px; background: var(--bg-hover); }
+.spotify-along-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.spotify-along-title { font-weight: 600; color: var(--text-strong); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+a.spotify-along-title { text-decoration: none; }
+a.spotify-along-title:hover { text-decoration: underline; }
+.spotify-along-artist, .spotify-along-time { font-size: 13px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.spotify-along-listeners { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted); }
+.spotify-along-avatars { display: inline-flex; }
+.spotify-along-avatars > * + * { margin-left: -5px; }
+.spotify-along-button { width: 100%; }
+.spotify-along-button.joined { border-color: var(--ok); color: var(--ok); }
+.spotify-now button.spotify-now-listen { border: 0; cursor: pointer; }

@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type { UpdateStatus } from '@chatward/shared';
-import type { NowPlaying } from '../main/spotify';
+import type { NowPlaying, PlayResult } from '../main/spotify';
 
 const api = {
   secureStore: {
@@ -40,11 +40,14 @@ const api = {
   },
   // Spotify "listening to". `available` is false in a build without a Spotify app.
   spotify: {
-    status: (): Promise<{ available: boolean; connected: boolean }> => ipcRenderer.invoke('spotify:status'),
+    status: (): Promise<{ available: boolean; connected: boolean; canPlay: boolean }> => ipcRenderer.invoke('spotify:status'),
     connect: (): Promise<void> => ipcRenderer.invoke('spotify:connect'),
     disconnect: (): Promise<void> => ipcRenderer.invoke('spotify:disconnect'),
     nowPlaying: (): Promise<NowPlaying> => ipcRenderer.invoke('spotify:now-playing'),
     // The Jam behind a spotify.link short link, or null. Sender side only, like link previews.
+    // Listen Along: play a track from a position on this person's Spotify, and pause it.
+    play: (trackUrl: string, positionMs: number): Promise<PlayResult> => ipcRenderer.invoke('spotify:play', trackUrl, positionMs),
+    pause: (): Promise<void> => ipcRenderer.invoke('spotify:pause'),
     resolveJam: (url: string): Promise<string | null> => ipcRenderer.invoke('spotify:resolve-jam', url),
   },
   // Tells the main process which server the page may connect to. Resolves true when the page must reload first.

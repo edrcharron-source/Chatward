@@ -2,9 +2,13 @@ import { create } from 'zustand';
 import type { Activity } from '@chatward/shared';
 import { onFrame, sendFrame } from '../api/ws';
 import { useSession } from './session';
+import { isDemo } from '../demo';
 
 // How often the app asks Spotify what is playing while sharing is on. Spotify's limits are per app, shared by the group.
 const POLL_MS = 20_000;
+// While someone listens along, the host checks this often, so a skip reaches them within a few seconds.
+const HOST_POLL_MS = 5_000;
+const TICK_MS = 1_000;
 // A position this far off what we expect means the song was skipped or scrubbed, so the new position is sent.
 const SEEK_MS = 10_000;
 const SHARE_KEY = 'chatward.spotify.share';
@@ -13,6 +17,12 @@ interface SpotifyState {
   /** The build has a Spotify app (false in dev builds and outside Electron). */
   available: boolean;
   connected: boolean;
+  /** Spotify gave the permission to start songs (Listen Along). False for accounts connected before it existed. */
+  canPlay: boolean;
+  /** The host we are listening along with, or null. */
+  alongWith: string | null;
+  /** The last problem with Listen Along, shown on its card. */
+  alongError: string | null;
   /** The person turned on "Show what I'm listening to". Remembered on this PC. */
   share: boolean;
   /** userId -> what they are listening to now. Our own entry is what we last sent. */
@@ -29,6 +39,9 @@ const savedShare = (() => { try { return localStorage.getItem(SHARE_KEY) === '1'
 export const useSpotify = create<SpotifyState>((set) => ({
   available: false,
   connected: false,
+  canPlay: false,
+  alongWith: null,
+  alongError: null,
   share: savedShare,
   activities: {},
   since: {},
@@ -58,7 +71,8 @@ let sent: Activity | null = null;
 let sentAt = 0;
 
 const sameSong = (a: Activity, b: Activity) =>
-  a.title === b.title && a.artist === b.artist && a.url === b.url && a.coverUrl === b.coverUrl && a.durationMs === b.durationMs;
+  a.title === b.title && a.artist === b.artist && a.url === b.url && a.coverUrl === b.coverUrl && a.durationMs === b.durationMs
+  && a.alongWith === b.alongWith;
 
 /** Send when the song changed, or when the position jumped (a skip or scrub). Normal playback is not sent again. */
 function shouldSend(activity: Activity | null): boolean {
@@ -80,10 +94,22 @@ function publish(activity: Activity | null) {
 
 async function refreshStatus() {
   const s = await bridge()?.status().catch(() => null);
-  useSpotify.setState({ available: !!s?.available, connected: !!s?.connected });
+  useSpotify.setState({ available: !!s?.available, connected: !!s?.connected, canPlay: !!s?.canPlay });
+}
+
+let lastPoll = 0;
+/** Polls on the slow clock, or the fast one while anyone is listening along with us. */
+function tick() {
+  const { activities } = useSpotify.getState();
+  const me = useSession.getState().user?.id;
+  const hosting = !!me && Object.values(activities).some((a) => a.alongWith === me);
+  if (Date.now() - lastPoll >= (hosting ? HOST_POLL_MS : POLL_MS)) void poll();
 }
 
 async function poll() {
+  lastPoll = Date.now();
+  // Listening along: what we show is the host's song, sent by followHost, not our own Spotify.
+  if (useSpotify.getState().alongWith) return;
   const { share, connected } = useSpotify.getState();
   const b = bridge();
   if (!b || !share || !connected) { publish(null); return; }
@@ -130,7 +156,13 @@ export function setSpotifyShare(share: boolean) {
 export function installSpotifyActivity(): () => void {
   sent = null;
   void refreshStatus().then(poll);
-  const timer = setInterval(() => void poll(), POLL_MS);
+  lastPoll = 0;
+  const timer = setInterval(tick, TICK_MS);
+  const stopFollowing = useSpotify.subscribe((s, prev) => {
+    if (!s.alongWith) return;
+    const host = s.activities[s.alongWith];
+    if (host !== prev.activities[s.alongWith] || s.alongWith !== prev.alongWith) void followHost(s.alongWith, host);
+  });
   const off = onFrame((f) => {
     const st = useSpotify.getState();
     if (f.t === 'activity') st.setActivity(f.userId, f.activity);
@@ -145,9 +177,62 @@ export function installSpotifyActivity(): () => void {
   });
   return () => {
     clearInterval(timer);
+    stopFollowing();
     off();
+    useSpotify.setState({ alongWith: null, alongError: null });
     // Signing out: whatever was shown goes away with the socket.
     sent = null;
     useSpotify.setState({ activities: {}, since: {} });
   };
+}
+
+// ---------- Listen Along ----------
+
+/** The host's song we last started, so a repeat of the same frame doesn't restart it. */
+let following: Activity | null = null;
+
+/**
+ * Plays what the host plays. Called when we join and on every change to the host's activity: a new song, a skip or
+ * scrub (the host only sends a new position then), or stopping. Also tells everyone we are listening along.
+ */
+async function followHost(hostId: string, host: Activity | undefined) {
+  const b = bridge();
+  if (!b) return;
+  if (!host) {
+    // The host paused or went offline: pause too, and stay joined in case they start again.
+    if (following) { following = null; if (!isDemo()) await b.pause(); }
+    publish(null);
+    return;
+  }
+  if (host === following) return;
+  following = host;
+  const since = useSpotify.getState().since[hostId];
+  const pos = listenPosition(host, since, Date.now()) ?? 0;
+  const { alongWith: _ignored, ...song } = host;
+  publish({ ...song, progressMs: pos, alongWith: hostId });
+  // Demo mode sends nothing anywhere, so it never starts a song on the real Spotify.
+  if (isDemo()) return;
+  if (!host.url) { useSpotify.setState({ alongError: "This song can't be played from Chatward." }); return; }
+  const r = await b.play(host.url, pos);
+  if (useSpotify.getState().alongWith !== hostId) return;
+  useSpotify.setState({ alongError: r.ok ? null : r.error, ...(r.ok ? {} : r.needsReconnect ? { canPlay: false } : {}) });
+}
+
+/** Starts listening along with `hostId`. Errors (not connected, no device) show on the card. */
+export function joinListenAlong(hostId: string) {
+  const { connected, canPlay } = useSpotify.getState();
+  if (!bridge()) { useSpotify.setState({ alongError: 'Listen Along works in the Chatward app.' }); return; }
+  if (!connected) { useSpotify.setState({ alongError: 'Connect Spotify in Settings → Privacy first.' }); return; }
+  if (!canPlay) { useSpotify.setState({ alongError: 'Reconnect Spotify in Settings → Privacy to allow Listen Along.' }); return; }
+  following = null;
+  // installSpotifyActivity's subscription sees alongWith change and starts the host's song.
+  useSpotify.setState({ alongWith: hostId, alongError: null });
+}
+
+/** Stops listening along. Our Spotify keeps playing; we just stop following and go back to sharing our own song. */
+export function leaveListenAlong() {
+  following = null;
+  useSpotify.setState({ alongWith: null, alongError: null });
+  publish(null);
+  void poll();
 }

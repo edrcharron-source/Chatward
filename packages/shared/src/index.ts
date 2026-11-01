@@ -115,6 +115,8 @@ export interface MessagePayload {
    * `url` the Jam (https://open.spotify.com/socialsession/<id>). Readers check `url` before drawing it.
    */
   spotifyJams?: { link: string; url: string }[];
+  /** An "Invite to Listen Along" card. The host is always the message's author; the card shows their live activity. */
+  listenAlong?: true;
 }
 
 /**
@@ -218,6 +220,8 @@ export interface Activity {
   durationMs?: number;
   /** Where the track was when the sender last checked, in milliseconds. Readers add the time since they received it. */
   progressMs?: number;
+  /** Set while this person is listening along with someone: the host's user id. */
+  alongWith?: string;
 }
 /** Longest title or artist the server relays. */
 export const ACTIVITY_TEXT_MAX = 200;

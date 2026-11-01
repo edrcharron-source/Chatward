@@ -99,6 +99,7 @@ function seedMessages(world: World) {
       payload: { text: '', attachments: [{ uploadId: sunsetId, name: 'sunset.svg', mime: 'image/svg+xml', size: sunsetBytes, width: 640, height: 400, key: '', iv: '' }] },
     },
     { channel: 'demo-ch-general', author: 'demo-dev', ago: 90 * 60_000, payload: { text: 'banner is 🔥. shipping it' } },
+    { channel: 'demo-ch-general', author: 'demo-avery', ago: 5 * 60_000, payload: { text: 'come listen 🎧', listenAlong: true } },
     {
       channel: 'demo-ch-memes', author: 'demo-blake', ago: 80 * 60_000,
       payload: { text: 'when the build finally passes', gif: { url: gifDataUrl('SHIPPED', 120), previewUrl: gifDataUrl('SHIPPED', 120), title: 'celebration', provider: 'klipy' } },

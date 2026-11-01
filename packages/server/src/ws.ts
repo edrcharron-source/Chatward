@@ -203,9 +203,12 @@ export function cleanActivity(raw: unknown): Activity | null | undefined {
   if (duration !== undefined && duration > 0) out.durationMs = duration;
   const progress = milliseconds(a.progressMs);
   if (progress !== undefined) out.progressMs = duration ? Math.min(progress, duration) : progress;
+  if (typeof a.alongWith === 'string' && USER_ID.test(a.alongWith)) out.alongWith = a.alongWith;
   return out;
 }
 
+/** A user id, for alongWith (letters, digits, dashes); anything else is dropped. */
+const USER_ID = /^[A-Za-z0-9-]{1,64}$/;
 /** Album covers come only from Spotify's image host. */
 const COVER_URL = /^https:\/\/i\.scdn\.co\/image\/[A-Za-z0-9]{1,64}$/;
 /** A length or position in ms, or undefined when it isn't a sane number (more than a day is refused). */

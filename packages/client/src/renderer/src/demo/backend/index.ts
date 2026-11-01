@@ -37,7 +37,10 @@ export function attachSocket(send: (f: ServerFrame) => void): () => void {
   for (const b of world.bots) send({ t: 'presence', userId: b.user.id, status: 'online' });
   // One friend is listening to something, to show the Spotify "listening to" line.
   const listener = world.bots[0];
-  if (listener) send({ t: 'activity', userId: listener.user.id, activity: { kind: 'spotify', title: 'Clair de Lune', artist: 'Claude Debussy' } });
+  if (listener) send({ t: 'activity', userId: listener.user.id, activity: { kind: 'spotify', title: 'Clair de Lune', artist: 'Claude Debussy', durationMs: 303_000, progressMs: 41_000 } });
+  // A second friend listens along with the first, so the Listen Along card has someone in it.
+  const along = world.bots[1];
+  if (listener && along) send({ t: 'activity', userId: along.user.id, activity: { kind: 'spotify', title: 'Clair de Lune', artist: 'Claude Debussy', alongWith: listener.user.id } });
   return () => sockets.delete(send);
 }
 
