@@ -98,13 +98,10 @@ export default function VoiceDock({ stacked = false }: { stacked?: boolean }) {
     const short = status === 'connected' ? 'Connected' : status === 'error' ? 'Not connected' : 'Connecting…';
     return (
       <div className="cw-call-stack" role="group" aria-label="Voice chat">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, minHeight: 20 }}>
           <span aria-hidden style={{ width: 8, height: 8, borderRadius: '50%', background: dot, flex: 'none' }} />
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontWeight: 600, color: 'var(--text-strong)' }}>Voice chat · {short}</div>
-            <div className="muted" style={{ fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {channelName ?? 'Voice'}
-            </div>
+          <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', minHeight: 20 }}>
+            <div style={{ fontWeight: 600, color: 'var(--text-strong)', lineHeight: '20px' }}>Voice chat · {short}</div>
           </div>
         </div>
         {notices}
