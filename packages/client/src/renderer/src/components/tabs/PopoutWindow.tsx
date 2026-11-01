@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { TitleBar } from '../titlebar/TitleBar';
+import { ConfirmProvider } from '../confirm/ConfirmDialog';
 
 // A popped-out tab is a second window of this app that this window draws into. It runs no code of its own: the tab's
 // components stay in this window's React tree and keep using its session, keys, socket and call, so nothing has to be
@@ -93,5 +94,12 @@ export function PopoutWindow({ id, title, onClose, children }: {
     };
   }, [id]);
 
-  return container ? createPortal(<div className="cw-popout"><TitleBar title={title} />{children}</div>, container) : null;
+  // Its own confirm provider, so a question asked from this window appears inside it rather than in the main window.
+  return container ? createPortal(
+    <div className="cw-popout">
+      <TitleBar title={title} />
+      <ConfirmProvider container={container}>{children}</ConfirmProvider>
+    </div>,
+    container,
+  ) : null;
 }
