@@ -25,6 +25,8 @@
 }
 .cv-msg:hover { background: var(--hover-tint); }
 .cv-msg.cv-grouped { margin-top: 0; }
+/* A message that pings you (by name or @everyone) stays lit up, so it is easy to find. */
+.cv-msg.cv-pinged { background: color-mix(in srgb, var(--accent) 12%, transparent); box-shadow: inset 3px 0 0 var(--accent); }
 /* A message opened from search is lit up for a moment. */
 .cv-msg.cv-flash { animation: cv-flash 2.4s ease-out; }
 @keyframes cv-flash {
@@ -74,6 +76,7 @@
 .cv-edit-hint { font-size: 11px; }
 
 .cv-composer {
+  position: relative;
   flex: none; margin: 0 16px 16px; padding: 8px 10px; background: var(--bg-3); border-radius: var(--radius);
   border: 2px solid transparent; transition: border-color .12s;
   box-shadow: var(--shadow-composer);
@@ -81,6 +84,19 @@
 }
 .cv-composer:focus-within { border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
 .cv-composer.cv-dragging { border-color: var(--accent); }
+/* The @ picker opens above the message box. */
+.cv-mention-picker {
+  position: absolute; left: 8px; right: 8px; bottom: calc(100% + 6px); z-index: 5;
+  display: flex; flex-direction: column; padding: 4px; max-height: 320px; overflow-y: auto;
+  background: var(--bg-1); border-radius: var(--radius-sm); box-shadow: var(--shadow);
+}
+.cv-mention-opt {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 6px 10px;
+  text-align: left; background: transparent; border-radius: 6px; color: var(--text);
+}
+.cv-mention-opt.cv-mention-on { background: var(--accent-tint); }
+.cv-mention-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.cv-mention-note { font-size: 12px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cv-chips { display: flex; flex-wrap: wrap; gap: 6px; padding-bottom: 6px; }
 .cv-chip {
   display: inline-flex; align-items: center; gap: 4px; max-width: 100%; padding: 3px 6px 3px 10px;

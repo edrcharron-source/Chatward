@@ -2,6 +2,8 @@ import { useState, type KeyboardEvent } from 'react';
 import type { Message, MessagePayload, User } from '@chatward/shared';
 import { AttachmentView, GifView, LinkPreviewCard } from '../media';
 import { deleteMessage, editMessage } from '../../state/chat';
+import { pings } from '../../state/mentions';
+import { useSession } from '../../state/session';
 import Avatar from './Avatar';
 import MessageText, { isEmojiOnly } from './MessageText';
 import ProfileTrigger from '../profile/ProfileTrigger';
@@ -30,6 +32,9 @@ function formatTime(ms: number): string {
 
 export default function MessageItem({ message, payload, author, grouped, canEdit, canDelete, serverId, flash }: Props) {
   const [editing, setEditing] = useState(false);
+  const meId = useSession((s) => s.user?.id);
+  // Someone else's message that pings this user (by name or @everyone) is lit up for them.
+  const pinged = !!payload && message.authorId !== meId && pings(payload.mentions, meId);
   const [draft, setDraft] = useState('');
   const [error, setError] = useState<string | null>(null);
   const canStartEdit = canEdit && payload != null;
@@ -86,7 +91,7 @@ export default function MessageItem({ message, payload, author, grouped, canEdit
   }
 
   return (
-    <div className={`cv-msg${grouped ? ' cv-grouped' : ''}${flash ? ' cv-flash' : ''}`} data-message-id={message.id}>
+    <div className={`cv-msg${grouped ? ' cv-grouped' : ''}${flash ? ' cv-flash' : ''}${pinged ? ' cv-pinged' : ''}`} data-message-id={message.id}>
       {grouped ? (
         <time className="cv-time-gutter">{new Date(message.createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</time>
       ) : (

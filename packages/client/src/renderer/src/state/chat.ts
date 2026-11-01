@@ -5,6 +5,7 @@ import { onFrame, sendFrame } from '../api/ws';
 import { buildLinkPreviews, extractUrls, shrinkPreviewImage, uploadAttachment } from '../components/media';
 import { decryptMessage, encryptPayload, onKeysChanged } from '../crypto';
 import { fitPayload } from './fitPayload';
+import { parseMentions } from './mentions';
 import { isLiveChannel, onBeforeSignOut, refreshUnread, useSession } from './session';
 
 export type Gif = NonNullable<MessagePayload['gif']>;
@@ -330,11 +331,18 @@ function requireMe(): string {
   return me.id;
 }
 
-async function buildPayload(text: string, attachments?: Attachment[], gif?: Gif): Promise<MessagePayload> {
+/** Members of the server a channel belongs to, for mention parsing. */
+function membersForChannel(channelId: string) {
+  return useSession.getState().servers.find((b) => b.channels.some((c) => c.id === channelId))?.members ?? [];
+}
+
+async function buildPayload(channelId: string, text: string, attachments?: Attachment[], gif?: Gif): Promise<MessagePayload> {
   const urls = extractUrls(text);
   const linkPreviews = urls.length ? await buildLinkPreviews(urls) : [];
+  const mentions = parseMentions(text, membersForChannel(channelId));
   return {
     text,
+    ...(mentions ? { mentions } : {}),
     ...(attachments?.length ? { attachments } : {}),
     ...(gif ? { gif } : {}),
     ...(linkPreviews.length ? { linkPreviews } : {}),
@@ -344,7 +352,7 @@ async function buildPayload(text: string, attachments?: Attachment[], gif?: Gif)
 export async function sendMessage(channelId: string, input: { text: string; files: File[]; gif?: Gif }) {
   const me = requireMe();
   const attachments = input.files.length ? await Promise.all(input.files.map((f) => uploadAttachment(f))) : undefined;
-  const built = await buildPayload(input.text, attachments, input.gif);
+  const built = await buildPayload(channelId, input.text, attachments, input.gif);
   const { payload, ciphertext, keyVersion } = await encryptWithinLimit(channelId, me, built);
   const attachmentIds = attachments?.map((a) => a.uploadId) ?? [];
   // One id for every try of this send, so the server returns the first copy instead of storing a second.
@@ -371,7 +379,7 @@ export async function sendMessage(channelId: string, input: { text: string; file
 
 export async function editMessage(m: Message, text: string) {
   const old = useChat.getState().payloads[m.id];
-  const built = await buildPayload(text, old?.attachments, old?.gif);
+  const built = await buildPayload(m.channelId, text, old?.attachments, old?.gif);
   const { payload, ciphertext, keyVersion } = await encryptWithinLimit(m.channelId, m.authorId, built);
   const { message } = await api.patch<{ message: Message }>(`/api/messages/${m.id}`, { ciphertext, keyVersion });
   mergeMessages(m.channelId, [message]);
