@@ -2,6 +2,7 @@ import { createRoot } from 'react-dom/client';
 import './styles/theme.css';
 import './styles/layout.css';
 import { App } from './App';
+import { ConfirmProvider } from './components/confirm/ConfirmDialog';
 import { PopoutPlayer } from './components/watchparty/PopoutPlayer';
 import { isPopoutWindow } from './components/watchparty/popout';
 import { restoreSession, useSession } from './state/session';
@@ -20,6 +21,6 @@ async function start() {
   } catch (err) {
     console.warn('[server]', err);
   }
-  createRoot(document.getElementById('root')!).render(isPopoutWindow() ? <PopoutPlayer /> : <App />);
+  createRoot(document.getElementById('root')!).render(isPopoutWindow() ? <PopoutPlayer /> : <ConfirmProvider><App /></ConfirmProvider>);
 }
 void start();

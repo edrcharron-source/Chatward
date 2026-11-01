@@ -1,6 +1,6 @@
 import { useSettings } from '../../state/settings';
 import { SKINS, PLAIN_SKIN } from '../../skins';
-import { Section } from './controls';
+import { Section, Toggle } from './controls';
 
 const THEMES = [
   { id: 'dark', label: 'Dark' },
@@ -17,6 +17,7 @@ export default function AppearanceTab() {
   const theme = useSettings((s) => s.theme);
   const skin = useSettings((s) => s.skin);
   const layout = useSettings((s) => s.layout);
+  const confirmDeleteMessages = useSettings((s) => s.confirmDeleteMessages);
   const set = useSettings((s) => s.set);
   const choices = [PLAIN_SKIN, ...SKINS];
   // An unknown id counts as no skin, so it shows as Plain.
@@ -45,6 +46,11 @@ export default function AppearanceTab() {
             </label>
           ))}
         </div>
+      </Section>
+      <Section title="Confirmations">
+        <Toggle label="Ask before deleting a message"
+          hint="Turn off to delete a message straight away. Turn on again to be asked each time."
+          checked={confirmDeleteMessages} onChange={(on) => set({ confirmDeleteMessages: on })} />
       </Section>
       {SKINS.length > 0 && (
         <Section title="Skin">
