@@ -18,9 +18,11 @@ const build = {
   defaultServer: process.env.CHATWARD_DEFAULT_SERVER ?? '',
 };
 const define = { __CHATWARD_BUILD__: JSON.stringify(build) };
+// Spotify's terms treat the client ID as confidential, so it comes from a CI secret and is only built into the main process.
+const mainDefine = { ...define, __SPOTIFY_CLIENT_ID__: JSON.stringify((process.env.SPOTIFY_CLIENT_ID ?? '').trim()) };
 
 export default defineConfig({
-  main: { plugins: [externalizeDepsPlugin()], define, build: { rollupOptions: { input: resolve(__dirname, 'src/main/index.ts') } } },
+  main: { plugins: [externalizeDepsPlugin()], define: mainDefine, build: { rollupOptions: { input: resolve(__dirname, 'src/main/index.ts') } } },
   preload: { plugins: [externalizeDepsPlugin()], build: { rollupOptions: { input: resolve(__dirname, 'src/preload/index.ts') } } },
   renderer: {
     root: resolve(__dirname, 'src/renderer'),

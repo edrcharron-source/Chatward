@@ -11,6 +11,7 @@ import { forgetChatChannels, useChat } from './state/chat';
 import { installGuestKeys } from './state/guests';
 import { accountKey, adoptLegacyIfOwned, initDevice, syncChannelKeys, handleEnvelope, handleMemberLeave, forgetChannels } from './crypto';
 import { installNotifications } from './notify/notify';
+import { installSpotifyActivity } from './state/spotify';
 import AuthScreen from './components/auth/AuthScreen';
 import ChannelList from './components/servers/ChannelList';
 import MemberList from './components/servers/MemberList';
@@ -131,6 +132,7 @@ function Shell() {
   useEffect(() => {
     let off: (() => void) | undefined;
     let stopNotify: (() => void) | undefined;
+    let stopSpotify: (() => void) | undefined;
     let stopTokenCheck: (() => void) | undefined;
     let seenReady = false;
     let active = true;
@@ -145,6 +147,7 @@ function Shell() {
       connectWs();
       stopTokenCheck = keepTokenFresh();
       stopNotify = installNotifications();
+      stopSpotify = installSpotifyActivity();
       off = onFrame((f) => {
         const st = useSession.getState();
         switch (f.t) {
@@ -285,7 +288,7 @@ function Shell() {
       setReady(true);
     })().catch((e) => console.error(e));
     window.addEventListener('pagehide', leaveCallOnExit);
-    return () => { active = false; off?.(); stopNotify?.(); stopTokenCheck?.(); disconnectWs(); window.removeEventListener('pagehide', leaveCallOnExit); };
+    return () => { active = false; off?.(); stopNotify?.(); stopSpotify?.(); stopTokenCheck?.(); disconnectWs(); window.removeEventListener('pagehide', leaveCallOnExit); };
   }, []);
 
   /** A reconnect refresh passes stillWanted: once a newer refresh has started, this answer may be older, so it is dropped. */

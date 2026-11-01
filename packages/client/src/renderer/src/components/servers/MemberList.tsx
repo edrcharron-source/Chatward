@@ -9,6 +9,7 @@ import Avatar from './Avatar';
 import './servers.css';
 import ProfileTrigger from '../profile/ProfileTrigger';
 import { errorText } from './util';
+import ListeningLine from '../spotify/ListeningLine';
 
 type Presence = 'online' | 'idle' | 'dnd' | 'offline';
 
@@ -89,7 +90,10 @@ function Group({ title, list, statusOf, voiceOf, actions }: {
                   <Avatar user={m.user} size={32} />
                   <span className={`cw-dot ${status}`} aria-label={status} />
                 </span>
-                <span className="cw-member-name">{m.user.displayName}</span>
+                <span className="cw-member-who">
+                  <span className="cw-member-name">{m.user.displayName}</span>
+                  <ListeningLine userId={m.user.id} link={false} />
+                </span>
               </ProfileTrigger>
               {call !== undefined && (
                 <span className="cw-member-voice" title={`In voice: ${call}`} aria-label={`In voice: ${call}`} role="img">

@@ -4,6 +4,7 @@ import { pathToFileURL } from 'node:url';
 import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync, renameSync } from 'node:fs';
 import { fetchLinkPreview } from './linkPreview';
 import { searchGifs } from './klipy';
+import { connectSpotify, disconnectSpotify, nowPlaying, spotifyStatus, type TokenStore } from './spotify';
 import { setupUpdater } from './updater';
 import { APP_ORIGIN, buildCsp, loadServerOrigin, saveServerOrigin, serverOrigin } from './serverPolicy';
 import { fitWindow } from './windowBounds';
@@ -50,6 +51,21 @@ const readSecret = (key: string): string | null => {
   if (!v) return null;
   return safeStorage.isEncryptionAvailable() ? safeStorage.decryptString(Buffer.from(v, 'base64')) : Buffer.from(v, 'base64').toString('utf8');
 };
+
+const writeSecret = (key: string, value: string) => {
+  // Never fall back to plain text: keys and history secrets would sit readable on disk.
+  if (!safeStorage.isEncryptionAvailable()) throw new Error('Secure storage is unavailable on this computer, so Chatward will not save keys unprotected.');
+  const s = readStore();
+  s[key] = safeStorage.encryptString(value).toString('base64');
+  writeStore(s);
+};
+const removeSecret = (key: string) => {
+  const s = readStore();
+  if (!(key in s)) return;
+  delete s[key];
+  writeStore(s);
+};
+const spotifyStore: TokenStore = { get: readSecret, set: writeSecret, remove: removeSecret };
 
 let pendingSourceId: string | null = null;
 
@@ -202,13 +218,12 @@ app.whenReady().then(() => {
   ipcMain.handle('demo:linkpreview', (_e, url: string) => fetchLinkPreview(String(url)));
   ipcMain.handle('demo:gifs', (_e, kind: 'search' | 'trending', q: string, pos?: string) =>
     searchGifs(readSecret(KLIPY_KEY_STORE)?.trim() || null, kind === 'search' ? 'search' : 'trending', String(q ?? ''), pos));
-  ipcMain.handle('secure:set', (_e, key: string, value: string) => {
-    // Never fall back to plain text: keys and history secrets would sit readable on disk.
-    if (!safeStorage.isEncryptionAvailable()) throw new Error('Secure storage is unavailable on this computer, so Chatward will not save keys unprotected.');
-    const s = readStore();
-    s[key] = safeStorage.encryptString(value).toString('base64');
-    writeStore(s);
-  });
+  ipcMain.handle('secure:set', (_e, key: string, value: string) => writeSecret(key, value));
+  // Spotify "listening to". Tokens stay in this process; the page only sees the track.
+  ipcMain.handle('spotify:status', () => spotifyStatus(spotifyStore));
+  ipcMain.handle('spotify:connect', () => connectSpotify(spotifyStore));
+  ipcMain.handle('spotify:disconnect', () => disconnectSpotify(spotifyStore));
+  ipcMain.handle('spotify:now-playing', () => nowPlaying(spotifyStore));
   ipcMain.handle('screen:sources', async () => {
     const sources = await desktopCapturer.getSources({ types: ['screen', 'window'], thumbnailSize: { width: 320, height: 180 }, fetchWindowIcons: true });
     return sources.map((s) => ({ id: s.id, name: s.name, thumbnail: s.thumbnail.toDataURL(), appIcon: s.appIcon?.toDataURL() ?? null, isScreen: s.id.startsWith('screen:') }));

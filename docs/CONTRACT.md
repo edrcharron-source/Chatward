@@ -75,6 +75,12 @@ Voice (module `voice`)
 
 `channel.update` {channel}: a channel's settings changed (voice bitrateKbps). PATCH /api/servers/:id/channels/:channelId {bitrateKbps} (admin; one of 8/16/32/64/96/128, default 64) broadcasts it; live calls re-publish at the new bitrate.
 
+`activity` (Spotify "listening to"): client sends `{t:'activity', activity: Activity | null}` while its owner has sharing on. The
+server keeps only kind/title/artist (each cut to 200 characters) and a `https://open.spotify.com/track/<id>` url, holds it
+in memory (never stored), and broadcasts `{t:'activity', userId, activity}` to members. A new socket gets everyone's
+current activity after `ready`; the last socket closing clears it. The Spotify sign-in (PKCE, no client secret) and the
+currently-playing check run in the client's main process; the client ID is the `SPOTIFY_CLIENT_ID` build secret.
+
 WS fan-out: server pushes ServerFrame events to every connected socket whose user is a member of the relevant server.
 Server exposes `ctx.broadcastToServer(serverId, frame)` and `ctx.sendToUser(userId, frame)`.
 
