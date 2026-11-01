@@ -9,7 +9,7 @@ import { useConfirm } from '../confirm/ConfirmDialog';
 import Avatar from './Avatar';
 import MessageText, { isEmojiOnly } from './MessageText';
 import ProfileTrigger from '../profile/ProfileTrigger';
-import JamCards from '../spotify/JamCard';
+import JamCards, { jamLinks } from '../spotify/JamCard';
 
 interface Props {
   message: Message;
@@ -98,6 +98,8 @@ export default function MessageItem({ message, payload, author, grouped, canEdit
   if (payload === undefined) body = <div className="cv-muted">Decrypting…</div>;
   else if (payload === null) body = <div className="cv-muted">🔒 Waiting for this channel's key…</div>;
   else {
+    // A link that became a Join Jam card doesn't also get the plain "spotify.link / Spotify" preview.
+    const jamLinkSet = new Set(jamLinks(payload).map((j) => j.link));
     body = (
       <>
         {payload.text && (
@@ -106,10 +108,10 @@ export default function MessageItem({ message, payload, author, grouped, canEdit
             {message.editedAt != null && <span className="cv-edited"> (edited)</span>}
           </div>
         )}
-        {payload.text && <JamCards text={payload.text} />}
+        <JamCards payload={payload} />
         {payload.attachments?.map((a) => <AttachmentView key={a.uploadId} attachment={a} serverId={serverId} />)}
         {payload.gif && <GifView gif={payload.gif} serverId={serverId} />}
-        {payload.linkPreviews?.map((p) => <LinkPreviewCard key={p.url} preview={p} />)}
+        {payload.linkPreviews?.filter((p) => !jamLinkSet.has(p.url)).map((p) => <LinkPreviewCard key={p.url} preview={p} />)}
       </>
     );
   }

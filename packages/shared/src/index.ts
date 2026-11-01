@@ -110,6 +110,11 @@ export interface MessagePayload {
   chatter?: ChatterTag;
   /** Who the message pings: @everyone, and/or specific members by user id. Absent when nobody is pinged. Client-only meaning. */
   mentions?: { everyone?: boolean; userIds: string[] };
+  /**
+   * Spotify Jams behind short links in the text, resolved by the sender's app: `link` is the short link as written,
+   * `url` the Jam (https://open.spotify.com/socialsession/<id>). Readers check `url` before drawing it.
+   */
+  spotifyJams?: { link: string; url: string }[];
 }
 
 /**

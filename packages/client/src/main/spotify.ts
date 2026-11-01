@@ -143,3 +143,41 @@ export async function nowPlaying(store: TokenStore): Promise<NowPlaying> {
     return { ok: false, error: err instanceof Error ? err.message : 'Could not reach Spotify.', signedOut: !!(err as { signedOut?: boolean }).signedOut };
   }
 }
+
+// Spotify's share sheet copies short links (spotify.link/<code>, which redirects to spotify.app.link/<code>).
+// The page behind one names what it points at; for a Jam that is a socialsession link.
+const SHORT_LINK_HOSTS = ['spotify.link', 'spotify.app.link'];
+const JAM_IN_PAGE = /https:\/\/(?:open\.spotify\.com|spotify\.app\.link)\/socialsession\/([A-Za-z0-9]{1,64})/;
+const PAGE_MAX_CHARS = 300_000;
+
+export const isSpotifyShortLink = (raw: string): boolean => {
+  try {
+    const u = new URL(raw);
+    return u.protocol === 'https:' && SHORT_LINK_HOSTS.includes(u.hostname);
+  } catch {
+    return false;
+  }
+};
+
+/** The Jam a Spotify short link points at (https://open.spotify.com/socialsession/<id>), or null if it is something else. */
+export async function resolveJamLink(raw: string): Promise<string | null> {
+  if (!isSpotifyShortLink(raw)) return null;
+  try {
+    // Follow redirects by hand so the app only ever talks to Spotify's own short-link hosts.
+    let url = raw;
+    for (let hop = 0; hop < 3; hop++) {
+      const jam = url.match(JAM_IN_PAGE);
+      if (jam) return `https://open.spotify.com/socialsession/${jam[1]}`;
+      if (!isSpotifyShortLink(url)) return null;
+      const res = await fetch(url, { redirect: 'manual', signal: AbortSignal.timeout(TIMEOUT_MS) });
+      const next = res.headers.get('location');
+      if (res.status >= 300 && res.status < 400 && next) { url = new URL(next, url).href; continue; }
+      if (!res.ok) return null;
+      const page = (await res.text()).slice(0, PAGE_MAX_CHARS).match(JAM_IN_PAGE);
+      return page ? `https://open.spotify.com/socialsession/${page[1]}` : null;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}

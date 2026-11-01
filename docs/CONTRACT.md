@@ -80,6 +80,9 @@ server keeps only kind/title/artist (each cut to 200 characters) and a `https://
 in memory (never stored), and broadcasts `{t:'activity', userId, activity}` to members. A new socket gets everyone's
 current activity after `ready`; the last socket closing clears it. The Spotify sign-in (PKCE, no client secret) and the
 currently-playing check run in the client's main process; the client ID is the `SPOTIFY_CLIENT_ID` build secret.
+Jam invites: Spotify's Invite button copies a `spotify.link/<code>` short link. The sender's app resolves it (main process,
+following redirects only on spotify.link / spotify.app.link) and puts `spotifyJams: [{link, url}]` in the message payload;
+readers draw a Join Jam card only for a `url` of the form `https://open.spotify.com/socialsession/<id>`.
 
 WS fan-out: server pushes ServerFrame events to every connected socket whose user is a member of the relevant server.
 Server exposes `ctx.broadcastToServer(serverId, frame)` and `ctx.sendToUser(userId, frame)`.

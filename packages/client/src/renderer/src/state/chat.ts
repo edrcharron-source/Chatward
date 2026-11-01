@@ -3,6 +3,7 @@ import { LIMITS, type Attachment, type Message, type MessagePayload } from '@cha
 import { ApiError, api } from '../api/http';
 import { onFrame, sendFrame } from '../api/ws';
 import { buildLinkPreviews, extractUrls, shrinkPreviewImage, uploadAttachment } from '../components/media';
+import { resolveSpotifyJams } from '../components/spotify/JamCard';
 import { decryptMessage, encryptPayload, onKeysChanged } from '../crypto';
 import { fitPayload } from './fitPayload';
 import { parseMentions } from './mentions';
@@ -338,7 +339,7 @@ function membersForChannel(channelId: string) {
 
 async function buildPayload(channelId: string, text: string, attachments?: Attachment[], gif?: Gif): Promise<MessagePayload> {
   const urls = extractUrls(text);
-  const linkPreviews = urls.length ? await buildLinkPreviews(urls) : [];
+  const [linkPreviews, spotifyJams] = urls.length ? await Promise.all([buildLinkPreviews(urls), resolveSpotifyJams(urls)]) : [[], []];
   const mentions = parseMentions(text, membersForChannel(channelId));
   return {
     text,
@@ -346,6 +347,7 @@ async function buildPayload(channelId: string, text: string, attachments?: Attac
     ...(attachments?.length ? { attachments } : {}),
     ...(gif ? { gif } : {}),
     ...(linkPreviews.length ? { linkPreviews } : {}),
+    ...(spotifyJams.length ? { spotifyJams } : {}),
   };
 }
 
