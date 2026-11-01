@@ -125,6 +125,8 @@ function createWindow() {
     ...bounds,
     backgroundColor: '#1e1f22',
     title: 'Chatward',
+    // The app icon shown in the taskbar. Packaged builds include build/icon.png (see package.json "files").
+    icon: join(app.getAppPath(), 'build/icon.png'),
     autoHideMenuBar: true,
     // No system frame: the page draws its own title bar (components/titlebar). 'hidden' keeps the edge resizing,
     // the shadow and Windows snap that frame: false would lose. macOS keeps its traffic lights.

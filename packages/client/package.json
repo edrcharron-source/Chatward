@@ -63,9 +63,11 @@
       }
     ],
     "files": [
-      "out/**"
+      "out/**",
+      "build/icon.png"
     ],
     "win": {
+      "icon": "build/icon.ico",
       "target": [
         "nsis",
         "portable"
