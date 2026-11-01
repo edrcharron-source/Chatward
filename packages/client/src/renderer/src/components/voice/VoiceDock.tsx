@@ -4,6 +4,7 @@ import { useVoice } from '../../state/voice';
 import PixelIcon from '../icons/PixelIcon';
 import SoundboardButton from '../soundboard/SoundboardButton';
 import ShareControls from './ShareControls';
+import SignalIcon, { signalLevel, useRoomPing } from './SignalIcon';
 
 /**
  * Your call's status and controls. `stacked` (the tabs layout's corner card) puts the controls in pairs down a narrow
@@ -27,6 +28,8 @@ export default function VoiceDock({ stacked = false }: { stacked?: boolean }) {
   const notice = useVoice((s) => s.notice);
   const channel = useSession((s) => s.servers.flatMap((b) => b.channels).find((c) => c.id === channelId));
   const channelName = channel?.name;
+  const room = useVoice((s) => s.room);
+  const ms = useRoomPing(room);
 
   if (!channelId) {
     if (!notice) return null;
@@ -96,10 +99,17 @@ export default function VoiceDock({ stacked = false }: { stacked?: boolean }) {
 
   if (stacked) {
     const short = status === 'connected' ? 'Connected' : status === 'error' ? 'Not connected' : 'Connecting…';
+    const signal = demo ? { bars: 3 as const, color: '#3ba55d', text: 'Demo mode, no live ping' } : signalLevel(ms);
+    const shownSignal = status === 'connected' ? signal : { bars: 0 as const, color: 'var(--text-muted, #888)', text: short };
     return (
       <div className="cw-call-stack" role="group" aria-label="Voice chat">
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, minHeight: 20 }}>
-          <span aria-hidden style={{ width: 8, height: 8, borderRadius: '50%', background: dot, flex: 'none' }} />
+          <span className="cw-signal-wrap">
+            <button type="button" className="cw-signal-btn" aria-label={`Connection: ${shownSignal.text}`}>
+              <SignalIcon bars={shownSignal.bars} color={shownSignal.color} />
+            </button>
+            <span className="cw-signal-pop" role="tooltip">{shownSignal.text}</span>
+          </span>
           <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', minHeight: 20 }}>
             <div style={{ fontWeight: 600, color: 'var(--text-strong)', lineHeight: '20px' }}>Voice chat · {short}</div>
           </div>
