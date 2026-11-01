@@ -27,6 +27,11 @@
 .cv-msg.cv-grouped { margin-top: 0; }
 /* A message that pings you (by name or @everyone) stays lit up, so it is easy to find. */
 .cv-msg.cv-pinged { background: color-mix(in srgb, var(--accent) 12%, transparent); box-shadow: inset 3px 0 0 var(--accent); }
+/* An @mention in a message shows as a small pill. */
+.cv-mention {
+  display: inline-block; padding: 0 6px; margin: 0 1px; border-radius: 999px; line-height: 1.5;
+  background: var(--accent-tint); color: var(--accent); font-weight: 600; white-space: nowrap;
+}
 /* A message opened from search is lit up for a moment. */
 .cv-msg.cv-flash { animation: cv-flash 2.4s ease-out; }
 @keyframes cv-flash {
