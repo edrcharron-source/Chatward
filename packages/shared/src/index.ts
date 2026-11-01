@@ -198,12 +198,27 @@ export interface LibraryGif {
   createdAt: number;
 }
 
+/** What someone is doing right now, shown under their name. Only sent while they have turned sharing on. */
+export interface Activity {
+  kind: 'spotify';
+  /** Track name. */
+  title: string;
+  /** Artist names, comma separated. */
+  artist: string;
+  /** The track on open.spotify.com, if known. */
+  url?: string;
+}
+/** Longest title or artist the server relays. */
+export const ACTIVITY_TEXT_MAX = 200;
+
 // ---------- WebSocket protocol ----------
 // Client -> server frames
 export type ClientFrame =
   | { t: 'subscribe'; serverId: string }
   | { t: 'typing'; channelId: string }
   | { t: 'presence'; status: 'online' | 'idle' | 'dnd' }
+  /** null clears it. */
+  | { t: 'activity'; activity: Activity | null }
   | { t: 'ping' };
 
 // Server -> client frames
@@ -214,6 +229,8 @@ export type ServerFrame =
   | { t: 'message.delete'; channelId: string; messageId: string }
   | { t: 'typing'; channelId: string; userId: string }
   | { t: 'presence'; userId: string; status: 'online' | 'idle' | 'dnd' | 'offline' }
+  /** Someone's activity changed. Also sent for everyone with one when a socket connects. null = none. */
+  | { t: 'activity'; userId: string; activity: Activity | null }
   | { t: 'member.join'; serverId: string; member: Member }
   | { t: 'member.leave'; serverId: string; userId: string }
   | { t: 'member.devices'; serverId: string; userId: string; devices: DeviceKeys[] }

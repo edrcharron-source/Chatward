@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type { UpdateStatus } from '@chatward/shared';
+import type { NowPlaying } from '../main/spotify';
 
 const api = {
   secureStore: {
@@ -36,6 +37,13 @@ const api = {
     linkPreview: (url: string): Promise<{ status: number; body: unknown }> => ipcRenderer.invoke('demo:linkpreview', url),
     gifs: (kind: 'search' | 'trending', q: string, pos?: string): Promise<{ status: number; body: unknown } | null> =>
       ipcRenderer.invoke('demo:gifs', kind, q, pos),
+  },
+  // Spotify "listening to". `available` is false in a build without a Spotify app.
+  spotify: {
+    status: (): Promise<{ available: boolean; connected: boolean }> => ipcRenderer.invoke('spotify:status'),
+    connect: (): Promise<void> => ipcRenderer.invoke('spotify:connect'),
+    disconnect: (): Promise<void> => ipcRenderer.invoke('spotify:disconnect'),
+    nowPlaying: (): Promise<NowPlaying> => ipcRenderer.invoke('spotify:now-playing'),
   },
   // Tells the main process which server the page may connect to. Resolves true when the page must reload first.
   server: {

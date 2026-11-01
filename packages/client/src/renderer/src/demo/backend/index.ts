@@ -35,6 +35,9 @@ export function attachSocket(send: (f: ServerFrame) => void): () => void {
   sockets.add(send);
   send({ t: 'ready', user: world.you, presence: {} });
   for (const b of world.bots) send({ t: 'presence', userId: b.user.id, status: 'online' });
+  // One friend is listening to something, to show the Spotify "listening to" line.
+  const listener = world.bots[0];
+  if (listener) send({ t: 'activity', userId: listener.user.id, activity: { kind: 'spotify', title: 'Clair de Lune', artist: 'Claude Debussy' } });
   return () => sockets.delete(send);
 }
 

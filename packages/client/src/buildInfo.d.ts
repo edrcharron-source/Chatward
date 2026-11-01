@@ -10,3 +10,5 @@ declare const __CHATWARD_BUILD__: {
   /** Server address a fresh install starts with, or empty for the local dev server. */
   defaultServer: string;
 };
+/** The Spotify app's client ID (SPOTIFY_CLIENT_ID at build time), or empty. Main process only. */
+declare const __SPOTIFY_CLIENT_ID__: string;

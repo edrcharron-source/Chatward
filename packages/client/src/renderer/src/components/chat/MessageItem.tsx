@@ -9,6 +9,7 @@ import { useConfirm } from '../confirm/ConfirmDialog';
 import Avatar from './Avatar';
 import MessageText, { isEmojiOnly } from './MessageText';
 import ProfileTrigger from '../profile/ProfileTrigger';
+import JamCards from '../spotify/JamCard';
 
 interface Props {
   message: Message;
@@ -105,6 +106,7 @@ export default function MessageItem({ message, payload, author, grouped, canEdit
             {message.editedAt != null && <span className="cv-edited"> (edited)</span>}
           </div>
         )}
+        {payload.text && <JamCards text={payload.text} />}
         {payload.attachments?.map((a) => <AttachmentView key={a.uploadId} attachment={a} serverId={serverId} />)}
         {payload.gif && <GifView gif={payload.gif} serverId={serverId} />}
         {payload.linkPreviews?.map((p) => <LinkPreviewCard key={p.url} preview={p} />)}

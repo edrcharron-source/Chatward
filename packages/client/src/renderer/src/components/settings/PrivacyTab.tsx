@@ -2,6 +2,7 @@ import { useSettings } from '../../state/settings';
 import { isDemo } from '../../demo';
 import { KlipyKeySetting } from '../../demo/KlipyKeySetting';
 import { Section, Toggle } from './controls';
+import SpotifySetting from '../spotify/SpotifySetting';
 
 export default function PrivacyTab() {
   const linkPreviews = useSettings((s) => s.linkPreviews);
@@ -15,6 +16,7 @@ export default function PrivacyTab() {
         <Toggle label="Load embeds automatically" hint="YouTube and X embeds load without a click. Off means you click to load each one."
           checked={autoLoadEmbeds} onChange={(on) => set({ autoLoadEmbeds: on })} />
       </Section>
+      <SpotifySetting />
       {isDemo() && <KlipyKeySetting />}
     </>
   );

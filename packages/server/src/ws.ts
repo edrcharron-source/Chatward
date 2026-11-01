@@ -1,6 +1,6 @@
 import type { Server as HttpServer } from 'node:http';
 import { WebSocketServer, WebSocket } from 'ws';
-import type { ClientFrame, ServerFrame } from '@chatward/shared';
+import { ACTIVITY_TEXT_MAX, type Activity, type ClientFrame, type ServerFrame } from '@chatward/shared';
 import type { Ctx } from './ctx.js';
 
 // How often the server pings every socket. A socket that has not answered the previous ping is dead
@@ -16,6 +16,8 @@ export function attachWs(http: HttpServer, ctx: Ctx) {
   const statusByUser = new Map<string, 'online' | 'idle' | 'dnd'>();
   // The only statuses a client may set; 'offline' is decided by the server, never by the client.
   const CLIENT_STATUSES: string[] = ['online', 'idle', 'dnd'];
+  // What each connected user is sharing right now (the song they are listening to). Kept in memory only, never stored.
+  const activityByUser = new Map<string, Activity>();
   // Which device each socket belongs to, so removing one device closes only its sockets.
   const deviceBySocket = new WeakMap<WebSocket, string | null>();
 
@@ -42,6 +44,7 @@ export function attachWs(http: HttpServer, ctx: Ctx) {
       for (const cb of ctx.onConnect) cb(userId, deviceId);
       send(ws, { t: 'ready', user: ctx.getUser(userId)!, presence: presenceFor(userId) });
       sendPresenceSnapshot(ws, userId);
+      sendActivitySnapshot(ws, userId);
       replayNewDeviceAlerts(ws, userId, deviceId);
       announce(userId, status);
       ws.on('message', (raw) => {
@@ -57,6 +60,10 @@ export function attachWs(http: HttpServer, ctx: Ctx) {
             const sid = ctx.serverIdForChannelMember(f.channelId, userId);
             if (sid) ctx.broadcastToServer(sid, { t: 'typing', channelId: f.channelId, userId });
           } else if (f.t === 'presence' && typeof f.status === 'string' && CLIENT_STATUSES.includes(f.status)) announce(userId, f.status);
+          else if (f.t === 'activity') {
+            const activity = cleanActivity(f.activity);
+            if (activity !== undefined) setActivity(userId, activity);
+          }
         } catch (err) {
           console.error('Dropped a bad websocket frame:', err);
         }
@@ -64,7 +71,11 @@ export function attachWs(http: HttpServer, ctx: Ctx) {
       ws.on('close', () => {
         markDeviceSeen(deviceId);
         set!.delete(ws);
-        if (set!.size === 0) { socketsByUser.delete(userId); statusByUser.delete(userId); announce(userId, 'offline'); }
+        if (set!.size === 0) {
+          socketsByUser.delete(userId); statusByUser.delete(userId);
+          if (activityByUser.has(userId)) setActivity(userId, null);
+          announce(userId, 'offline');
+        }
         const online = {
           device: [...set!].some((other) => deviceBySocket.get(other) === deviceId),
           user: set!.size > 0,
@@ -118,6 +129,25 @@ export function attachWs(http: HttpServer, ctx: Ctx) {
     }
   }
 
+  function setActivity(userId: string, activity: Activity | null) {
+    const before = activityByUser.get(userId) ?? null;
+    if (JSON.stringify(before) === JSON.stringify(activity)) return;
+    if (activity) activityByUser.set(userId, activity);
+    else activityByUser.delete(userId);
+    const rows = ctx.db.prepare('SELECT server_id FROM members WHERE user_id=?').all(userId) as { server_id: string }[];
+    for (const r of rows) ctx.broadcastToServer(r.server_id, { t: 'activity', userId, activity });
+  }
+  // Like sendPresenceSnapshot: who is listening to what right now, for a socket that just connected.
+  function sendActivitySnapshot(ws: WebSocket, userId: string) {
+    const rows = ctx.db.prepare(
+      'SELECT DISTINCT m2.user_id AS userId FROM members m1 JOIN members m2 ON m2.server_id=m1.server_id WHERE m1.user_id=?',
+    ).all(userId) as { userId: string }[];
+    for (const { userId: other } of rows) {
+      const activity = activityByUser.get(other);
+      if (activity) send(ws, { t: 'activity', userId: other, activity });
+    }
+  }
+
   /**
    * A new-device alert only reaches open sockets, so a sign-in made while every device was offline would never be announced.
    * Replays the alerts for devices added since this device last had a socket open.
@@ -152,4 +182,21 @@ export function attachWs(http: HttpServer, ctx: Ctx) {
       if (deviceId === undefined || deviceBySocket.get(ws) === deviceId) ws.close(4401, 'session revoked');
     }
   };
+}
+
+/**
+ * The activity a client sent, keeping only the known fields. null clears it; undefined means the frame was malformed and is dropped.
+ * Every member draws these, so text is length-capped and the link must be a track on open.spotify.com.
+ */
+export function cleanActivity(raw: unknown): Activity | null | undefined {
+  if (raw === null) return null;
+  if (!raw || typeof raw !== 'object') return undefined;
+  const a = raw as Record<string, unknown>;
+  if (a.kind !== 'spotify' || typeof a.title !== 'string' || typeof a.artist !== 'string') return undefined;
+  const title = a.title.trim().slice(0, ACTIVITY_TEXT_MAX);
+  const artist = a.artist.trim().slice(0, ACTIVITY_TEXT_MAX);
+  if (!title) return undefined;
+  const out: Activity = { kind: 'spotify', title, artist };
+  if (typeof a.url === 'string' && /^https:\/\/open\.spotify\.com\/track\/[A-Za-z0-9]{1,64}$/.test(a.url)) out.url = a.url;
+  return out;
 }
