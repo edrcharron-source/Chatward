@@ -1,4 +1,4 @@
-import { useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent } from 'react';
+import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent } from 'react';
 import { EmojiPickerButton, GifPickerButton, GifView } from '../media';
 import ListenAlongButton from '../spotify/ListenAlongButton';
 import type { Member } from '@chatward/shared';
@@ -142,16 +142,17 @@ export default function Composer({ channelId, channelName, serverId, onSent }: P
     >
       {(files.length > 0 || gif) && (
         <div className="cv-chips">
-          {files.map((f, i) => (
-            <span key={`${f.name}-${i}`} className="cv-chip">
-              {f.name}
-              <button
-                className="icon"
-                aria-label={`Remove ${f.name}`}
-                onClick={() => setFiles((cur) => cur.filter((_, j) => j !== i))}
-              >×</button>
-            </span>
-          ))}
+          {files.map((f, i) => {
+            const remove = () => setFiles((cur) => cur.filter((_, j) => j !== i));
+            return f.type.startsWith('image/') ? (
+              <PendingImage key={`${f.name}-${i}`} file={f} onRemove={remove} />
+            ) : (
+              <span key={`${f.name}-${i}`} className="cv-chip">
+                {f.name}
+                <button className="icon" aria-label={`Remove ${f.name}`} onClick={remove}>×</button>
+              </span>
+            );
+          })}
           {gif && (
             <span className="cv-chip cv-gif-chip">
               <GifView gif={gif} />
@@ -210,5 +211,27 @@ export default function Composer({ channelId, channelName, serverId, onSent }: P
         <button className="primary cv-send" disabled={!canSend} onClick={() => void submit()}>Send</button>
       </div>
     </div>
+  );
+}
+
+/** A picture waiting to be sent: a small preview of it, with its name on hover and a button to take it off. */
+function PendingImage({ file, onRemove }: { file: File; onRemove: () => void }) {
+  const [url, setUrl] = useState<string | null>(null);
+  const [broken, setBroken] = useState(false);
+  useEffect(() => {
+    const u = URL.createObjectURL(file);
+    setUrl(u);
+    setBroken(false);
+    return () => URL.revokeObjectURL(u);
+  }, [file]);
+  return (
+    <span className="cv-chip cv-thumb" title={file.name}>
+      {url && !broken ? (
+        <img src={url} alt={file.name} draggable={false} onError={() => setBroken(true)} />
+      ) : (
+        <span className="cv-thumb-name">{file.name}</span>
+      )}
+      <button className="icon cv-thumb-x" aria-label={`Remove ${file.name}`} onClick={onRemove}>×</button>
+    </span>
   );
 }
