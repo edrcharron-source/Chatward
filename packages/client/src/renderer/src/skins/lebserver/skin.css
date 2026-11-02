@@ -98,8 +98,7 @@
 /* Section labels read like lebserver's small lowercase captions, with dashed rules under headers. */
 :root[data-skin='lebserver'] .cw-members-title,
 :root[data-skin='lebserver'] .cw-section-title,
-:root[data-skin='lebserver'] .setting-section h3,
-:root[data-skin='lebserver'] .cw-dialog-section h3 { text-transform: lowercase; letter-spacing: .1em; color: var(--text-muted); font-weight: 400; }
+:root[data-skin='lebserver'] .setting-section h3 { text-transform: lowercase; letter-spacing: .1em; color: var(--text-muted); font-weight: 400; }
 :root[data-skin='lebserver'] .cv-header,
 :root[data-skin='lebserver'] .cw-channels-head,
 :root[data-skin='lebserver'] .cw-tabs-bar { border-bottom-style: dashed; }

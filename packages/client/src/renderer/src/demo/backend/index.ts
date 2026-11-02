@@ -306,8 +306,6 @@ on('GET', /^\/api\/avatars\/([^/]+)$/, async (r) => {
 });
 
 on('GET', /^\/api\/servers$/, () => json({ servers: [bundle()] }));
-// The offline demo has exactly one server, so creating another is refused rather than faked.
-on('POST', /^\/api\/servers$/, () => json({ error: 'The offline demo has one server' }, 403));
 on('POST', /^\/api\/servers\/([^/]+)\/channels$/, (r) => {
   serverGuard(r.match[1]);
   const body = (r.body ?? {}) as { name?: unknown; kind?: unknown };
@@ -357,15 +355,6 @@ on('PATCH', /^\/api\/servers\/([^/]+)$/, (r) => {
   emit({ t: 'server.update', server: world.server });
   return json({ server: world.server });
 });
-// The demo keeps its one server so there is always something to look at. Deleting is turned off here.
-on('DELETE', /^\/api\/servers\/([^/]+)$/, (r) => {
-  serverGuard(r.match[1]);
-  throw new HttpError(403, 'Deleting the server is turned off in the offline demo');
-});
-on('POST', /^\/api\/servers\/([^/]+)\/leave$/, (r) => {
-  serverGuard(r.match[1]);
-  throw new HttpError(400, 'the owner cannot leave; delete the server instead');
-});
 on('PATCH', /^\/api\/servers\/([^/]+)\/members\/([^/]+)$/, (r) => {
   serverGuard(r.match[1]);
   const role = (r.body as { role?: unknown })?.role;
@@ -382,36 +371,6 @@ on('DELETE', /^\/api\/servers\/([^/]+)\/members\/([^/]+)$/, (r) => {
   const { user } = demoTarget(YOU_ID, r.match[2]);
   world.bans = [...world.bans.filter((b) => b.user.id !== user.id), { user, bannedAt: Date.now() }];
   removeDemoMember(r.match[2]);
-  return json({ ok: true });
-});
-// Same as the server's transfer route: the old owner becomes an admin and the target becomes the owner.
-on('POST', /^\/api\/servers\/([^/]+)\/transfer$/, (r) => {
-  serverGuard(r.match[1]);
-  const targetId = (r.body as { userId?: unknown })?.userId;
-  if (typeof targetId !== 'string' || !targetId) throw new HttpError(400, 'userId is required');
-  if (targetId === YOU_ID) throw new HttpError(400, 'you already own this server');
-  memberOrThrow(targetId);
-  world.members = world.members.map((m) => {
-    if (m.user.id === YOU_ID) return { ...m, role: 'admin' };
-    if (m.user.id === targetId) return { ...m, role: 'owner' };
-    return m;
-  });
-  world.server = { ...world.server, ownerId: targetId };
-  emit({ t: 'member.role', serverId: SERVER_ID, userId: YOU_ID, role: 'admin' });
-  emit({ t: 'member.role', serverId: SERVER_ID, userId: targetId, role: 'owner' });
-  return json({ ok: true });
-});
-on('POST', /^\/api\/servers\/([^/]+)\/invites$/, (r) => {
-  serverGuard(r.match[1]);
-  return json({ code: 'DEMO-INVITE', expiresAt: Date.now() + 7 * 24 * 3600_000 }, 201);
-});
-on('POST', /^\/api\/invites\/([^/]+)\/join$/, () => json({ server: world.server }));
-on('GET', /^\/api\/servers\/([^/]+)\/invites$/, (r) => {
-  serverGuard(r.match[1]);
-  return json({ invites: [] });
-});
-on('DELETE', /^\/api\/servers\/([^/]+)\/invites\/([^/]+)$/, (r) => {
-  serverGuard(r.match[1]);
   return json({ ok: true });
 });
 on('GET', /^\/api\/servers\/([^/]+)\/bans$/, (r) => {
