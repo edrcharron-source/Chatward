@@ -15,9 +15,10 @@ import './lcars.css';
  * - the top bar holds Split, the window's drag area, the server's name, your status, and minimize, maximize and close;
  * - the bottom bar holds the call controls, or Join voice when you are not in the call.
  *
- * While this frame is on screen it is the window's title bar, so lcars.css hides the app's usual one, and the window
- * takes the frame's outline (round at the two sweeps and at the end caps on the right), so no window corner or edge
- * shows past it. The "powered by" strip moves into the rail for the same reason.
+ * While this frame is on screen it is the window's title bar, so lcars.css hides the app's usual one. The desktop app
+ * gives this layout a transparent window with no border or shadow (components/lcars/shapedWindow.ts), and the page
+ * paints nothing past the frame's outline (round at the two sweeps and at the end caps on the right), so no window
+ * corner or edge shows past it. The "powered by" strip moves into the rail for the same reason.
  */
 export default function LcarsLayout(props: {
   serverName: string;
@@ -41,9 +42,10 @@ export default function LcarsLayout(props: {
   const user = useSession((s) => s.user);
   const lebserver = useSession((s) => isLebserver(s.serverUrl));
   const shell = useRef<HTMLDivElement>(null);
-  useFrameShape(shell);
+  const shaped = useShapedFrame(shell);
   return (
-    <div className="lcars-shell" data-region="shell" data-layout="lcars" ref={shell}>
+    <div className="lcars-shell" data-region="shell" data-layout="lcars" data-shaped={shaped ? '' : undefined} ref={shell}>
+      {shaped && <ResizeEdges />}
       <div className="lcars-rail" {...props.dropArea}>
         <span className="lcars-elbow top" aria-hidden="true" />
         {props.nav}
@@ -99,27 +101,8 @@ export default function LcarsLayout(props: {
   );
 }
 
-/**
- * Asks the desktop app to shape the window like the frame: the sweeps' big curve on the left, and on the right the
- * round ends of the top bar (Close) and the bottom bar (Leave, or the plain cap). The sizes come from lcars.css.
- */
-function useFrameShape(shell: RefObject<HTMLDivElement | null>) {
-  useEffect(() => {
-    const controls = window.chatward?.windowControls;
-    const el = shell.current;
-    if (!controls?.setShape || controls.platform === 'darwin' || !el) return;
-    const css = getComputedStyle(el);
-    const px = (name: string) => parseFloat(css.getPropertyValue(name)) || 0;
-    controls.setShape({
-      topLeft: px('--lc-outer'), bottomLeft: px('--lc-outer'),
-      topRight: px('--lc-top') / 2, bottomRight: px('--lc-bottom') / 2,
-    });
-    return () => controls.setShape(null);
-  }, [shell]);
-}
-
-/** Minimize, maximize and close as the last segments of the top bar. Without the desktop app's bridge there are none. */
-function WindowButtons() {
+/** Whether the window is maximized, kept up to date as it is resized. */
+function useMaximized(): boolean {
   const controls = window.chatward?.windowControls;
   const [maximized, setMaximized] = useState(false);
   useEffect(() => {
@@ -129,6 +112,70 @@ function WindowButtons() {
     window.addEventListener('resize', check);
     return () => window.removeEventListener('resize', check);
   }, [controls]);
+  return maximized;
+}
+
+/**
+ * In the shaped window (transparent, no border) the page's own background must not show past the frame: the page
+ * behind the frame is cleared (lcars.css, html.cw-shaped-lcars) and the page is clipped to the frame's outline, so a
+ * dialog's dimmed backdrop doesn't paint the see-through corners either. Maximized, the window fills the screen and stays
+ * a plain rectangle. Returns true while the frame is shaped, so the edges can resize the window.
+ */
+function useShapedFrame(shell: RefObject<HTMLDivElement | null>): boolean {
+  const shapedWindow = window.chatward?.windowControls?.shaped === true;
+  const maximized = useMaximized();
+  const shaped = shapedWindow && !maximized;
+  useEffect(() => {
+    const el = shell.current;
+    if (!shapedWindow || !el) return;
+    const root = document.documentElement;
+    root.classList.add('cw-shaped-lcars');
+    if (maximized) return () => root.classList.remove('cw-shaped-lcars');
+    const css = getComputedStyle(el);
+    const px = (name: string) => parseFloat(css.getPropertyValue(name)) || 0;
+    const fit = () => {
+      // A strip above the frame (the demo banner) holds the window's top edge, so the top corners stay square then;
+      // the frame's own sweep still shows the desktop past its curve, as the ground behind it is clear.
+      const top = el.getBoundingClientRect().top > 0.5 ? 0 : 1;
+      // Corners in clip-path order: top left, top right, bottom right, bottom left.
+      document.body.style.clipPath =
+        `inset(0 round ${top * px('--lc-outer')}px ${top * px('--lc-top') / 2}px ${px('--lc-bottom') / 2}px ${px('--lc-outer')}px)`;
+    };
+    fit();
+    const watch = new ResizeObserver(fit);
+    watch.observe(el);
+    return () => { watch.disconnect(); root.classList.remove('cw-shaped-lcars'); document.body.style.clipPath = ''; };
+  }, [shell, shapedWindow, maximized]);
+  return shaped;
+}
+
+const EDGES = ['n', 's', 'e', 'w', 'nw', 'ne', 'sw', 'se'] as const;
+
+/** Thin grab strips along the frame's outside edges that resize the shaped window, which has no system border to drag. */
+function ResizeEdges() {
+  const controls = window.chatward?.windowControls;
+  if (!controls?.startResize) return null;
+  const end = () => controls.endResize();
+  return (
+    <>
+      {EDGES.map((edge) => (
+        <span key={edge} className={`lcars-resize lcars-resize-${edge}`} aria-hidden="true"
+          onPointerDown={(e) => {
+            if (e.button !== 0) return;
+            e.preventDefault();
+            e.currentTarget.setPointerCapture(e.pointerId);
+            controls.startResize(edge);
+          }}
+          onPointerUp={end} onLostPointerCapture={end} />
+      ))}
+    </>
+  );
+}
+
+/** Minimize, maximize and close as the last segments of the top bar. Without the desktop app's bridge there are none. */
+function WindowButtons() {
+  const controls = window.chatward?.windowControls;
+  const maximized = useMaximized();
   // macOS draws its own window buttons, so the bar ends in a plain cap there.
   if (!controls || controls.platform === 'darwin') return <span className="lcars-seg lcars-end" aria-hidden="true" />;
   return (

@@ -24,6 +24,37 @@
   grid-template-areas: 'rail top' 'rail body' 'rail bottom';
 }
 
+/* The shaped window (main/index.ts, LcarsLayout.tsx useShapedFrame): the window itself is transparent with no border or
+   shadow, so the page must paint nothing past the frame. Everything behind the frame is cleared, and the frame's black
+   ground skips the four corner squares: the sweeps and end caps cover those on their own, and with nothing behind
+   them their curved edges blend straight into the desktop instead of showing a dark rim. Maximized, the ground is whole. */
+html.cw-shaped-lcars,
+html.cw-shaped-lcars :is(body, #root, :has(.lcars-shell)) { background: transparent !important; }
+html.cw-shaped-lcars body::before, html.cw-shaped-lcars body::after { display: none; }
+.lcars-shell[data-shaped] { position: relative; isolation: isolate; background: transparent; }
+.lcars-shell[data-shaped]::before {
+  content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none; background: var(--lc-ground);
+  --tr: calc(var(--lc-top) / 2); --br: calc(var(--lc-bottom) / 2);
+  clip-path: polygon(
+    var(--lc-outer) 0, calc(100% - var(--tr)) 0, calc(100% - var(--tr)) var(--tr), 100% var(--tr),
+    100% calc(100% - var(--br)), calc(100% - var(--br)) calc(100% - var(--br)), calc(100% - var(--br)) 100%,
+    var(--lc-outer) 100%, var(--lc-outer) calc(100% - var(--lc-outer)), 0 calc(100% - var(--lc-outer)),
+    0 var(--lc-outer), var(--lc-outer) var(--lc-outer));
+}
+/* Grab strips on the outside edges that resize the shaped window (it has no system border). They sit over the frame's
+   very edge and never take part in dragging the window. */
+.lcars-resize { position: absolute; z-index: 30; -webkit-app-region: no-drag; }
+.lcars-resize-n { top: 0; left: var(--lc-outer); right: calc(var(--lc-top) / 2); height: 5px; cursor: ns-resize; }
+.lcars-resize-s { bottom: 0; left: var(--lc-outer); right: calc(var(--lc-bottom) / 2); height: 5px; cursor: ns-resize; }
+.lcars-resize-w { left: 0; top: var(--lc-outer); bottom: var(--lc-outer); width: 5px; cursor: ew-resize; }
+.lcars-resize-e { right: 0; top: calc(var(--lc-top) / 2); bottom: calc(var(--lc-bottom) / 2); width: 5px; cursor: ew-resize; }
+/* The corners grab on the curve itself (about 0.29 of the radius in from each side). */
+.lcars-resize-nw, .lcars-resize-sw, .lcars-resize-ne, .lcars-resize-se { width: 14px; height: 14px; }
+.lcars-resize-nw { left: calc(var(--lc-outer) * .29 - 7px); top: calc(var(--lc-outer) * .29 - 7px); cursor: nwse-resize; }
+.lcars-resize-sw { left: calc(var(--lc-outer) * .29 - 7px); bottom: calc(var(--lc-outer) * .29 - 7px); cursor: nesw-resize; }
+.lcars-resize-ne { right: 0; top: 0; cursor: nesw-resize; }
+.lcars-resize-se { right: 0; bottom: 0; cursor: nwse-resize; }
+
 /* Segments: the frame's buttons. */
 :root .lcars-shell .lcars-seg {
   flex: none; display: flex; align-items: flex-end; justify-content: flex-end; gap: 6px;
