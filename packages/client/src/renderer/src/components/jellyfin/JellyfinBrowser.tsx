@@ -3,6 +3,7 @@ import Hls from 'hls.js';
 import type { JellyfinItem, JellyfinPlayback } from '@chatward/shared';
 import { api, fetchObjectUrl } from '../../api/http';
 import { useSession } from '../../state/session';
+import { queueToWatchParty, canQueueToWatchParty } from '../watchparty/bridge';
 import './jellyfin.css';
 
 /** Whether this server has Jellyfin set up, so the app can hide the Movies button when it has not. */
@@ -45,6 +46,11 @@ function Poster({ item }: { item: JellyfinItem }): ReactElement {
 function Player({ item, onBack }: { item: JellyfinItem; onBack: () => void }): ReactElement {
   const ref = useRef<HTMLVideoElement>(null);
   const [error, setError] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+  const addToParty = () => {
+    const ok = queueToWatchParty({ kind: 'jellyfin', ref: item.id, title: item.name });
+    setNote(ok ? 'Added to the watch party.' : 'Join a voice channel and open its watch party first.');
+  };
   useEffect(() => {
     let stop = () => {};
     let live = true;
@@ -55,7 +61,9 @@ function Player({ item, onBack }: { item: JellyfinItem; onBack: () => void }): R
   }, [item.id]);
   return (
     <div className="cw-jf-player">
-      <div className="cw-jf-bar"><button className="icon" onClick={onBack}>← Back</button><strong>{item.name}</strong></div>
+      <div className="cw-jf-bar"><button className="icon" onClick={onBack}>← Back</button><strong>{item.name}</strong>
+        <button className="icon" onClick={addToParty} disabled={!canQueueToWatchParty()} title="Queue this for everyone in your call">Add to watch party</button>
+        {note && <span className="muted">{note}</span>}</div>
       {error ? <div className="cw-jf-error">{error}</div> : <video ref={ref} controls autoPlay />}
     </div>
   );
