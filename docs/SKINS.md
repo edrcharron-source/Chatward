@@ -25,6 +25,10 @@ The full plan lives in the project's "Chatward skins plan" doc. This file is the
   pack does nothing until that skin is chosen.
 - Add one entry to `SKINS` in `skins/index.ts` (label and swatch colour). The Appearance tab lists them in a Skin dropdown, after Original (no skin), only
   while `SKINS` has entries, so the empty list keeps the Visual check unchanged.
+- **Light and dark.** The Theme setting (Dark, Light, Match system) applies to every skin. A skin keeps its own
+  colours in skin-local variables (`--lb-*`, `--ra-*`, `--lcs-*`) and gives its light version in one block under
+  `:root[data-skin='<id>'][data-theme='light']` that swaps those and the shared tokens. The LCARS frame's own colours
+  (`--lc-*` on `.lcars-shell`) are swapped the same way from the LCARS skin.
 - The choice is the `skin` setting: one skin at a time, `''` for none, and an unknown id counts as none. It is saved
   locally and never sent to the server. The watch-party popout follows it too.
 

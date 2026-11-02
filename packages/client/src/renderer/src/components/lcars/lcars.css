@@ -14,7 +14,7 @@
 
 .lcars-shell {
   --lc-frame: #4a9ee8; --lc-live: #f5a54a; --lc-alert: #e5484d; --lc-text: #cdd6ff;
-  --lc-ground: #000;
+  --lc-ground: #000; --lc-ink: #000; --lc-chip: #000; --lc-off: #2a4a6b;
   --lc-font: 'Antonio', 'Bahnschrift SemiCondensed', 'Bahnschrift', 'Arial Narrow', sans-serif;
   --lc-rail: 150px; --lc-top: 30px; --lc-bottom: 40px; --lc-gap: 4px; --lc-pad: 12px;
   --lc-outer: 60px; --lc-inner: 22px; --lc-arm: 96px;
@@ -59,7 +59,7 @@ html.cw-shaped-lcars body::before, html.cw-shaped-lcars body::after { display: n
 :root .lcars-shell .lcars-seg {
   flex: none; display: flex; align-items: flex-end; justify-content: flex-end; gap: 6px;
   min-width: 56px; margin: 0; padding: 0 8px 3px; border: 0; border-radius: 0; box-shadow: none;
-  background: var(--lc-frame); color: #000; opacity: 1;
+  background: var(--lc-frame); color: var(--lc-ink); opacity: 1;
   font: 600 14px/1 var(--lc-font); letter-spacing: .05em; text-transform: uppercase; white-space: nowrap;
   transition: background .12s;
 }
@@ -68,8 +68,8 @@ html.cw-shaped-lcars body::before, html.cw-shaped-lcars body::after { display: n
 :root .lcars-shell button.lcars-seg[aria-pressed='true'],
 :root .lcars-shell button.lcars-seg[aria-expanded='true'],
 :root .lcars-shell button.lcars-seg.primary { background: var(--lc-live); }
-:root .lcars-shell button.lcars-seg.danger { background: var(--lc-alert); color: #000; }
-:root .lcars-shell button.lcars-seg:disabled { background: #2a4a6b; color: #000; cursor: not-allowed; }
+:root .lcars-shell button.lcars-seg.danger { background: var(--lc-alert); color: var(--lc-ink); }
+:root .lcars-shell button.lcars-seg:disabled { background: var(--lc-off); color: var(--lc-ink); cursor: not-allowed; }
 :root .lcars-shell button.lcars-seg:focus-visible { outline: 2px solid var(--lc-text); outline-offset: -2px; }
 /* A free end of a bar is a half circle, like the mockup's Close and Leave. The :root keeps it ahead of the square
    corners every segment gets above. The window's corner follows this curve (useFrameShape in LcarsLayout.tsx). */
@@ -96,7 +96,7 @@ html.cw-shaped-lcars body::before, html.cw-shaped-lcars body::after { display: n
   flex: 1 1 0; min-height: 6px; overflow: hidden; display: flex; align-items: flex-end; justify-content: flex-end;
   padding: 0 8px 4px; background: var(--lc-frame);
 }
-.lcars-powered { color: #000; font: 600 11px/1 var(--lc-font); letter-spacing: .1em; text-transform: uppercase; white-space: nowrap; }
+.lcars-powered { color: var(--lc-ink); font: 600 11px/1 var(--lc-font); letter-spacing: .1em; text-transform: uppercase; white-space: nowrap; }
 .lcars-rail .lcars-rail-seg { height: 56px; flex: 0 1 56px; min-height: 34px; width: 100%; }
 
 /* The tabs are the same elements as the tabs layout's, laid down the rail. */
@@ -107,22 +107,22 @@ html.cw-shaped-lcars body::before, html.cw-shaped-lcars body::after { display: n
 }
 .lcars-rail .cw-tab-main {
   flex: 1; min-width: 0; min-height: 0; display: flex; align-items: flex-end; justify-content: flex-end; gap: 6px;
-  padding: 0 8px 4px; border: 0; border-radius: 0; box-shadow: none; background: var(--lc-frame); color: #000;
+  padding: 0 8px 4px; border: 0; border-radius: 0; box-shadow: none; background: var(--lc-frame); color: var(--lc-ink);
   font: 600 14px/1 var(--lc-font); letter-spacing: .05em; text-transform: uppercase; white-space: nowrap;
 }
-.lcars-rail .cw-tab-main:hover, .lcars-rail .cw-tab-pop:hover { filter: brightness(1.18); color: #000; }
-.lcars-rail .cw-tab.active .cw-tab-main { background: var(--lc-live); color: #000; }
+.lcars-rail .cw-tab-main:hover, .lcars-rail .cw-tab-pop:hover { filter: brightness(1.18); color: var(--lc-ink); }
+.lcars-rail .cw-tab.active .cw-tab-main { background: var(--lc-live); color: var(--lc-ink); }
 .lcars-rail .cw-tab-main:focus-visible, .lcars-rail .cw-tab-pop:focus-visible { outline: 2px solid var(--lc-text); outline-offset: -2px; }
 /* The tabs layout's [ ] brackets and pixel icons: the rail's segments carry words only. */
 .lcars-rail .cw-tab-main > [aria-hidden='true'], .lcars-rail .cw-tab-main > svg { display: none; }
 .lcars-rail .cw-tab-main .cw-badge {
   order: -1; align-self: center; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 11px;
-  background: var(--lc-alert); color: #000; font: 600 14px/22px var(--lc-font); text-align: center;
+  background: var(--lc-alert); color: var(--lc-ink); font: 600 14px/22px var(--lc-font); text-align: center;
 }
 /* In the call: a black chip with amber words (amber means live), cut into the Voice segment like a readout. */
 .lcars-rail .cw-tab-live {
   order: -1; margin-right: auto; flex: none; display: inline-flex; align-items: center; width: auto; height: 16px; padding: 0 7px 0 6px;
-  border-radius: 8px; background: #000; color: var(--lc-live);
+  border-radius: 8px; background: var(--lc-chip); color: var(--lc-live);
   font: 600 11px/1 var(--lc-font); letter-spacing: .1em; text-transform: uppercase;
 }
 .lcars-rail .cw-tab-live::before {
@@ -134,7 +134,7 @@ html.cw-shaped-lcars body::before, html.cw-shaped-lcars body::after { display: n
 @media (prefers-reduced-motion: reduce) { .lcars-rail .cw-tab-live::before { animation: none; } }
 .lcars-rail .cw-tab-pop {
   flex: none; width: 28px; padding: 0 0 5px; display: flex; align-items: flex-end; justify-content: center;
-  border: 0; border-radius: 0; box-shadow: none; background: var(--lc-frame); color: #000;
+  border: 0; border-radius: 0; box-shadow: none; background: var(--lc-frame); color: var(--lc-ink);
 }
 .lcars-rail .cw-tab.active .cw-tab-pop { background: var(--lc-live); }
 .lcars-rail .cw-tab.dragging { opacity: .5; }
@@ -157,7 +157,7 @@ html.cw-shaped-lcars body::before, html.cw-shaped-lcars body::after { display: n
 .lcars-shell .lcars-me { align-items: center; padding: 0 4px 0 10px; gap: 4px; }
 .lcars-me-name { max-width: 140px; overflow: hidden; text-overflow: ellipsis; padding-top: 4px; }
 :root .lcars-shell .lcars-me .cw-status-select {
-  margin: 0; height: 24px; padding: 0 6px; border: 0; border-radius: 0; background: #000; color: var(--lc-frame);
+  margin: 0; height: 24px; padding: 0 6px; border: 0; border-radius: 0; background: var(--lc-chip); color: var(--lc-frame);
   font: 600 14px/1 var(--lc-font); letter-spacing: .05em; text-transform: uppercase;
 }
 .lcars-shell .lcars-win { min-width: 56px; }
@@ -193,7 +193,7 @@ html.cw-shaped-lcars body::before, html.cw-shaped-lcars body::after { display: n
 
 /* The soundboard's pop-up wears a small frame of its own: an elbow, a thin top bar and a rail down the left. */
 :root .lcars-shell .lcars-pop.media-popover {
-  background: #000; border: 0; border-radius: 0; box-shadow: 0 0 0 6px #000;
+  background: var(--lc-ground); border: 0; border-radius: 0; box-shadow: 0 0 0 6px var(--lc-ground);
   padding: 26px 0 0 62px !important; min-height: 240px; color: var(--lc-text);
 }
 .lcars-popframe { position: absolute; inset: 0; pointer-events: none; }
@@ -209,12 +209,12 @@ html.cw-shaped-lcars body::before, html.cw-shaped-lcars body::after { display: n
 .lcars-pop > :not(.lcars-popframe) { position: relative; }
 .lcars-pop strong { font: 600 17px/1 var(--lc-font); letter-spacing: .05em; text-transform: uppercase; color: var(--lc-text); }
 :root .lcars-pop button {
-  border: 0; border-radius: 20px; box-shadow: none; background: var(--lc-frame); color: #000;
+  border: 0; border-radius: 20px; box-shadow: none; background: var(--lc-frame); color: var(--lc-ink);
   font: 600 14px/1.1 var(--lc-font); letter-spacing: .05em; text-transform: uppercase;
 }
 :root .lcars-pop button:hover { filter: brightness(1.18); }
 :root .lcars-pop button.primary { background: var(--lc-frame); padding: 10px 18px; }
-:root .lcars-pop .cw-sound-tile { background: var(--lc-frame) !important; color: #000 !important; border-radius: 20px; }
+:root .lcars-pop .cw-sound-tile { background: var(--lc-frame) !important; color: var(--lc-ink) !important; border-radius: 20px; }
 :root .lcars-pop .cw-sound-tile[data-playing] { background: var(--lc-live) !important; }
-:root .lcars-pop .cw-sound-tile + button.icon { background: var(--lc-alert); color: #000; border-radius: 0 20px 0 10px; padding: 3px 7px; }
+:root .lcars-pop .cw-sound-tile + button.icon { background: var(--lc-alert); color: var(--lc-ink); border-radius: 0 20px 0 10px; padding: 3px 7px; }
 .lcars-pop .muted { color: var(--lc-frame); font-family: var(--lc-font); letter-spacing: .03em; }
