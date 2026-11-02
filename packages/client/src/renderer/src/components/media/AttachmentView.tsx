@@ -1,10 +1,11 @@
-import { useEffect, useState, type CSSProperties, type ReactElement } from 'react';
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactElement } from 'react';
 import type { Attachment } from '@chatward/shared';
 import { api } from '../../api/http';
 import { decryptBlob } from '../../crypto';
 import { INLINE_IMAGE_MIMES } from './upload';
 import SaveGifButton from '../gifs/SaveGifButton';
 import { nameFromFile } from '../gifs/AddGifsDialog';
+import ImageLightbox from './ImageLightbox';
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -45,15 +46,8 @@ export function AttachmentView({ attachment, serverId }: { attachment: Attachmen
   const { url, failed } = useDecryptedUrl(attachment);
   const [enlarged, setEnlarged] = useState(false);
   const isImage = INLINE_IMAGE_MIMES.has(attachment.mime);
-
-  useEffect(() => {
-    if (!enlarged) return;
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setEnlarged(false);
-    };
-    document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
-  }, [enlarged]);
+  const openRef = useRef<HTMLButtonElement>(null);
+  const close = useCallback(() => setEnlarged(false), []);
 
   if (failed) {
     return <p className="media-error">Couldn't load “{attachment.name}”.</p>;
@@ -90,7 +84,7 @@ export function AttachmentView({ attachment, serverId }: { attachment: Attachmen
     ? ({ '--media-w': attachment.width, '--media-r': attachment.width / attachment.height } as CSSProperties)
     : undefined;
   const image = (
-    <button type="button" className={sized ? 'media-open media-open-sized' : 'media-open'} style={sized} onClick={() => setEnlarged(true)} aria-label={`View ${attachment.name} full size`}>
+    <button ref={openRef} type="button" className={sized ? 'media-open media-open-sized' : 'media-open'} style={sized} onClick={() => setEnlarged(true)} aria-label={`View ${attachment.name} full size`}>
       <img
         className="media-image"
         src={url}
@@ -110,12 +104,7 @@ export function AttachmentView({ attachment, serverId }: { attachment: Attachmen
         </span>
       ) : image}
       {enlarged && (
-        <div className="modal-backdrop media-lightbox" role="dialog" aria-modal="true" aria-label={attachment.name} onClick={() => setEnlarged(false)}>
-          <img className="media-lightbox-img" src={url} alt={attachment.name} onClick={(e) => e.stopPropagation()} />
-          <button type="button" className="media-lightbox-close" autoFocus onClick={() => setEnlarged(false)}>
-            Close
-          </button>
-        </div>
+        <ImageLightbox url={url} name={attachment.name} onClose={close} container={openRef.current?.ownerDocument.body} />
       )}
     </>
   );
