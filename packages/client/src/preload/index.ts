@@ -57,6 +57,14 @@ const api = {
     pause: (): Promise<void> => ipcRenderer.invoke('spotify:pause'),
     resolveJam: (url: string): Promise<string | null> => ipcRenderer.invoke('spotify:resolve-jam', url),
   },
+  // Right-click "Copy image". `gif` is the original file, so a GIF keeps moving where it is pasted (Windows only).
+  clipboard: {
+    copyImage: (png: Uint8Array, gif?: { bytes: Uint8Array; name: string }): Promise<'animated' | 'still'> =>
+      ipcRenderer.invoke('clipboard:copy-image', { png, gif }),
+    copyGifLink: (url: string): Promise<void> => ipcRenderer.invoke('clipboard:copy-gif-link', url),
+    // A GIF from the GIF search, as bytes. The page may show those pictures but not download them itself.
+    fetchGif: (url: string): Promise<Uint8Array> => ipcRenderer.invoke('media:fetch-gif', url),
+  },
   // Tells the main process which server the page may connect to. Resolves true when the page must reload first.
   server: {
     allow: (url: string): Promise<boolean> => ipcRenderer.invoke('server:allow', url),
