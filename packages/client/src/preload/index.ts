@@ -19,6 +19,9 @@ const api = {
     toggleMaximize: (target?: string): void => ipcRenderer.send('window:control', 'maximize', target),
     close: (target?: string): void => ipcRenderer.send('window:control', 'close', target),
     isMaximized: (target?: string): Promise<boolean> => ipcRenderer.invoke('window:maximized', target),
+    // Rounds the window's corners to follow a frame that is not a rectangle (the LCARS sweeps); null for square corners.
+    setShape: (radii: { topLeft: number; topRight: number; bottomLeft: number; bottomRight: number } | null): void =>
+      ipcRenderer.send('window:shape', radii),
   },
   // Auto-update. `check` points the updater at <serverUrl>/updates and starts a background download.
   updates: {

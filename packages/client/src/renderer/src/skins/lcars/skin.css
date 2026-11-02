@@ -46,6 +46,9 @@
 :root[data-skin='lcars'] button.danger { background: #e5484d; color: #000; }
 :root[data-skin='lcars'] button.danger:hover { background: #f0686c; }
 :root[data-skin='lcars'] button:disabled { background: #1d3550; color: #000; }
+/* A picture in a message is a button that opens it full size; it shows only the picture, no blue block behind it. */
+:root[data-skin='lcars'] button.media-open,
+:root[data-skin='lcars'] button.media-open:hover { background: transparent; width: fit-content; }
 /* Icon buttons stay quiet: a blue glyph on black that lights up on hover. */
 :root[data-skin='lcars'] button.icon { background: transparent; color: #4a9ee8; }
 :root[data-skin='lcars'] button.icon:hover { background: #16273d; color: #cdd6ff; }
