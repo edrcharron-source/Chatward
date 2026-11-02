@@ -2,7 +2,7 @@
 # Dynamic DNS for the home server: points the Cloudflare A record for $DOMAIN at the home's current public IP.
 # Runs every 5 minutes from chatward-ddns.timer (install.sh sets it up). Safe to run by hand: ./ddns-update.sh
 # Needs CF_API_TOKEN (Zone > DNS > Edit on the zone only) and DOMAIN in .env. The zone defaults to the last two labels
-# of DOMAIN (chat.lebserver.com -> lebserver.com); set CF_ZONE in .env to override.
+# of DOMAIN (chat.example.com -> example.com); set CF_ZONE in .env to override.
 # The record is DNS only (not proxied): Cloudflare's proxy does not carry voice and video.
 # When the IP changes, LiveKit is restarted, since it reads the public IP only at startup.
 set -Eeuo pipefail

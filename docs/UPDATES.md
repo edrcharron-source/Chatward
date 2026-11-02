@@ -22,7 +22,7 @@ Voice, video and screen share use LiveKit, which signs every call with a key pai
 ## Server setup: sign-up codes
 Every account, the first one included, is made with a one-time sign-up code from the `chatward` admin command on the
 server. The first account made with a code owns the server, so make that one yourself before you share the address.
-- **Home server (lebserver):** `chatward invite` (see docs/HOME_SERVER.md, section 4).
+- **Home server:** `chatward invite` (see docs/HOME_SERVER.md, section 4).
 - **Windows test server:** open a terminal in the `chatward-server` folder and run `chatward invite`.
 - **Linux server (Lightsail):** `docker compose -f deploy/docker-compose.yml exec server node packages/server/dist/cli.js invite`.
 

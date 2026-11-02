@@ -1,10 +1,10 @@
-# Home server profile (lebserver): Chatward on a home Ubuntu box, reachable from the internet at https://$DOMAIN.
+# Home server profile: Chatward on a home Ubuntu box, reachable from the internet at https://$DOMAIN.
 # Setup: docs/HOME_SERVER.md. First install: sudo ./install.sh. Updates: ./update-home.sh vX.Y.Z.
 # Differences from the cloud profile (deploy/docker-compose.yml):
-#  - Caddy gets its certificate by Cloudflare DNS-01, so port 80 stays with the host's nginx (Pelican panel).
-#  - Caddy publishes 443 on the LAN address only. The Node server publishes no host port (lebai owns 3000 on the host).
+#  - Caddy gets its certificate by Cloudflare DNS-01, so port 80 stays free for whatever else the host runs.
+#  - Caddy publishes 443 on the LAN address only. The Node server publishes no host port.
 #  - Data lives in bind mounts: database on the NVMe, uploads on the RAID, so backups are plain file copies.
-#  - CPU and memory caps, so a busy call and the box's other services (Ollama, Jellyfin, game servers) leave each other room.
+#  - CPU and memory caps, so a busy call and the box's other services leave each other room.
 name: chatward
 x-logging: &logging
   driver: journald

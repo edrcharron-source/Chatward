@@ -1,6 +1,6 @@
 // The `chatward` command on the server talks to the running server through a socket file in the data folder. It is
 // not a network port, so nothing outside the machine can reach it, and the file is readable only by the server's own
-// user. Anyone who can run commands in the server container can use it; on lebserver that means SSH plus Docker.
+// user. Anyone who can run commands in the server container can use it; on a home server that means SSH plus Docker.
 import fs from 'node:fs';
 import http from 'node:http';
 import express from 'express';

@@ -139,5 +139,5 @@ MSG
 if command -v ufw >/dev/null; then ufw status verbose | sed 's/^/      /'; else echo "      (ufw not installed)"; fi
 cat <<'MSG'
     If ufw is active, add:  sudo ufw allow 443/tcp && sudo ufw allow 7881/tcp && sudo ufw allow 7882/udp
-    If it is inactive, leave it: turning it on with a default deny would cut off Samba, Jellyfin and the game servers.
+    If it is inactive, leave it: turning it on with a default deny would cut off the box's other services. See docs/UFW.md first.
 MSG
