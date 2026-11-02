@@ -32,6 +32,7 @@ import UpdateRequired from './components/updates/UpdateRequired';
 import PoweredBy from './components/brand/PoweredBy';
 import { TitleBar } from './components/titlebar/TitleBar';
 import { checkServerVersion, useUpdates } from './state/updates';
+import MediaContextMenu from './components/media/MediaContextMenu';
 
 export function App() {
   const token = useSession((s) => s.token);
@@ -52,6 +53,7 @@ export function App() {
   return (
     <div className="cw-app">
       <TitleBar />
+      <MediaContextMenu />
       <UpdateBanner />
       <DeviceAlertBanner />
       <DemoBanner />

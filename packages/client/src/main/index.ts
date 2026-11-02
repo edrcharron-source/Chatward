@@ -2,6 +2,7 @@ import { app, BrowserWindow, dialog, ipcMain, net, protocol, safeStorage, deskto
 import { join, normalize, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync, renameSync } from 'node:fs';
+import { copyGifLink, copyImage, fetchGif } from './copyImage';
 import { fetchLinkPreview } from './linkPreview';
 import { searchGifs } from './klipy';
 import { connectSpotify, disconnectSpotify, nowPlaying, pausePlayback, playTrack, resolveJamLink, spotifyStatus, type TokenStore } from './spotify';
@@ -270,6 +271,13 @@ app.whenReady().then(() => {
   ipcMain.handle('spotify:play', (_e, url: string, positionMs: number) => playTrack(spotifyStore, String(url ?? ''), Number(positionMs)));
   ipcMain.handle('spotify:pause', () => pausePlayback(spotifyStore));
   ipcMain.handle('spotify:resolve-jam', (_e, url: string) => resolveJamLink(String(url ?? '')));
+  // Right-click "Copy image" on chat pictures. Only the app's own windows may write the clipboard this way.
+  const fromApp = (e: Electron.IpcMainInvokeEvent) => {
+    if (!appWindowContents.has(e.sender)) throw new Error('Not allowed.');
+  };
+  ipcMain.handle('clipboard:copy-image', (e, req: unknown) => { fromApp(e); return copyImage(req); });
+  ipcMain.handle('clipboard:copy-gif-link', (e, url: unknown) => { fromApp(e); return copyGifLink(url); });
+  ipcMain.handle('media:fetch-gif', (e, url: unknown) => { fromApp(e); return fetchGif(url); });
   ipcMain.handle('screen:sources', async () => {
     const sources = await desktopCapturer.getSources({ types: ['screen', 'window'], thumbnailSize: { width: 320, height: 180 }, fetchWindowIcons: true });
     return sources.map((s) => ({ id: s.id, name: s.name, thumbnail: s.thumbnail.toDataURL(), appIcon: s.appIcon?.toDataURL() ?? null, isScreen: s.id.startsWith('screen:') }));
