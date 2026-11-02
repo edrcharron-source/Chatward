@@ -128,6 +128,8 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTes
   const voice = bundle?.channels.find((c) => c.kind === 'voice');
   const members = (bundle?.members ?? []) as Member[];
   const me = members.find((m) => m.user.id === user?.id);
+  // Server settings only has controls for the owner and admins, so regular members don't get the button
+  const canOpenServerSettings = !!bundle && isAdmin(me);
   const isPopped = (t: TabId) => popped.includes(t);
   const textUnread = text ? unread[text.id] ?? 0 : 0;
 
@@ -307,7 +309,7 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTes
         onToggleSplit={() => setSplit((s) => !s)}
         membersToggle={theaterKey !== null ? { hidden: membersHidden, toggle: () => setMembersHidden((h) => !h) } : null}
         onOpenTest={onOpenTest}
-        onOpenServerSettings={bundle ? () => setServerSettingsOpen(true) : null}
+        onOpenServerSettings={canOpenServerSettings ? () => setServerSettingsOpen(true) : null}
         onOpenSettings={onOpenSettings}
         onJoinVoice={joinVoice ?? null}
         windows={windows}
@@ -334,7 +336,7 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTes
           <button type="button" className="icon cw-tool-icon" title="Feature test console (Ctrl+Shift+T)" aria-label="Feature test console" onClick={onOpenTest}>
             <PixelIcon name="test" size={16} />
           </button>
-          {bundle && (
+          {canOpenServerSettings && (
             <button type="button" className="cw-tool" title="Server settings" aria-label="Server settings" onClick={() => setServerSettingsOpen(true)}>
               <PixelIcon name="gear" size={14} />
               <span>Server</span>
