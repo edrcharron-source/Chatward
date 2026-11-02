@@ -72,7 +72,7 @@ export default function ChannelList({ onOpenSettings, onReload }: { onOpenSettin
         {bundle && (
           <div className="cw-head-actions">
             {admin && <button type="button" className="icon" title="Create channel" aria-label="Create channel" onClick={() => setDialog('channel')}>＋</button>}
-            <button type="button" className="icon" title="Server settings" aria-label="Server settings" onClick={() => setDialog('server')}>⚙</button>
+            {admin && <button type="button" className="icon" title="Server settings" aria-label="Server settings" onClick={() => setDialog('server')}>⚙</button>}
           </div>
         )}
       </header>
