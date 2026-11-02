@@ -7,7 +7,7 @@ import { searchGifs } from './klipy';
 import { connectSpotify, disconnectSpotify, nowPlaying, pausePlayback, playTrack, resolveJamLink, spotifyStatus, type TokenStore } from './spotify';
 import { setupUpdater } from './updater';
 import { APP_ORIGIN, buildCsp, loadServerOrigin, saveServerOrigin, serverOrigin } from './serverPolicy';
-import { fitWindow } from './windowBounds';
+import { fitWindow, roundedShape, type CornerRadii } from './windowBounds';
 
 // The page is served from app:// (not file://) so its Content-Security-Policy header can name the server.
 protocol.registerSchemesAsPrivileged([{ scheme: 'app', privileges: { standard: true, secure: true, corsEnabled: true } }]);
@@ -118,6 +118,28 @@ function controlledWindow(sender: Electron.WebContents, target: unknown): Browse
   return BrowserWindow.fromWebContents(sender);
 }
 
+/** The corner radii each window's page asked for with window:shape, or null for a plain rectangle. */
+const windowShapes = new WeakMap<BrowserWindow, CornerRadii | null>();
+
+function parseRadii(value: unknown): CornerRadii | null {
+  if (!value || typeof value !== 'object') return null;
+  const v = value as Record<string, unknown>;
+  const num = (x: unknown) => (typeof x === 'number' && Number.isFinite(x) ? Math.max(0, Math.min(x, 400)) : 0);
+  const radii = { topLeft: num(v.topLeft), topRight: num(v.topRight), bottomLeft: num(v.bottomLeft), bottomRight: num(v.bottomRight) };
+  return radii.topLeft || radii.topRight || radii.bottomLeft || radii.bottomRight ? radii : null;
+}
+
+/** Shapes the window to its page's frame. Maximized or full screen it stays a rectangle, so it fills the screen. */
+function applyWindowShape(win: BrowserWindow): void {
+  if (process.platform === 'darwin' || win.isDestroyed()) return;
+  const radii = windowShapes.get(win) ?? null;
+  try {
+    if (!radii || win.isMaximized() || win.isFullScreen()) { win.setShape([]); return; }
+    const { width, height } = win.getBounds();
+    win.setShape(roundedShape(width, height, radii));
+  } catch { /* shaping is a nicety; a window that cannot take it stays a rectangle */ }
+}
+
 function createWindow() {
   // Fit to the primary display's work area so the bottom edge is not hidden behind the taskbar on small or scaled screens.
   const bounds = fitWindow(screen.getPrimaryDisplay().workArea, { width: 1280, height: 800, minWidth: 900, minHeight: 600 });
@@ -140,6 +162,13 @@ function createWindow() {
   appWindowContents.add(win.webContents);
   // Once the user looks at the window, the taskbar flash has done its job, so stop it.
   win.on('focus', () => win.flashFrame(false));
+  // The LCARS frame asks for a window shaped like its sweeps (see window:shape below); keep it fitted as the size changes.
+  const reshape = () => applyWindowShape(win);
+  win.on('resize', reshape);
+  win.on('maximize', reshape);
+  win.on('unmaximize', reshape);
+  win.on('enter-full-screen', reshape);
+  win.on('leave-full-screen', reshape);
   // Child windows (the watch-party pop-out) don't inherit the handlers above, so guard them too.
   // They live on this window's page, so they close with it.
   win.webContents.on('did-create-window', (child, { frameName }) => {
@@ -247,6 +276,14 @@ app.whenReady().then(() => {
     if (action === 'minimize') win.minimize();
     else if (action === 'maximize') { if (win.isMaximized()) win.unmaximize(); else win.maximize(); }
     else if (action === 'close') win.close();
+  });
+  // A frame that is not a rectangle (the LCARS layout's sweeps) asks for the window to take its outline, so nothing of the
+  // window shows past it. null puts the usual rectangle back. Windows and Linux only: macOS cannot shape a window.
+  ipcMain.on('window:shape', (e, radii: unknown) => {
+    const win = BrowserWindow.fromWebContents(e.sender);
+    if (!win || win.webContents !== e.sender) return;
+    windowShapes.set(win, parseRadii(radii));
+    applyWindowShape(win);
   });
   ipcMain.handle('window:maximized', (e, target: unknown) => controlledWindow(e.sender, target)?.isMaximized() ?? false);
 

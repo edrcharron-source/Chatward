@@ -7,8 +7,10 @@
    header 17, data 14. 12px between the frame and the content.
    The frame has its own colours so it reads the same under any skin; the LCARS skin dresses the content inside. */
 
-/* The frame is the window's title bar while it is on screen. */
-.cw-app:has(> .cw-app-body [data-layout='lcars']) > .cw-titlebar { display: none; }
+/* The frame is the window's title bar while it is on screen, and the window takes its outline, so nothing may sit
+   outside it: the "powered by" strip under the window moves into the rail (.lcars-powered). */
+.cw-app:has(> .cw-app-body [data-layout='lcars']) > .cw-titlebar,
+.cw-app:has(> .cw-app-body [data-layout='lcars']) > .cw-powered { display: none; }
 
 .lcars-shell {
   --lc-frame: #4a9ee8; --lc-live: #f5a54a; --lc-alert: #e5484d; --lc-text: #cdd6ff;
@@ -38,7 +40,9 @@
 :root .lcars-shell button.lcars-seg.danger { background: var(--lc-alert); color: #000; }
 :root .lcars-shell button.lcars-seg:disabled { background: #2a4a6b; color: #000; cursor: not-allowed; }
 :root .lcars-shell button.lcars-seg:focus-visible { outline: 2px solid var(--lc-text); outline-offset: -2px; }
-.lcars-shell .lcars-end { border-radius: 0 999px 999px 0; padding-right: 16px; min-width: 66px; }
+/* A free end of a bar is a half circle, like the mockup's Close and Leave. The :root keeps it ahead of the square
+   corners every segment gets above. The window's corner follows this curve (useFrameShape in LcarsLayout.tsx). */
+:root .lcars-shell .lcars-seg.lcars-end { border-radius: 0 999px 999px 0; padding-right: 16px; min-width: 66px; }
 
 /* The left rail: elbows, the tabs, a filler, then Server settings and Settings. */
 .lcars-rail { grid-area: rail; display: flex; flex-direction: column; gap: var(--lc-gap); min-height: 0; position: relative; z-index: 1; }
@@ -57,7 +61,11 @@
   bottom: var(--lc-bottom);
   background: radial-gradient(circle at 100% 0, transparent calc(var(--lc-inner) - .5px), var(--lc-frame) var(--lc-inner));
 }
-.lcars-rail-fill { flex: 1 1 0; min-height: 6px; background: var(--lc-frame); }
+.lcars-rail-fill {
+  flex: 1 1 0; min-height: 6px; overflow: hidden; display: flex; align-items: flex-end; justify-content: flex-end;
+  padding: 0 8px 4px; background: var(--lc-frame);
+}
+.lcars-powered { color: #000; font: 600 11px/1 var(--lc-font); letter-spacing: .1em; text-transform: uppercase; white-space: nowrap; }
 .lcars-rail .lcars-rail-seg { height: 56px; flex: 0 1 56px; min-height: 34px; width: 100%; }
 
 /* The tabs are the same elements as the tabs layout's, laid down the rail. */
@@ -80,7 +88,19 @@
   order: -1; align-self: center; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 11px;
   background: var(--lc-alert); color: #000; font: 600 14px/22px var(--lc-font); text-align: center;
 }
-.lcars-rail .cw-tab-live { order: -1; align-self: center; width: 10px; height: 10px; border-radius: 50%; background: #000; }
+/* In the call: a black chip with amber words (amber means live), cut into the Voice segment like a readout. */
+.lcars-rail .cw-tab-live {
+  order: -1; margin-right: auto; flex: none; display: inline-flex; align-items: center; width: auto; height: 16px; padding: 0 7px 0 6px;
+  border-radius: 8px; background: #000; color: var(--lc-live);
+  font: 600 11px/1 var(--lc-font); letter-spacing: .1em; text-transform: uppercase;
+}
+.lcars-rail .cw-tab-live::before {
+  content: ''; width: 6px; height: 6px; margin-right: 5px; border-radius: 50%; background: var(--lc-live);
+  animation: lcars-live 1.6s ease-in-out infinite;
+}
+.lcars-rail .cw-tab-live::after { content: 'In call'; }
+@keyframes lcars-live { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .lcars-rail .cw-tab-live::before { animation: none; } }
 .lcars-rail .cw-tab-pop {
   flex: none; width: 28px; padding: 0 0 5px; display: flex; align-items: flex-end; justify-content: center;
   border: 0; border-radius: 0; box-shadow: none; background: var(--lc-frame); color: #000;
