@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type DragEvent, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react';
 import type { Member } from '@chatward/shared';
 import { useSession, type ServerBundle } from '../../state/session';
 import { useSettings } from '../../state/settings';
@@ -15,9 +15,10 @@ import Avatar from '../servers/Avatar';
 import { isAdmin } from '../servers/util';
 import PixelIcon, { type PixelIconName } from '../icons/PixelIcon';
 import { PopoutWindow } from './PopoutWindow';
+import LcarsLayout from '../lcars/LcarsLayout';
 import './tabs.css';
 
-type TabId = 'text' | 'voice' | 'watch' | 'vault';
+export type TabId = 'text' | 'voice' | 'watch' | 'vault';
 
 const TABS: Array<{ id: TabId; label: string; icon: PixelIconName }> = [
   { id: 'text', label: 'Text', icon: 'text' },
@@ -44,13 +45,17 @@ const clampSplit = (r: number) => Math.min(MAX_SPLIT, Math.max(MIN_SPLIT, r));
  * The tabs layout: no channel sidebar. The server's first text channel and first voice channel are its one text chat and
  * one voice chat, reached by the tab bar along with the watch party and the vault. Text and voice can sit side by side,
  * and any tab can be popped out into its own window.
+ *
+ * `frame="lcars"` draws the same tabs, panes and controls inside the LCARS frame (components/lcars) instead: the tabs
+ * run down a left rail, the window buttons sit in the top bar and the call controls in the bottom bar.
  */
-export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTest, onOpenMovies }: {
+export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTest, onOpenMovies, frame }: {
   bundle: ServerBundle | undefined;
   onOpenSettings: () => void;
   onReload: () => Promise<void>;
   onOpenTest: () => void;
   onOpenMovies: (() => void) | null;
+  frame?: 'lcars';
 }) {
   const user = useSession((s) => s.user);
   const myStatus = useSession((s) => s.myStatus);
@@ -72,6 +77,8 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTes
   // where a dragged tab would land: the tab it would go before (null = the end), shown as a marker in the bar
   const [dropBefore, setDropBefore] = useState<TabId | null | undefined>(undefined);
   const tabNav = useRef<HTMLElement>(null);
+  // the LCARS rail stacks the tabs top to bottom, so a drop lands above or below a tab rather than left or right of it
+  const vertical = frame === 'lcars';
   // the split view's two tabs sit in the tab bar's order
   const at = (t: TabId) => tabs.findIndex((x) => x.id === t);
   const [leftTab, rightTab] = at(recent[0]) < at(recent[1]) ? recent : [recent[1], recent[0]];
@@ -94,8 +101,9 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTes
       const r = el.getBoundingClientRect();
       const dx = x < r.left ? r.left - x : x > r.right ? x - r.right : 0;
       const dy = y < r.top ? r.top - y : y > r.bottom ? y - r.bottom : 0;
-      const d = dx * dx + dy * dy * 4; // prefer the row the pointer is on when the tabs wrap
-      if (!best || d < best.d) best = { id: el.dataset.tab as TabId, after: x > r.left + r.width / 2, d };
+      const d = vertical ? dx * dx * 4 + dy * dy : dx * dx + dy * dy * 4; // prefer the row the pointer is on when the tabs wrap
+      const after = vertical ? y > r.top + r.height / 2 : x > r.left + r.width / 2;
+      if (!best || d < best.d) best = { id: el.dataset.tab as TabId, after, d };
     }
     if (!best) return undefined;
     const ids = tabs.map((t) => t.id);
@@ -120,6 +128,8 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTes
   const voice = bundle?.channels.find((c) => c.kind === 'voice');
   const members = (bundle?.members ?? []) as Member[];
   const me = members.find((m) => m.user.id === user?.id);
+  // Server settings only has controls for the owner and admins, so regular members don't get the button
+  const canOpenServerSettings = !!bundle && isAdmin(me);
   const isPopped = (t: TabId) => popped.includes(t);
   const textUnread = text ? unread[text.id] ?? 0 : 0;
 
@@ -195,68 +205,123 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTes
     setSplit(false);
   }
 
+  const dropArea = {
+    onDragOver: (e: DragEvent<HTMLElement>) => {
+      if (!dragging) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      const spot = dropSpot(e.clientX, e.clientY);
+      if (spot !== dropBefore) setDropBefore(spot);
+    },
+    onDragLeave: (e: DragEvent<HTMLElement>) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDropBefore(undefined); },
+    onDrop: (e: DragEvent<HTMLElement>) => {
+      if (!dragging) return;
+      e.preventDefault();
+      const spot = dropSpot(e.clientX, e.clientY);
+      if (spot !== undefined) moveTab(dragging, spot);
+      endDrag();
+    },
+  };
+  const back = vertical ? 'ArrowUp' : 'ArrowLeft';
+  const ahead = vertical ? 'ArrowDown' : 'ArrowRight';
+
+  const nav = (
+    <nav className="cw-tabs" aria-label="Views" ref={tabNav}>
+      {tabs.map((t) => (
+        <span
+          key={t.id}
+          data-tab={t.id}
+          className={`cw-tab${shownTabs.has(t.id) ? ' active' : ''}${dragging === t.id ? ' dragging' : ''}${dropBefore === t.id ? ' drop-before' : ''}${dropBefore === null && t.id === tabs[tabs.length - 1].id ? ' drop-after' : ''}`}
+          draggable
+          title={`Shift+click to show beside the open tab. Drag to reorder (or Alt + ${vertical ? 'up/down' : 'arrow'} keys)`}
+          onDragStart={(e) => { setDragging(t.id); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', t.id); }}
+          onDragEnd={endDrag}
+        >
+          <button type="button" className="cw-tab-main" aria-current={shownTabs.has(t.id) ? 'page' : undefined}
+            aria-keyshortcuts={`Alt+${back} Alt+${ahead}`}
+            onClick={(e) => selectTab(t.id, e.shiftKey)}
+            onKeyDown={(e) => {
+              if (!e.altKey || (e.key !== back && e.key !== ahead)) return;
+              e.preventDefault();
+              nudgeTab(t.id, e.key === back ? -1 : 1);
+            }}>
+            <span aria-hidden="true">[</span>
+            <PixelIcon name={t.icon} size={14} />
+            <span>{t.label}</span>
+            {t.id === 'text' && textUnread > 0 && !textOnScreen && (
+              <span className="cw-badge" aria-label={`${textUnread} unread`}>{textUnread > 99 ? '99+' : textUnread}</span>
+            )}
+            {t.id === 'voice' && callChannelId && callChannelId === voice?.id && <span className="cw-tab-live" aria-label="You are in the call" />}
+            <span aria-hidden="true">]</span>
+          </button>
+          <button type="button" className="icon cw-tab-pop" title={isPopped(t.id) ? `Bring ${t.label} back` : `Pop out ${t.label}`}
+            aria-label={isPopped(t.id) ? `Bring ${t.label} back` : `Pop out ${t.label}`}
+            onClick={() => (isPopped(t.id) ? bringBack(t.id) : popOut(t.id))}>
+            <PixelIcon name={isPopped(t.id) ? 'close' : 'popout'} size={10} />
+          </button>
+        </span>
+      ))}
+      {onOpenMovies && (
+        <span className="cw-tab">
+          <button type="button" className="cw-tab-main" title="Browse the Jellyfin library" onClick={onOpenMovies}>
+            <span aria-hidden="true">[</span><PixelIcon name="movies" size={14} /><span>Movies</span><span aria-hidden="true">]</span>
+          </button>
+        </span>
+      )}
+    </nav>
+  );
+
+  const main = (
+    <main className="cw-tabs-main" data-region="main">
+      {split
+        ? <SideBySide
+            left={{ id: leftTab, label: label(leftTab), node: slot(leftTab) }}
+            right={{ id: rightTab, label: label(rightTab), node: slot(rightTab) }}
+          />
+        : <div className="cw-tab-pane">{slot(tab)}</div>}
+    </main>
+  );
+
+  const showMembers = !!bundle && !(theaterKey !== null && membersHidden);
+
+  const windows = (
+    <>
+      {popped.map((t) => (
+        <PopoutWindow key={t} id={t} title={`Chatward · ${label(t)}`} onClose={() => bringBack(t)}>
+          {pane(t)}
+        </PopoutWindow>
+      ))}
+      {serverSettingsOpen && serverId && (
+        <ServerSettingsDialog serverId={serverId} onClose={() => setServerSettingsOpen(false)} onReload={onReload} />
+      )}
+    </>
+  );
+
+  if (frame === 'lcars') {
+    return (
+      <LcarsLayout
+        serverName={bundle?.server.name ?? 'Chatward'}
+        nav={nav}
+        dropArea={dropArea}
+        main={main}
+        members={showMembers && bundle ? <MemberList serverId={bundle.server.id} members={members} /> : null}
+        split={split}
+        onToggleSplit={() => setSplit((s) => !s)}
+        membersToggle={theaterKey !== null ? { hidden: membersHidden, toggle: () => setMembersHidden((h) => !h) } : null}
+        onOpenTest={onOpenTest}
+        onOpenServerSettings={canOpenServerSettings ? () => setServerSettingsOpen(true) : null}
+        onOpenSettings={onOpenSettings}
+        onJoinVoice={joinVoice ?? null}
+        windows={windows}
+      />
+    );
+  }
+
   return (
     <div className="cw-tabs-shell" data-region="shell" data-layout="tabs">
-      <header className="cw-tabs-bar" data-region="tabs"
-        onDragOver={(e) => {
-          if (!dragging) return;
-          e.preventDefault();
-          e.dataTransfer.dropEffect = 'move';
-          const spot = dropSpot(e.clientX, e.clientY);
-          if (spot !== dropBefore) setDropBefore(spot);
-        }}
-        onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDropBefore(undefined); }}
-        onDrop={(e) => {
-          if (!dragging) return;
-          e.preventDefault();
-          const spot = dropSpot(e.clientX, e.clientY);
-          if (spot !== undefined) moveTab(dragging, spot);
-          endDrag();
-        }}>
+      <header className="cw-tabs-bar" data-region="tabs" {...dropArea}>
         <strong className="cw-tabs-server">{bundle?.server.name ?? 'Chatward'}</strong>
-        <nav className="cw-tabs" aria-label="Views" ref={tabNav}>
-          {tabs.map((t) => (
-            <span
-              key={t.id}
-              data-tab={t.id}
-              className={`cw-tab${shownTabs.has(t.id) ? ' active' : ''}${dragging === t.id ? ' dragging' : ''}${dropBefore === t.id ? ' drop-before' : ''}${dropBefore === null && t.id === tabs[tabs.length - 1].id ? ' drop-after' : ''}`}
-              draggable
-              title="Shift+click to show beside the open tab. Drag to reorder (or Alt + arrow keys)"
-              onDragStart={(e) => { setDragging(t.id); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', t.id); }}
-              onDragEnd={endDrag}
-            >
-              <button type="button" className="cw-tab-main" aria-current={shownTabs.has(t.id) ? 'page' : undefined}
-                aria-keyshortcuts="Alt+ArrowLeft Alt+ArrowRight"
-                onClick={(e) => selectTab(t.id, e.shiftKey)}
-                onKeyDown={(e) => {
-                  if (!e.altKey || (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight')) return;
-                  e.preventDefault();
-                  nudgeTab(t.id, e.key === 'ArrowLeft' ? -1 : 1);
-                }}>
-                <span aria-hidden="true">[</span>
-                <PixelIcon name={t.icon} size={14} />
-                <span>{t.label}</span>
-                {t.id === 'text' && textUnread > 0 && !textOnScreen && (
-                  <span className="cw-badge" aria-label={`${textUnread} unread`}>{textUnread > 99 ? '99+' : textUnread}</span>
-                )}
-                {t.id === 'voice' && callChannelId && callChannelId === voice?.id && <span className="cw-tab-live" aria-label="You are in the call" />}
-                <span aria-hidden="true">]</span>
-              </button>
-              <button type="button" className="icon cw-tab-pop" title={isPopped(t.id) ? `Bring ${t.label} back` : `Pop out ${t.label}`}
-                aria-label={isPopped(t.id) ? `Bring ${t.label} back` : `Pop out ${t.label}`}
-                onClick={() => (isPopped(t.id) ? bringBack(t.id) : popOut(t.id))}>
-                <PixelIcon name={isPopped(t.id) ? 'close' : 'popout'} size={10} />
-              </button>
-            </span>
-          ))}
-          {onOpenMovies && (
-            <span className="cw-tab">
-              <button type="button" className="cw-tab-main" title="Browse the Jellyfin library" onClick={onOpenMovies}>
-                <span aria-hidden="true">[</span><PixelIcon name="movies" size={14} /><span>Movies</span><span aria-hidden="true">]</span>
-              </button>
-            </span>
-          )}
-        </nav>
+        {nav}
         <div className="cw-tabs-tools">
           <button type="button" className={`cw-tool${split ? ' active' : ''}`} aria-pressed={split}
             title="Show the open tab beside the one before it (or Shift+click a tab; Shift+click a split tab to close it)" onClick={() => setSplit((s) => !s)}>
@@ -271,7 +336,7 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTes
           <button type="button" className="icon cw-tool-icon" title="Feature test console (Ctrl+Shift+T)" aria-label="Feature test console" onClick={onOpenTest}>
             <PixelIcon name="test" size={16} />
           </button>
-          {bundle && (
+          {canOpenServerSettings && (
             <button type="button" className="cw-tool" title="Server settings" aria-label="Server settings" onClick={() => setServerSettingsOpen(true)}>
               <PixelIcon name="gear" size={14} />
               <span>Server</span>
@@ -283,18 +348,11 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTes
         </div>
       </header>
 
-      <main className="cw-tabs-main" data-region="main">
-        {split
-          ? <SideBySide
-              left={{ id: leftTab, label: label(leftTab), node: slot(leftTab) }}
-              right={{ id: rightTab, label: label(rightTab), node: slot(rightTab) }}
-            />
-          : <div className="cw-tab-pane">{slot(tab)}</div>}
-      </main>
+      {main}
 
       {/* the right column: members on top, and your status and call controls in the bottom corner */}
       <div className="cw-tabs-side" data-region="side">
-        {bundle && !(theaterKey !== null && membersHidden) && <MemberList serverId={bundle.server.id} members={members} />}
+        {showMembers && bundle && <MemberList serverId={bundle.server.id} members={members} />}
         <section className="cw-me" aria-label="You">
           <div className="cw-me-head">
             {user && (
@@ -310,14 +368,7 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTes
         </section>
       </div>
 
-      {popped.map((t) => (
-        <PopoutWindow key={t} id={t} title={`Chatward · ${label(t)}`} onClose={() => bringBack(t)}>
-          {pane(t)}
-        </PopoutWindow>
-      ))}
-      {serverSettingsOpen && serverId && (
-        <ServerSettingsDialog serverId={serverId} onClose={() => setServerSettingsOpen(false)} onReload={onReload} />
-      )}
+      {windows}
     </div>
   );
 }

@@ -17,21 +17,29 @@
   --radius: 0; --radius-sm: 0; --radius-modal: 0;
   --overlay-bg: rgba(5, 5, 5, .8); --backdrop: rgba(0, 0, 0, .78);
   --danger-text: #050505;
+  /* The skin's own colours, so the light version (below) can swap them all in one place. */
+  --lb-ground: #030303; --lb-ink: #050505; --lb-panel: #0b0b0b; --lb-composer: #070707;
+  --lb-tab: #0a0a0a; --lb-tab-active: #0b1118; --lb-btn-text: #a8a8a8; --lb-btn-hover: #1c1c1c; --lb-titlebar-hover: #141414;
+  --lb-line: #3a3a3a; --lb-line-hover: #707070; --lb-disabled: #5a5a5a; --lb-hard-shadow: #1a1a1a; --lb-divider: #1e1e1e;
+  --lb-peach: #f2a48c; --lb-yellow: #f3d58c; --lb-time: #7a7a7a; --lb-role-line: #4a4128; --lb-danger-line: #6b3a33;
+  --lb-yellow-tint: rgba(243, 213, 140, .06); --lb-accent-soft: rgba(141, 184, 230, .25); --lb-danger-tint: rgba(240, 133, 122, .12);
+  --lb-fade: linear-gradient(180deg, #f6e4a4 0%, #f3b88e 55%, #f0907f 100%);
+  --lb-star: #6a6a6a; --lb-star-dim: #4a4a4a;
   --font-body: 'JetBrains Mono', 'Cascadia Mono', Consolas, ui-monospace, monospace;
   --font-code: var(--font-body); --font-digits: var(--font-body);
 }
 
 /* The starfield sits on the window, under every panel. */
-:root[data-skin='lebserver'] body { background: #030303; }
+:root[data-skin='lebserver'] body { background: var(--lb-ground); }
 :root[data-skin='lebserver'] #root {
-  background-color: #030303;
+  background-color: var(--lb-ground);
   background-image:
-    radial-gradient(1px 1px at 7% 12%, #6a6a6a 50%, transparent 51%),
-    radial-gradient(1px 1px at 31% 64%, #4a4a4a 50%, transparent 51%),
-    radial-gradient(1px 1px at 58% 27%, #5a5a5a 50%, transparent 51%),
-    radial-gradient(1px 1px at 83% 81%, #6a6a6a 50%, transparent 51%),
-    radial-gradient(1.5px 1.5px at 92% 18%, #7a7a7a 50%, transparent 51%),
-    radial-gradient(1px 1px at 44% 92%, #444 50%, transparent 51%);
+    radial-gradient(1px 1px at 7% 12%, var(--lb-star) 50%, transparent 51%),
+    radial-gradient(1px 1px at 31% 64%, var(--lb-star-dim) 50%, transparent 51%),
+    radial-gradient(1px 1px at 58% 27%, var(--lb-star) 50%, transparent 51%),
+    radial-gradient(1px 1px at 83% 81%, var(--lb-star) 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 92% 18%, var(--lb-star) 50%, transparent 51%),
+    radial-gradient(1px 1px at 44% 92%, var(--lb-star-dim) 50%, transparent 51%);
   background-size: 520px 380px;
 }
 
@@ -42,30 +50,30 @@
 :root[data-skin='lebserver'] .profile-avatar,
 :root[data-skin='lebserver'] .profile-trigger:has(> .avatar:only-child) { border-radius: 50%; }
 :root[data-skin='lebserver'] ::selection { background: var(--accent); color: var(--accent-text); }
-:root[data-skin='lebserver'] ::-webkit-scrollbar-thumb { background: #2e2e2e; }
+:root[data-skin='lebserver'] ::-webkit-scrollbar-thumb { background: var(--border); }
 
 /* Buttons are outlined like lebserver's [ nav ] buttons. An inset shadow draws the outline, so no box gains a pixel. */
-:root[data-skin='lebserver'] button { background: transparent; color: #a8a8a8; box-shadow: inset 0 0 0 1px #3a3a3a; }
-:root[data-skin='lebserver'] button:hover { color: var(--text-strong); box-shadow: inset 0 0 0 1px #707070; background: transparent; }
+:root[data-skin='lebserver'] button { background: transparent; color: var(--lb-btn-text); box-shadow: inset 0 0 0 1px var(--lb-line); }
+:root[data-skin='lebserver'] button:hover { color: var(--text-strong); box-shadow: inset 0 0 0 1px var(--lb-line-hover); background: transparent; }
 :root[data-skin='lebserver'] button.icon { box-shadow: none; }
-:root[data-skin='lebserver'] button.icon:hover { box-shadow: inset 0 0 0 1px #3a3a3a; }
-:root[data-skin='lebserver'] button.primary { background: transparent; color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent), inset 0 0 0 2px rgba(141, 184, 230, .25); }
+:root[data-skin='lebserver'] button.icon:hover { box-shadow: inset 0 0 0 1px var(--lb-line); }
+:root[data-skin='lebserver'] button.primary { background: transparent; color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent), inset 0 0 0 2px var(--lb-accent-soft); }
 :root[data-skin='lebserver'] button.primary:hover { background: var(--accent-tint); }
-:root[data-skin='lebserver'] button.danger { background: transparent; color: var(--danger); box-shadow: inset 0 0 0 1px #6b3a33; }
-:root[data-skin='lebserver'] button.danger:hover { background: rgba(240, 133, 122, .12); box-shadow: inset 0 0 0 1px var(--danger); }
-:root[data-skin='lebserver'] button:disabled { color: #5a5a5a; }
+:root[data-skin='lebserver'] button.danger { background: transparent; color: var(--danger); box-shadow: inset 0 0 0 1px var(--lb-danger-line); }
+:root[data-skin='lebserver'] button.danger:hover { background: var(--lb-danger-tint); box-shadow: inset 0 0 0 1px var(--danger); }
+:root[data-skin='lebserver'] button:disabled { color: var(--lb-disabled); }
 /* Names and avatars that open a profile are buttons too, but read as text. */
 :root[data-skin='lebserver'] button.profile-trigger,
 :root[data-skin='lebserver'] button.profile-trigger:hover { box-shadow: none; background: transparent; color: inherit; }
 /* The demo banner keeps a solid button so it reads on the banner's colour. */
-:root[data-skin='lebserver'] .cw-demo-banner { background: #f3d58c; color: #050505; }
-:root[data-skin='lebserver'] .cw-demo-banner button { background: #050505; color: #f3d58c; box-shadow: none; }
-:root[data-skin='lebserver'] .cw-demo-banner button:hover { background: #1c1c1c; color: #f3d58c; }
+:root[data-skin='lebserver'] .cw-demo-banner { background: var(--lb-yellow); color: var(--lb-ink); }
+:root[data-skin='lebserver'] .cw-demo-banner button { background: var(--lb-ink); color: var(--lb-yellow); box-shadow: none; }
+:root[data-skin='lebserver'] .cw-demo-banner button:hover { background: var(--lb-btn-hover); color: var(--lb-yellow); }
 
 /* Fields: a black well with a thin rule, blue on focus. Their border is already 1px in the base. */
 :root[data-skin='lebserver'] input:not([type='checkbox']):not([type='radio']):not([type='range']),
 :root[data-skin='lebserver'] textarea,
-:root[data-skin='lebserver'] select { background: #050505; color: var(--text-strong); border-color: #3a3a3a; }
+:root[data-skin='lebserver'] select { background: var(--lb-ink); color: var(--text-strong); border-color: var(--lb-line); }
 :root[data-skin='lebserver'] input:focus,
 :root[data-skin='lebserver'] textarea:focus,
 :root[data-skin='lebserver'] select:focus { border-color: var(--accent); box-shadow: none; }
@@ -84,14 +92,13 @@
 :root[data-skin='lebserver'] .cv-composer { outline: 1px solid var(--border); outline-offset: -1px; }
 :root[data-skin='lebserver'] .modal,
 :root[data-skin='lebserver'] .cv-actions,
-:root[data-skin='lebserver'] .media-popover { background: #0b0b0b; box-shadow: 4px 4px 0 #1a1a1a; }
-:root[data-skin='lebserver'] .cv-composer { background: #070707; }
+:root[data-skin='lebserver'] .media-popover { background: var(--lb-panel); box-shadow: 4px 4px 0 var(--lb-hard-shadow); }
+:root[data-skin='lebserver'] .cv-composer { background: var(--lb-composer); }
 
 /* Section labels read like lebserver's small lowercase captions, with dashed rules under headers. */
 :root[data-skin='lebserver'] .cw-members-title,
 :root[data-skin='lebserver'] .cw-section-title,
-:root[data-skin='lebserver'] .setting-section h3,
-:root[data-skin='lebserver'] .cw-dialog-section h3 { text-transform: lowercase; letter-spacing: .1em; color: var(--text-muted); font-weight: 400; }
+:root[data-skin='lebserver'] .setting-section h3 { text-transform: lowercase; letter-spacing: .1em; color: var(--text-muted); font-weight: 400; }
 :root[data-skin='lebserver'] .cv-header,
 :root[data-skin='lebserver'] .cw-channels-head,
 :root[data-skin='lebserver'] .cw-tabs-bar { border-bottom-style: dashed; }
@@ -99,27 +106,27 @@
 
 /* Accents: names in peach, times dim, the open tab in blue, unread counts and roles in yellow, live dots in mint. */
 :root[data-skin='lebserver'] .cv-name,
-:root[data-skin='lebserver'] button.profile-trigger.cv-name { color: #f2a48c; }
-:root[data-skin='lebserver'] .cv-time { color: #7a7a7a; }
+:root[data-skin='lebserver'] button.profile-trigger.cv-name { color: var(--lb-peach); }
+:root[data-skin='lebserver'] .cv-time { color: var(--lb-time); }
 :root[data-skin='lebserver'] .cv-title,
-:root[data-skin='lebserver'] .cv-hash { color: #f3d58c; }
-:root[data-skin='lebserver'] .cw-badge { background: #f3d58c; color: #050505; }
-:root[data-skin='lebserver'] .cw-role { background: transparent; color: #f3d58c; box-shadow: inset 0 0 0 1px #4a4128; }
-:root[data-skin='lebserver'] .cw-channel.active { color: #f3d58c; background: rgba(243, 213, 140, .06); }
-:root[data-skin='lebserver'] .cw-tab { background: #0a0a0a; border-color: #3a3a3a; }
-:root[data-skin='lebserver'] .cw-tab.active { border-color: var(--accent); background: #0b1118; box-shadow: inset 0 0 0 1px rgba(141, 184, 230, .3); }
+:root[data-skin='lebserver'] .cv-hash { color: var(--lb-yellow); }
+:root[data-skin='lebserver'] .cw-badge { background: var(--lb-yellow); color: var(--lb-ink); }
+:root[data-skin='lebserver'] .cw-role { background: transparent; color: var(--lb-yellow); box-shadow: inset 0 0 0 1px var(--lb-role-line); }
+:root[data-skin='lebserver'] .cw-channel.active { color: var(--lb-yellow); background: var(--lb-yellow-tint); }
+:root[data-skin='lebserver'] .cw-tab { background: var(--lb-tab); border-color: var(--lb-line); }
+:root[data-skin='lebserver'] .cw-tab.active { border-color: var(--accent); background: var(--lb-tab-active); box-shadow: inset 0 0 0 1px var(--lb-accent-soft); }
 :root[data-skin='lebserver'] .cw-tab .cw-tab-main,
 :root[data-skin='lebserver'] .cw-tab .cw-tab-pop { box-shadow: none; }
 :root[data-skin='lebserver'] .cw-tab.active .cw-tab-main { color: var(--accent); }
-:root[data-skin='lebserver'] .cw-tab-pop { border-left-color: #2e2e2e; }
+:root[data-skin='lebserver'] .cw-tab-pop { border-left-color: var(--border); }
 :root[data-skin='lebserver'] .cw-tool.active,
-:root[data-skin='lebserver'] .cw-tool[aria-pressed='true'] { color: var(--accent); background: #0b1118; }
-:root[data-skin='lebserver'] .cw-split-divider { background: #1e1e1e; }
+:root[data-skin='lebserver'] .cw-tool[aria-pressed='true'] { color: var(--accent); background: var(--lb-tab-active); }
+:root[data-skin='lebserver'] .cw-split-divider { background: var(--lb-divider); }
 
 /* The server name in the tab bar gets the lebserver banner's yellow to peach fade. */
 :root[data-skin='lebserver'] .cw-tabs-server,
 :root[data-skin='lebserver'] .cw-channels-head h2 {
-  background: linear-gradient(180deg, #f6e4a4 0%, #f3b88e 55%, #f0907f 100%);
+  background: var(--lb-fade);
   -webkit-background-clip: text; background-clip: text; color: transparent;
   text-transform: uppercase; letter-spacing: .18em; font-weight: 800;
 }
@@ -127,14 +134,14 @@
 /* The title bar: black with a dashed rule under it, the name in the banner fade, and the window buttons in
    [ brackets ] like lebserver's nav. Close turns salmon on hover. */
 :root[data-skin='lebserver'] {
-  --titlebar-bg: #030303; --titlebar-border: #2e2e2e; --titlebar-button-width: 56px; --titlebar-text: #8a8a8a; --titlebar-text-strong: #f0f0f0;
-  --titlebar-mark: #f2a48c; --titlebar-letter-spacing: .18em;
-  --titlebar-button-hover: #141414; --titlebar-close-hover: #f0857a; --titlebar-close-hover-text: #050505;
+  --titlebar-bg: var(--lb-ground); --titlebar-border: var(--border); --titlebar-button-width: 56px; --titlebar-text: var(--text-muted); --titlebar-text-strong: var(--text-strong);
+  --titlebar-mark: var(--lb-peach); --titlebar-letter-spacing: .18em;
+  --titlebar-button-hover: var(--lb-titlebar-hover); --titlebar-close-hover: var(--danger); --titlebar-close-hover-text: var(--lb-ink);
 }
 :root[data-skin='lebserver'] .cw-titlebar { border-bottom-style: dashed; }
 :root[data-skin='lebserver'] .cw-titlebar-mark { border-radius: 0; }
 :root[data-skin='lebserver'] .cw-titlebar-title {
-  background: linear-gradient(180deg, #f6e4a4 0%, #f3b88e 55%, #f0907f 100%);
+  background: var(--lb-fade);
   -webkit-background-clip: text; background-clip: text; color: transparent;
   text-transform: uppercase; font-weight: 800;
 }
@@ -143,3 +150,35 @@
 :root[data-skin='lebserver'] .cw-titlebar .cw-titlebar-button::after { content: ']'; }
 :root[data-skin='lebserver'] .cw-titlebar .cw-titlebar-button:hover { background: var(--titlebar-button-hover); color: var(--titlebar-text-strong); box-shadow: none; }
 :root[data-skin='lebserver'] .cw-titlebar .cw-titlebar-button.close:hover { background: var(--titlebar-close-hover); color: var(--titlebar-close-hover-text); }
+
+/* The light version, used when Settings > Appearance > Theme is Light (or Match system picks light). Same skin, same
+   rules: monospace, square thin-ruled panels, hard offset shadows and the peach, yellow, mint and blue accents, now as
+   dark ink on warm paper with a faint dot grid in place of the stars. Only colours change, through the tokens above. */
+:root[data-skin='lebserver'][data-theme='light'] {
+  --bg-0: rgba(236, 233, 226, .94); --bg-1: rgba(246, 244, 239, .92); --bg-2: rgba(252, 251, 248, .9);
+  --bg-3: #e6e2d9; --bg-hover: #ddd8cd;
+  --text: #2b2b2b; --text-muted: #6e6c66; --text-strong: #0c0c0c;
+  --accent: #2c66a8; --accent-hover: #234f84; --accent-text: #ffffff;
+  --accent-tint: rgba(44, 102, 168, .1); --hover-tint: rgba(0, 0, 0, .04);
+  --danger: #c0412f; --ok: #2c7a4b; --warn: #946400;
+  --border: #c9c4b8;
+  --shadow: 3px 3px 0 #d9d4c8; --shadow-popover: 4px 4px 0 #cfc9bb;
+  --overlay-bg: rgba(243, 241, 236, .85); --backdrop: rgba(40, 36, 30, .45);
+  --danger-text: #ffffff;
+  --lb-ground: #f1eee7; --lb-ink: #ffffff; --lb-panel: #fbfaf6; --lb-composer: #ffffff;
+  --lb-tab: #f7f5f0; --lb-tab-active: #e7eef7; --lb-btn-text: #4a4a4a; --lb-btn-hover: #e6e2d9; --lb-titlebar-hover: #e2ded4;
+  --lb-line: #b9b4a8; --lb-line-hover: #6e6c66; --lb-disabled: #a8a59e; --lb-hard-shadow: #d4cfc3; --lb-divider: #d6d1c5;
+  --lb-peach: #bd5434; --lb-yellow: #8f6100; --lb-time: #8a877f; --lb-role-line: #d6bf7e; --lb-danger-line: #e2a69c;
+  --lb-yellow-tint: rgba(196, 140, 20, .1); --lb-accent-soft: rgba(44, 102, 168, .25); --lb-danger-tint: rgba(192, 65, 47, .08);
+  --lb-fade: linear-gradient(180deg, #c98a12 0%, #c8622f 55%, #b03e33 100%);
+  --lb-star: #cfc9bc; --lb-star-dim: #dcd7cb;
+}
+/* The badge and the demo banner keep their yellow fill, with dark words, so they still pop on paper. */
+:root[data-skin='lebserver'][data-theme='light'] .cw-badge { background: #f0c95e; color: #1a1400; }
+:root[data-skin='lebserver'][data-theme='light'] .cw-demo-banner { background: #f0c95e; color: #1a1400; }
+:root[data-skin='lebserver'][data-theme='light'] .cw-demo-banner button { background: #1a1400; color: #f0c95e; }
+/* A paper dot grid instead of the starfield. */
+:root[data-skin='lebserver'][data-theme='light'] #root {
+  background-image: radial-gradient(1px 1px at 1px 1px, var(--lb-star) 50%, transparent 51%);
+  background-size: 22px 22px;
+}

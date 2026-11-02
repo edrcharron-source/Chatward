@@ -32,6 +32,7 @@ import UpdateRequired from './components/updates/UpdateRequired';
 import PoweredBy from './components/brand/PoweredBy';
 import { TitleBar } from './components/titlebar/TitleBar';
 import { checkServerVersion, useUpdates } from './state/updates';
+import MediaContextMenu from './components/media/MediaContextMenu';
 
 export function App() {
   const token = useSession((s) => s.token);
@@ -52,6 +53,7 @@ export function App() {
   return (
     <div className="cw-app">
       <TitleBar />
+      <MediaContextMenu />
       <UpdateBanner />
       <DeviceAlertBanner />
       <DemoBanner />
@@ -202,17 +204,6 @@ function Shell() {
           case 'server.update': {
             const b = st.servers.find((x) => x.server.id === f.server.id);
             if (b) st.upsertServer({ ...b, server: f.server });
-            break;
-          }
-          case 'server.delete': {
-            // the server has already dropped every voice slot, so end our own call in it too
-            if (useVoice.getState().serverId === f.serverId) void useVoice.getState().leave();
-            const channelIds = st.servers.find((b) => b.server.id === f.serverId)?.channels.map((c) => c.id) ?? [];
-            st.removeServer(f.serverId);
-            forgetChatChannels(channelIds);
-            void forgetChannels(channelIds).catch((e) => console.error(e));
-            // A sync still running or retrying for this server must not keep using its channels.
-            void syncChannelKeys(useSession.getState().servers).catch((e) => console.error(e));
             break;
           }
           case 'member.role': {
@@ -372,7 +363,8 @@ function Shell() {
         {testOpen
           ? <div className="cw-shell" data-region="shell"><main className="cw-main" data-region="main"><TestConsole onClose={() => setTestOpen(false)} /></main></div>
           : <TabsLayout bundle={bundle} onOpenSettings={() => setSettingsOpen(true)} onReload={loadServers}
-              onOpenTest={() => setTestOpen(true)} onOpenMovies={jellyfinEnabled ? () => setMoviesOpen(true) : null} />}
+              onOpenTest={() => setTestOpen(true)} onOpenMovies={jellyfinEnabled ? () => setMoviesOpen(true) : null}
+              frame={layout === 'lcars' ? 'lcars' : undefined} />}
         {modals}
       </>
     );

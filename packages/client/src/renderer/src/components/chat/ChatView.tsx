@@ -40,6 +40,8 @@ export default function ChatView({ channel }: { channel: Channel }) {
 
   const listRef = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
+  // Where the list was last scrolled to, so a scroll the reader made can be told apart from content growing under them.
+  const lastTop = useRef(0);
   // Scroll bookkeeping: remember the first message and height so a prepended page keeps the view in place.
   const prev = useRef<{ channelId: string; firstId?: string; height: number }>({ channelId: channel.id, height: 0 });
 
@@ -92,6 +94,32 @@ export default function ChatView({ channel }: { channel: Channel }) {
     prev.current = { channelId: channel.id, firstId, height: el.scrollHeight };
   }, [channel.id, firstId, messages.length]);
 
+  // Pictures, GIFs, videos and link cards finish loading after the message is drawn and make it taller,
+  // and the message bar can grow too. Watch every message's size (and the list's own) and, while the reader
+  // is at the bottom, keep them there so a newly sent picture is shown in full.
+  useEffect(() => {
+    const el = listRef.current;
+    if (!el) return;
+    // A popped-out chat window only reports sizes to its own observers.
+    const win = el.ownerDocument.defaultView ?? window;
+    const RO = win.ResizeObserver ?? ResizeObserver;
+    const MO = win.MutationObserver ?? MutationObserver;
+    const resize = new RO(() => {
+      if (stick.current) el.scrollTop = el.scrollHeight;
+      prev.current.height = el.scrollHeight;
+    });
+    resize.observe(el);
+    for (const child of Array.from(el.children)) resize.observe(child);
+    const added = new MO((records) => {
+      for (const r of records) {
+        r.addedNodes.forEach((n) => { if (n.nodeType === 1) resize.observe(n as Element); });
+        r.removedNodes.forEach((n) => { if (n.nodeType === 1) resize.unobserve(n as Element); });
+      }
+    });
+    added.observe(el, { childList: true });
+    return () => { added.disconnect(); resize.disconnect(); };
+  }, []);
+
   // A result picked in search: load older pages until the message is here, then bring it into view.
   useEffect(() => {
     if (!jump) return;
@@ -125,7 +153,11 @@ export default function ChatView({ channel }: { channel: Channel }) {
   const onScroll = () => {
     const el = listRef.current;
     if (!el) return;
-    stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_PX;
+    // Only the reader scrolling up lets go of the bottom. A picture that finished loading also makes the list
+    // taller, and the scroll event can see that before the size watcher below catches up; that must not let go.
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_PX;
+    stick.current = nearBottom || (stick.current && el.scrollTop >= lastTop.current);
+    lastTop.current = el.scrollTop;
     if (el.scrollTop < NEAR_TOP_PX && chat?.hasMore) {
       loadHistory(channel.id, 'older').catch(() => {});
     }

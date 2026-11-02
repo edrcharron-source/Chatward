@@ -6,6 +6,7 @@ import { isSafeGifUrl } from './safeUrls';
 import GifLibraryPanel from '../gifs/GifLibraryPanel';
 import LibraryGifImage from '../gifs/LibraryGifImage';
 import SaveGifButton from '../gifs/SaveGifButton';
+import ImageLightbox from './ImageLightbox';
 
 type Gif = NonNullable<MessagePayload['gif']>;
 
@@ -154,18 +155,43 @@ export function GifPickerButton({ serverId, onPick }: { serverId: string; onPick
   );
 }
 
-/** A GIF in a message or the composer. With `serverId`, a hover button saves a KLIPY GIF to the server's library. */
-export function GifView({ gif, serverId }: { gif: Gif; serverId?: string }): ReactElement | null {
+/**
+ * A GIF in a message or the composer. With `serverId`, a hover button saves a KLIPY GIF to the server's library.
+ * With `openable`, clicking the GIF opens it in the full-window picture viewer, still animating.
+ */
+export function GifView({ gif, serverId, openable }: { gif: Gif; serverId?: string; openable?: boolean }): ReactElement | null {
+  const [opened, setOpened] = useState<{ src: string; container: HTMLElement } | null>(null);
+  const close = useCallback(() => setOpened(null), []);
+  const open = openable ? (src: string, container: HTMLElement) => setOpened({ src, container }) : undefined;
+  const title = gif.title || 'GIF';
+  const viewer = opened && <ImageLightbox url={opened.src} name={title} onClose={close} container={opened.container} />;
+
   if (gif.provider === 'library') {
-    return gif.libraryId && LIBRARY_ID.test(gif.libraryId) ? <LibraryGifImage id={gif.libraryId} title={gif.title} className="media-gif" /> : <span className="muted media-gif-blocked">GIF removed</span>;
+    if (!gif.libraryId || !LIBRARY_ID.test(gif.libraryId)) return <span className="muted media-gif-blocked">GIF removed</span>;
+    return (
+      <>
+        <LibraryGifImage id={gif.libraryId} title={gif.title} className="media-gif" onOpen={open} />
+        {viewer}
+      </>
+    );
   }
   if (!isSafeGifUrl(gif.url)) return <span className="muted media-gif-blocked">GIF blocked</span>;
-  const img = <img className="media-gif" src={gif.url} alt={gif.title || 'GIF'} loading="lazy" referrerPolicy="no-referrer" />;
-  if (!serverId || gif.url.startsWith('data:')) return img;
-  return (
+  const picture = <img className="media-gif" src={gif.url} alt={title} loading="lazy" referrerPolicy="no-referrer" />;
+  const img = open ? (
+    <button type="button" className="media-open" aria-label={`View ${title} full size`} onClick={(e) => open(gif.url, e.currentTarget.ownerDocument.body)}>
+      {picture}
+    </button>
+  ) : picture;
+  const shown = !serverId || gif.url.startsWith('data:') ? img : (
     <span className="media-gif-wrap">
       {img}
       <SaveGifButton serverId={serverId} source={{ kind: 'klipy', url: gif.url }} defaultName={gif.title} />
     </span>
+  );
+  return (
+    <>
+      {shown}
+      {viewer}
+    </>
   );
 }

@@ -46,7 +46,7 @@ export default function NotificationsTab() {
 
       <Section title="Silence channels">
         <p className="muted">A ping still sounds in a silenced channel.</p>
-        {servers.length === 0 && <p className="muted">Join a server to choose which channels stay silent.</p>}
+        {servers.length === 0 && <p className="muted">Channels show here once you are in the server.</p>}
         {servers.map((b) => {
           const texts = b.channels.filter((c) => c.kind === 'text');
           if (texts.length === 0) return null;

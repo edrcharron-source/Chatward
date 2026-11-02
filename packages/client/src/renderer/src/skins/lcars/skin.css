@@ -1,0 +1,145 @@
+/* LCARS skin: a black ground, a condensed typeface and four colours with fixed meanings:
+   blue  #4a9ee8  frame and ready (buttons you can press, quiet labels)
+   amber #f5a54a  selected and live (the open tab, a pressed toggle, the call you are in, Send)
+   red   #e5484d  close, leave and alerts
+   lilac #cdd6ff  text
+   Buttons are pills, fields are outlined pills, headings and labels are upper case. It comes with the LCARS layout
+   (components/lcars), which draws the frame; this file dresses the content, the dialogs and the screens outside the
+   frame (sign-in, settings). Every rule sits under :root[data-skin='lcars']. The Antonio font files are under the SIL
+   Open Font License (fonts/OFL.txt). */
+
+@font-face { font-family: 'Antonio'; font-style: normal; font-weight: 400; font-display: swap; src: url('./fonts/antonio-latin-400-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Antonio'; font-style: normal; font-weight: 600; font-display: swap; src: url('./fonts/antonio-latin-600-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Antonio'; font-style: normal; font-weight: 700; font-display: swap; src: url('./fonts/antonio-latin-700-normal.woff2') format('woff2'); }
+
+:root[data-skin='lcars'] {
+  --bg-0: #000; --bg-1: #000; --bg-2: #000; --bg-3: #0f1b2c; --bg-hover: #16273d;
+  --text: #cdd6ff; --text-muted: #4a9ee8; --text-strong: #cdd6ff;
+  --accent: #f5a54a; --accent-hover: #ffb866; --accent-text: #000;
+  --accent-tint: rgba(245, 165, 74, .14); --hover-tint: rgba(74, 158, 232, .08);
+  --danger: #e5484d; --ok: #f5a54a; --warn: #f5a54a; --border: #10233a;
+  --shadow: none; --shadow-popover: 0 0 0 2px #4a9ee8; --shadow-composer: none; --shadow-header: none;
+  --radius: 24px; --radius-sm: 20px; --radius-modal: 28px;
+  --backdrop: rgba(0, 0, 0, .8); --overlay-bg: rgba(0, 0, 0, .75);
+  --danger-text: #000;
+  /* The skin's own colours, so the light version (below) can swap them in one place. Ink is the words on the pills. */
+  --lcs-frame: #4a9ee8; --lcs-live: #f5a54a; --lcs-alert: #e5484d; --lcs-text: #cdd6ff; --lcs-ground: #000; --lcs-ink: #000;
+  --lcs-frame-hover: #74b6f0; --lcs-live-hover: #ffb866; --lcs-alert-hover: #f0686c; --lcs-off: #1d3550; --lcs-dim: #10233a;
+  --lcs-icon-hover: #16273d; --lcs-live-tint: rgba(245, 165, 74, .1);
+  --font-body: 'Antonio', 'Bahnschrift SemiCondensed', 'Bahnschrift', 'Arial Narrow', sans-serif;
+  --font-size: 17px; --line-height: 1.35;
+  /* The usual title bar shows only outside the LCARS frame (sign-in, loading); it gets the frame's colours. */
+  --titlebar-height: 30px; --titlebar-bg: #000; --titlebar-text: #4a9ee8; --titlebar-text-strong: #000;
+  --titlebar-mark: #f5a54a; --titlebar-font: var(--font-body); --titlebar-font-size: 14px; --titlebar-letter-spacing: .08em;
+  --titlebar-button-hover: #4a9ee8; --titlebar-close-hover: #e5484d; --titlebar-close-hover-text: #000;
+}
+:root[data-skin='lcars'] body,
+:root[data-skin='lcars'] #root { background: var(--lcs-ground); }
+:root[data-skin='lcars'] ::selection { background: var(--lcs-live); color: var(--lcs-ink); }
+:root[data-skin='lcars'] ::-webkit-scrollbar-thumb { background: var(--lcs-frame); }
+:root[data-skin='lcars'] .cw-titlebar-title { text-transform: uppercase; }
+
+/* Buttons are blue pills with black words. Amber is the one picked or live, red closes, leaves or deletes. */
+:root[data-skin='lcars'] button {
+  background: var(--lcs-frame); color: var(--lcs-ink); font-weight: 600; letter-spacing: .05em; text-transform: uppercase; box-shadow: none;
+}
+:root[data-skin='lcars'] button:hover { background: var(--lcs-frame-hover); }
+:root[data-skin='lcars'] button.primary,
+:root[data-skin='lcars'] button[aria-pressed='true'] { background: var(--lcs-live); color: var(--lcs-ink); }
+:root[data-skin='lcars'] button.primary:hover { background: var(--lcs-live-hover); }
+:root[data-skin='lcars'] button.danger { background: var(--lcs-alert); color: var(--lcs-ink); }
+:root[data-skin='lcars'] button.danger:hover { background: var(--lcs-alert-hover); }
+:root[data-skin='lcars'] button:disabled { background: var(--lcs-off); color: var(--lcs-ink); }
+/* Icon buttons stay quiet: a blue glyph on black that lights up on hover. */
+:root[data-skin='lcars'] button.icon { background: transparent; color: var(--lcs-frame); }
+:root[data-skin='lcars'] button.icon:hover { background: var(--lcs-icon-hover); color: var(--lcs-text); }
+/* Names and avatars that open a profile are buttons too, but read as text. */
+:root[data-skin='lcars'] button.profile-trigger,
+:root[data-skin='lcars'] button.profile-trigger:hover { background: transparent; color: inherit; text-transform: none; letter-spacing: normal; font-weight: inherit; }
+:root[data-skin='lcars'] .cw-titlebar .cw-titlebar-button { background: transparent; color: var(--titlebar-text); }
+:root[data-skin='lcars'] .cw-titlebar .cw-titlebar-button:hover { background: var(--titlebar-button-hover); color: var(--lcs-ink); }
+:root[data-skin='lcars'] .cw-titlebar .cw-titlebar-button.close:hover { background: var(--titlebar-close-hover); color: var(--lcs-ink); }
+:root[data-skin='lcars'] .cw-demo-banner button { background: var(--lcs-ink); color: var(--lcs-live); }
+
+/* Fields are outlined pills on black. */
+:root[data-skin='lcars'] input:not([type='checkbox']):not([type='radio']):not([type='range']),
+:root[data-skin='lcars'] textarea,
+:root[data-skin='lcars'] select { background: var(--lcs-ground); color: var(--lcs-text); border: 2px solid var(--lcs-frame); border-radius: 20px; }
+:root[data-skin='lcars'] input:focus,
+:root[data-skin='lcars'] textarea:focus,
+:root[data-skin='lcars'] select:focus { border-color: var(--lcs-live); }
+:root[data-skin='lcars'] input[type='checkbox'],
+:root[data-skin='lcars'] input[type='radio'],
+:root[data-skin='lcars'] input[type='range'] { accent-color: var(--lcs-live); }
+:root[data-skin='lcars'] ::placeholder { color: var(--lcs-frame); opacity: 1; }
+
+/* Panels are black with a thin blue edge, so content floats on the ground like a display. */
+:root[data-skin='lcars'] .modal,
+:root[data-skin='lcars'] .media-popover { background: var(--lcs-ground); box-shadow: 0 0 0 2px var(--lcs-frame); }
+:root[data-skin='lcars'] .card { background: var(--lcs-ground); box-shadow: inset 0 0 0 2px var(--lcs-dim); }
+:root[data-skin='lcars'] .setting-row { border-radius: 20px; }
+:root[data-skin='lcars'] .cv-composer { background: var(--lcs-ground); box-shadow: inset 0 0 0 2px var(--lcs-frame); border-radius: 24px; }
+
+/* Headings and labels: upper case. Titles amber-free lilac; quiet labels blue. */
+:root[data-skin='lcars'] h1,
+:root[data-skin='lcars'] h2,
+:root[data-skin='lcars'] h3,
+:root[data-skin='lcars'] .cw-members-title,
+:root[data-skin='lcars'] .cw-section-title,
+:root[data-skin='lcars'] .setting-section h3 { text-transform: uppercase; letter-spacing: .06em; }
+:root[data-skin='lcars'] .cw-members-title { color: var(--lcs-text); font-size: 17px; font-weight: 600; }
+:root[data-skin='lcars'] .cv-title,
+:root[data-skin='lcars'] .cv-hash { color: var(--lcs-text); text-transform: uppercase; letter-spacing: .05em; }
+:root[data-skin='lcars'] .cv-name,
+:root[data-skin='lcars'] button.profile-trigger.cv-name { color: var(--lcs-frame); text-transform: uppercase; letter-spacing: .05em; font-weight: 600; }
+:root[data-skin='lcars'] .cv-time { color: var(--lcs-frame); }
+:root[data-skin='lcars'] .cw-badge { background: var(--lcs-alert); color: var(--lcs-ink); }
+:root[data-skin='lcars'] .cw-role { background: transparent; color: var(--lcs-live); box-shadow: inset 0 0 0 1px var(--lcs-live); }
+:root[data-skin='lcars'] .cw-split-divider { background: var(--lcs-frame); }
+:root[data-skin='lcars'] .cw-split-divider:hover { background: var(--lcs-live); }
+
+/* The tabs and classic layouts under this skin: blue segments, the open one amber. */
+:root[data-skin='lcars'] .cw-tab { background: var(--lcs-frame); border-color: var(--lcs-frame); }
+:root[data-skin='lcars'] .cw-tab .cw-tab-main,
+:root[data-skin='lcars'] .cw-tab .cw-tab-pop { background: transparent; color: var(--lcs-ink); }
+:root[data-skin='lcars'] .cw-tab.active { background: var(--lcs-live); border-color: var(--lcs-live); }
+:root[data-skin='lcars'] .cw-channel.active { color: var(--lcs-live); background: var(--lcs-live-tint); }
+:root[data-skin='lcars'] .cw-tool.active,
+:root[data-skin='lcars'] .cw-tool[aria-pressed='true'] { background: var(--lcs-live); color: var(--lcs-ink); }
+
+/* The light version, used when Settings > Appearance > Theme is Light (or Match system picks light). A daylight
+   console: the same pills, frame blocks and four colour meanings (blue frame, amber live, red alert, text) on a pale
+   blue-grey ground, with navy words and the colours deepened a touch so they hold up on the light ground. */
+:root[data-skin='lcars'][data-theme='light'] {
+  --bg-0: #e6ebf3; --bg-1: #e6ebf3; --bg-2: #e6ebf3; --bg-3: #d5dfee; --bg-hover: #c8d6ea;
+  --text: #1b2440; --text-muted: #2c6fb5; --text-strong: #0d1530;
+  --accent: #e88a22; --accent-hover: #f39a36; --accent-text: #0b1020;
+  --accent-tint: rgba(232, 138, 34, .16); --hover-tint: rgba(44, 111, 181, .08);
+  --danger: #d43a40; --ok: #c46f0d; --warn: #c46f0d; --border: #c3d1e5;
+  --shadow-popover: 0 0 0 2px #3a85d0;
+  --backdrop: rgba(20, 30, 55, .45); --overlay-bg: rgba(230, 235, 243, .85);
+  --danger-text: #0b1020;
+  --lcs-frame: #3a85d0; --lcs-live: #ec9330; --lcs-alert: #d93e44; --lcs-text: #1b2440; --lcs-ground: #e6ebf3; --lcs-ink: #0b1020;
+  --lcs-frame-hover: #5a9cdc; --lcs-live-hover: #f5a64e; --lcs-alert-hover: #e45d62; --lcs-off: #a9bfd9; --lcs-dim: #c3d1e5;
+  --lcs-icon-hover: #d0dcee; --lcs-live-tint: rgba(236, 147, 48, .16);
+  --titlebar-bg: #e6ebf3; --titlebar-text: #2c6fb5; --titlebar-text-strong: #0b1020;
+  --titlebar-button-hover: #3a85d0; --titlebar-close-hover: #d93e44; --titlebar-close-hover-text: #0b1020;
+}
+/* Quiet words in blue get the deeper blue, so they read on the light ground. */
+:root[data-skin='lcars'][data-theme='light'] .cv-name,
+:root[data-skin='lcars'][data-theme='light'] button.profile-trigger.cv-name,
+:root[data-skin='lcars'][data-theme='light'] .cv-time,
+:root[data-skin='lcars'][data-theme='light'] ::placeholder,
+:root[data-skin='lcars'][data-theme='light'] button.icon { color: #2c6fb5; }
+:root[data-skin='lcars'][data-theme='light'] button.icon:hover { color: #0d1530; }
+:root[data-skin='lcars'][data-theme='light'] .cw-channel.active,
+:root[data-skin='lcars'][data-theme='light'] .cw-role { color: #b8650a; }
+/* The LCARS frame (components/lcars) keeps its shapes; only its colours follow. The status readout and the In call
+   chip stay dark, like a display cut into the frame. */
+:root[data-skin='lcars'][data-theme='light'] .lcars-shell {
+  --lc-frame: #3a85d0; --lc-live: #ec9330; --lc-alert: #d93e44; --lc-text: #1b2440;
+  --lc-ground: #e6ebf3; --lc-ink: #0b1020; --lc-chip: #0b1020; --lc-off: #a9bfd9;
+}
+:root[data-skin='lcars'][data-theme='light'] .lcars-status { color: #2c6fb5; }
+:root[data-skin='lcars'][data-theme='light'] .lcars-status.live,
+:root[data-skin='lcars'][data-theme='light'] .lcars-alert { filter: brightness(.85); }

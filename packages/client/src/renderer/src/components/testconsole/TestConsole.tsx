@@ -184,7 +184,7 @@ export default function TestConsole({ onClose }: { onClose: () => void }): React
         <h2>Target</h2>
         <label>Server{' '}
           <select value={serverId} onChange={(e) => { setServerId(e.target.value); setTextId(''); setVoiceId(''); }}>
-            {servers.length === 0 && <option value="">(none, create one first)</option>}
+            {servers.length === 0 && <option value="">(not in the server)</option>}
             {servers.map((b) => <option key={b.server.id} value={b.server.id}>{b.server.name}</option>)}
           </select>
         </label>{' '}

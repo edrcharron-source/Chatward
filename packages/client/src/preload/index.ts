@@ -19,6 +19,13 @@ const api = {
     toggleMaximize: (target?: string): void => ipcRenderer.send('window:control', 'maximize', target),
     close: (target?: string): void => ipcRenderer.send('window:control', 'close', target),
     isMaximized: (target?: string): Promise<boolean> => ipcRenderer.invoke('window:maximized', target),
+    // True in the transparent, borderless window the LCARS layout uses (only its frame shows; see main/index.ts).
+    shaped: process.argv.includes('--chatward-shaped'),
+    // Says whether the layout wants that window. When it differs from this one, the window is swapped for a new one.
+    setShaped: (want: boolean): void => ipcRenderer.send('window:shaped', want),
+    // A shaped window has no system border, so the page's own edges resize it: start on pointer down, end on pointer up.
+    startResize: (edge: 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw'): void => ipcRenderer.send('window:resize', edge),
+    endResize: (): void => ipcRenderer.send('window:resize-end'),
   },
   // Auto-update. `check` points the updater at <serverUrl>/updates and starts a background download.
   updates: {
@@ -49,6 +56,14 @@ const api = {
     play: (trackUrl: string, positionMs: number): Promise<PlayResult> => ipcRenderer.invoke('spotify:play', trackUrl, positionMs),
     pause: (): Promise<void> => ipcRenderer.invoke('spotify:pause'),
     resolveJam: (url: string): Promise<string | null> => ipcRenderer.invoke('spotify:resolve-jam', url),
+  },
+  // Right-click "Copy image". `gif` is the original file, so a GIF keeps moving where it is pasted (Windows only).
+  clipboard: {
+    copyImage: (png: Uint8Array, gif?: { bytes: Uint8Array; name: string }): Promise<'animated' | 'still'> =>
+      ipcRenderer.invoke('clipboard:copy-image', { png, gif }),
+    copyGifLink: (url: string): Promise<void> => ipcRenderer.invoke('clipboard:copy-gif-link', url),
+    // A GIF from the GIF search, as bytes. The page may show those pictures but not download them itself.
+    fetchGif: (url: string): Promise<Uint8Array> => ipcRenderer.invoke('media:fetch-gif', url),
   },
   // Tells the main process which server the page may connect to. Resolves true when the page must reload first.
   server: {

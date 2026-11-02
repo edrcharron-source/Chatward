@@ -28,3 +28,23 @@ export function fitWindow(work: Area, want: WindowSize): Area & { minWidth: numb
     minHeight: Math.min(want.minHeight, height),
   };
 }
+
+/** Which edge or corner of the window is being dragged to resize it. */
+export type ResizeEdge = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw';
+
+export function isResizeEdge(value: unknown): value is ResizeEdge {
+  return typeof value === 'string' && ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'].includes(value);
+}
+
+/**
+ * The window's bounds after dragging `edge` by (dx, dy) from where it was when the drag started. The opposite edge stays
+ * put, and the window never gets smaller than its minimum size (the dragged edge stops instead).
+ */
+export function resizeBounds(start: Area, edge: ResizeEdge, dx: number, dy: number, min: { width: number; height: number }): Area {
+  let { x, y, width, height } = start;
+  if (edge.includes('e')) width = Math.max(min.width, start.width + dx);
+  if (edge.includes('s')) height = Math.max(min.height, start.height + dy);
+  if (edge.includes('w')) { width = Math.max(min.width, start.width - dx); x = start.x + start.width - width; }
+  if (edge.includes('n')) { height = Math.max(min.height, start.height - dy); y = start.y + start.height - height; }
+  return { x: Math.round(x), y: Math.round(y), width: Math.round(width), height: Math.round(height) };
+}

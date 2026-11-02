@@ -1,7 +1,7 @@
 import { DEMO_URL } from '../../demo';
 import { useSession } from '../../state/session';
 import { useVoice } from '../../state/voice';
-import PixelIcon from '../icons/PixelIcon';
+import PixelIcon, { type PixelIconName } from '../icons/PixelIcon';
 import SoundboardButton from '../soundboard/SoundboardButton';
 import ShareControls from './ShareControls';
 import SignalIcon, { signalLevel, useRoomPing } from './SignalIcon';
@@ -13,7 +13,11 @@ import SignalIcon, { signalLevel, useRoomPing } from './SignalIcon';
 /** The call buttons show pixel icons; each one's name is in its tooltip and accessible label. */
 const ICON = 18;
 
-export default function VoiceDock({ stacked = false }: { stacked?: boolean }) {
+/**
+ * `bar` (the LCARS frame's bottom bar) lays the controls out in one row of labelled segments, with the call's status and
+ * Leave at the right end. Out of a call it offers Join voice there instead.
+ */
+export default function VoiceDock({ stacked = false, bar }: { stacked?: boolean; bar?: { onJoin: (() => void) | null } }) {
   const channelId = useVoice((s) => s.channelId);
   const status = useVoice((s) => s.status);
   const error = useVoice((s) => s.error);
@@ -31,6 +35,32 @@ export default function VoiceDock({ stacked = false }: { stacked?: boolean }) {
   const room = useVoice((s) => s.room);
   const ms = useRoomPing(room);
 
+  const seg = bar ? 'lcars-seg' : '';
+  const cls = (...names: Array<string | false | undefined>) => names.filter(Boolean).join(' ') || undefined;
+  // In the bar each button shows its name; elsewhere its pixel icon.
+  const face = (word: string, icon: PixelIconName) =>
+    bar ? <span className="lcars-label">{word}</span> : <PixelIcon name={icon} size={ICON} />;
+  const dismiss = (
+    <button type="button" className={cls(seg)} onClick={() => useVoice.setState({ notice: null })}>
+      {bar ? <span className="lcars-label">Dismiss</span> : 'Dismiss'}
+    </button>
+  );
+
+  if (!channelId && bar) {
+    return (
+      <div className="lcars-dock" role="group" aria-label="Voice chat">
+        {bar.onJoin && (
+          <button type="button" className="lcars-seg" onClick={bar.onJoin}><span className="lcars-label">Join voice</span></button>
+        )}
+        <span className="lcars-fill" aria-hidden="true" />
+        {notice && <span role="status" className="lcars-alert">{notice}</span>}
+        {notice && dismiss}
+        <span className="lcars-status">Voice · not in call</span>
+        <span className="lcars-cap" aria-hidden="true" />
+      </div>
+    );
+  }
+
   if (!channelId) {
     if (!notice) return null;
     return (
@@ -46,26 +76,26 @@ export default function VoiceDock({ stacked = false }: { stacked?: boolean }) {
 
   const muteButton = (
     <button
-      className={muted ? 'danger' : undefined}
+      className={cls(seg, muted && 'danger')}
       aria-pressed={muted}
       aria-label={muted ? 'Unmute microphone' : 'Mute microphone'}
       title={muted ? 'Unmute' : 'Mute'}
       disabled={status !== 'connected' || deafened}
       onClick={toggleMute}
     >
-      <PixelIcon name={muted ? 'micoff' : 'mic'} size={ICON} />
+      {face(muted ? 'Unmute' : 'Mute', muted ? 'micoff' : 'mic')}
     </button>
   );
   const deafenButton = (
     <button
-      className={deafened ? 'danger' : undefined}
+      className={cls(seg, deafened && 'danger')}
       aria-pressed={deafened}
       aria-label={deafened ? 'Undeafen' : 'Deafen'}
       title={deafened ? 'Undeafen' : 'Deafen'}
       disabled={status !== 'connected'}
       onClick={toggleDeafen}
     >
-      <PixelIcon name={deafened ? 'deafenoff' : 'deafen'} size={ICON} />
+      {face(deafened ? 'Undeafen' : 'Deafen', deafened ? 'deafenoff' : 'deafen')}
     </button>
   );
   const loopbackButton = demo && (
@@ -73,16 +103,18 @@ export default function VoiceDock({ stacked = false }: { stacked?: boolean }) {
       aria-pressed={demoLoopback}
       aria-label={demoLoopback ? 'Loopback on' : 'Loopback off'}
       title={`Hear your own microphone through the speakers (demo only): ${demoLoopback ? 'on' : 'off'}`}
-      className={demoLoopback ? 'primary' : undefined}
+      className={cls(seg, demoLoopback && 'primary')}
       onClick={() => setDemoLoopback(!demoLoopback)}
     >
-      <PixelIcon name="loopback" size={ICON} />
+      {face('Loopback', 'loopback')}
     </button>
   );
-  const soundboardButton = channel && <SoundboardButton serverId={channel.serverId} channelId={channel.id} />;
+  const soundboardButton = channel && (
+    <SoundboardButton serverId={channel.serverId} channelId={channel.id} labelled={!!bar} className={cls(seg)} />
+  );
   const leaveButton = (
-    <button className="danger" aria-label="Leave voice" title="Leave voice" onClick={() => void leave()}>
-      <PixelIcon name="leave" size={ICON} />
+    <button className={cls(seg, 'danger', bar && 'lcars-end')} aria-label="Leave voice" title="Leave voice" onClick={() => void leave()}>
+      {face('Leave', 'leave')}
     </button>
   );
   const notices = (
@@ -97,19 +129,44 @@ export default function VoiceDock({ stacked = false }: { stacked?: boolean }) {
     </>
   );
 
+  const short = status === 'connected' ? 'Connected' : status === 'error' ? 'Not connected' : 'Connecting…';
+  const signal = demo ? { bars: 3 as const, color: '#3ba55d', text: 'Demo mode, no live ping' } : signalLevel(ms);
+  const shownSignal = status === 'connected' ? signal : { bars: 0 as const, color: 'var(--text-muted, #888)', text: short };
+  const signalButton = (
+    <span className="cw-signal-wrap">
+      <button type="button" className="cw-signal-btn" aria-label={`Connection: ${shownSignal.text}`}>
+        <SignalIcon bars={shownSignal.bars} color={shownSignal.color} />
+      </button>
+      <span className="cw-signal-pop" role="tooltip">{shownSignal.text}</span>
+    </span>
+  );
+
+  if (bar) {
+    return (
+      <div className="lcars-dock" role="group" aria-label="Voice chat">
+        {muteButton}
+        {deafenButton}
+        <ShareControls labelled />
+        {soundboardButton}
+        {loopbackButton}
+        <span className="lcars-fill" aria-hidden="true" />
+        {error && <span role="alert" className="lcars-alert">{error}</span>}
+        {notice && <span role="status" className="lcars-alert">{notice}</span>}
+        {notice && dismiss}
+        <span className={`lcars-status${status === 'connected' ? ' live' : ''}`}>
+          {signalButton}
+          <span>Voice · {short}</span>
+        </span>
+        {leaveButton}
+      </div>
+    );
+  }
+
   if (stacked) {
-    const short = status === 'connected' ? 'Connected' : status === 'error' ? 'Not connected' : 'Connecting…';
-    const signal = demo ? { bars: 3 as const, color: '#3ba55d', text: 'Demo mode, no live ping' } : signalLevel(ms);
-    const shownSignal = status === 'connected' ? signal : { bars: 0 as const, color: 'var(--text-muted, #888)', text: short };
     return (
       <div className="cw-call-stack" role="group" aria-label="Voice chat">
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, minHeight: 20 }}>
-          <span className="cw-signal-wrap">
-            <button type="button" className="cw-signal-btn" aria-label={`Connection: ${shownSignal.text}`}>
-              <SignalIcon bars={shownSignal.bars} color={shownSignal.color} />
-            </button>
-            <span className="cw-signal-pop" role="tooltip">{shownSignal.text}</span>
-          </span>
+          {signalButton}
           <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', minHeight: 20 }}>
             <div style={{ fontWeight: 600, color: 'var(--text-strong)', lineHeight: '20px' }}>Voice chat · {short}</div>
           </div>
