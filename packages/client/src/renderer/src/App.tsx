@@ -23,6 +23,7 @@ import { WatchPartyPanel } from './components/watchparty';
 import SettingsModal from './components/settings/SettingsModal';
 import { JellyfinBrowser, useJellyfinEnabled } from './components/jellyfin/JellyfinBrowser';
 import TestConsole from './components/testconsole/TestConsole';
+import MysteryButton from './components/mystery/MysteryButton';
 import TabsLayout from './components/tabs/TabsLayout';
 import DemoBanner from './demo/DemoBanner';
 import UpdateBanner from './components/updates/UpdateBanner';
@@ -381,6 +382,7 @@ function Shell() {
                 {sidebarsCollapsed ? 'Show sidebars' : 'Hide sidebars'}
               </button>
             )}
+            <MysteryButton>🔪 Mystery</MysteryButton>
             <button className="icon" onClick={() => setTestOpen(true)} title="Feature test console (Ctrl+Shift+T)">🧪 Test</button>
             {jellyfinEnabled && <button className="icon" onClick={() => setMoviesOpen(true)} title="Browse the Jellyfin library">🍿 Movies</button>}
             {bundle && (

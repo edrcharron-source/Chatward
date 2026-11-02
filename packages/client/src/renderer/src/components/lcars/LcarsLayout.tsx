@@ -4,6 +4,7 @@ import StatusPicker from '../servers/StatusPicker';
 import VoiceDock from '../voice/VoiceDock';
 import { isLebserver } from '../brand/PoweredBy';
 import './lcars.css';
+import MysteryButton from '../mystery/MysteryButton';
 
 /**
  * The LCARS layout's frame (see docs/SKINS.md, "LCARS"). TabsLayout hands it the same tab bar, panes, member list and
@@ -81,6 +82,7 @@ export default function LcarsLayout(props: {
           <span className="lcars-me-name">{user?.displayName ?? ''}</span>
           <StatusPicker />
         </span>
+        <MysteryButton className="lcars-seg"><span className="lcars-label">Mystery</span></MysteryButton>
         <button type="button" className="lcars-seg" title="Feature test console (Ctrl+Shift+T)" aria-label="Feature test console" onClick={props.onOpenTest}>
           <span className="lcars-label">Test</span>
         </button>
