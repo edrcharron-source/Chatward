@@ -1,0 +1,7 @@
+.cw-mystery { width: min(560px, calc(100vw - 32px)); padding: 20px; display: flex; flex-direction: column; gap: 12px; }
+.cw-mystery h2 { margin: 0; font-size: 1.1em; }
+.cw-mystery > p { margin: 0; }
+/* The joke: the rules are printed at 1px. */
+.cw-mystery-rules { font-size: 1px; line-height: 1.2; max-height: 40vh; overflow: auto; }
+.cw-mystery-rules p { margin: 0 0 1px; }
+.cw-mystery-actions { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }

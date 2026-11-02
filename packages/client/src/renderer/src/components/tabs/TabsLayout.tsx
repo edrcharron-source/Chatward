@@ -16,6 +16,7 @@ import { isAdmin } from '../servers/util';
 import PixelIcon, { type PixelIconName } from '../icons/PixelIcon';
 import { PopoutWindow } from './PopoutWindow';
 import LcarsLayout from '../lcars/LcarsLayout';
+import MysteryButton from '../mystery/MysteryButton';
 import './tabs.css';
 
 export type TabId = 'text' | 'voice' | 'watch' | 'vault';
@@ -333,6 +334,7 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTes
               {membersHidden ? 'Show members' : 'Hide members'}
             </button>
           )}
+          <MysteryButton className="icon cw-tool-icon" />
           <button type="button" className="icon cw-tool-icon" title="Feature test console (Ctrl+Shift+T)" aria-label="Feature test console" onClick={onOpenTest}>
             <PixelIcon name="test" size={16} />
           </button>
