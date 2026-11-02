@@ -9,6 +9,7 @@ import { connectSpotify, disconnectSpotify, nowPlaying, pausePlayback, playTrack
 import { setupUpdater } from './updater';
 import { APP_ORIGIN, buildCsp, loadServerOrigin, saveServerOrigin, serverOrigin } from './serverPolicy';
 import { fitWindow, isResizeEdge, resizeBounds } from './windowBounds';
+import { ResizePacer } from './resizePacing';
 
 // The page is served from app:// (not file://) so its Content-Security-Policy header can name the server.
 protocol.registerSchemesAsPrivileged([{ scheme: 'app', privileges: { standard: true, secure: true, corsEnabled: true } }]);
@@ -138,7 +139,7 @@ const mainWindows = new WeakSet<BrowserWindow>();
 const MIN_SIZE = { width: 900, height: 600 };
 
 /** An edge drag in progress on a shaped window (it has no system border to drag): the cursor is followed until the page says the button is up. */
-let resizing: { win: BrowserWindow; timer: NodeJS.Timeout } | null = null;
+let resizing: { win: BrowserWindow; timer: NodeJS.Timeout; pacer: ResizePacer } | null = null;
 function stopResize(): void {
   if (!resizing) return;
   clearInterval(resizing.timer);
@@ -324,18 +325,29 @@ app.whenReady().then(() => {
     const start = win.getBounds();
     const from = screen.getCursorScreenPoint();
     const [minW, minH] = win.getMinimumSize();
+    // One step at a time: the next size waits until the page has drawn the last one (window:resize-ack).
+    const pacer = new ResizePacer();
     const timer = setInterval(() => {
       if (win.isDestroyed()) return stopResize();
+      const tick = Date.now();
+      if (!pacer.ready(tick)) return;
       const at = screen.getCursorScreenPoint();
       const next = resizeBounds(start, edge, at.x - from.x, at.y - from.y, { width: minW || MIN_SIZE.width, height: minH || MIN_SIZE.height });
       const now = win.getBounds();
-      if (next.x !== now.x || next.y !== now.y || next.width !== now.width || next.height !== now.height) win.setBounds(next);
+      if (next.x !== now.x || next.y !== now.y || next.width !== now.width || next.height !== now.height) {
+        win.setBounds(next);
+        pacer.sent(tick);
+      }
     }, 16);
-    resizing = { win, timer };
+    resizing = { win, timer, pacer };
     // A button released outside the window never reaches the page, so stop when the window loses focus too.
     win.on('blur', stopResize);
   });
   ipcMain.on('window:resize-end', () => stopResize());
+  // The page has drawn the size the window was last moved to, so the next step may go ahead.
+  ipcMain.on('window:resize-ack', (e) => {
+    if (resizing && resizing.win.webContents === e.sender) resizing.pacer.acked();
+  });
   ipcMain.handle('window:maximized', (e, target: unknown) => controlledWindow(e.sender, target)?.isMaximized() ?? false);
 
   createWindow();

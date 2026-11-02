@@ -26,6 +26,7 @@ const api = {
     // A shaped window has no system border, so the page's own edges resize it: start on pointer down, end on pointer up.
     startResize: (edge: 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw'): void => ipcRenderer.send('window:resize', edge),
     endResize: (): void => ipcRenderer.send('window:resize-end'),
+    ackResize: (): void => ipcRenderer.send('window:resize-ack'),
   },
   // Auto-update. `check` points the updater at <serverUrl>/updates and starts a background download.
   updates: {
