@@ -38,7 +38,9 @@ export async function launch(theme: string, appDir: string, skin = '', extraArgs
   const userData = fs.mkdtempSync(path.join(fs.realpathSync(process.env.RUNNER_TEMP ?? '/tmp'), 'chatward-visual-'));
   const app = await _electron.launch({
     executablePath: electronPath,
-    args: [appDir, `--user-data-dir=${userData}`, '--no-sandbox', '--lang=en-US', '--force-device-scale-factor=1', ...extraArgs],
+    args: [appDir, `--user-data-dir=${userData}`, '--no-sandbox', '--lang=en-US', '--force-device-scale-factor=1',
+      // Keep the one window the checks hold on to: the LCARS layout would otherwise swap in its see-through window.
+      '--chatward-keep-window', ...extraArgs],
     env: { ...process.env, TZ: 'UTC', LANG: 'en_US.UTF-8' },
   });
   // CI machines have no OS keyring. Stand in for it so demo sign-in can store its keys; nothing here is real.

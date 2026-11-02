@@ -19,9 +19,13 @@ const api = {
     toggleMaximize: (target?: string): void => ipcRenderer.send('window:control', 'maximize', target),
     close: (target?: string): void => ipcRenderer.send('window:control', 'close', target),
     isMaximized: (target?: string): Promise<boolean> => ipcRenderer.invoke('window:maximized', target),
-    // Rounds the window's corners to follow a frame that is not a rectangle (the LCARS sweeps); null for square corners.
-    setShape: (radii: { topLeft: number; topRight: number; bottomLeft: number; bottomRight: number } | null): void =>
-      ipcRenderer.send('window:shape', radii),
+    // True in the transparent, borderless window the LCARS layout uses (only its frame shows; see main/index.ts).
+    shaped: process.argv.includes('--chatward-shaped'),
+    // Says whether the layout wants that window. When it differs from this one, the window is swapped for a new one.
+    setShaped: (want: boolean): void => ipcRenderer.send('window:shaped', want),
+    // A shaped window has no system border, so the page's own edges resize it: start on pointer down, end on pointer up.
+    startResize: (edge: 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw'): void => ipcRenderer.send('window:resize', edge),
+    endResize: (): void => ipcRenderer.send('window:resize-end'),
   },
   // Auto-update. `check` points the updater at <serverUrl>/updates and starts a background download.
   updates: {

@@ -29,46 +29,22 @@ export function fitWindow(work: Area, want: WindowSize): Area & { minWidth: numb
   };
 }
 
-/** How round each corner of a shaped window is, in pixels. 0 leaves that corner square. */
-export interface CornerRadii {
-  topLeft: number;
-  topRight: number;
-  bottomLeft: number;
-  bottomRight: number;
-}
+/** Which edge or corner of the window is being dragged to resize it. */
+export type ResizeEdge = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw';
 
-/** How far in from the side row `row` (counted from the corner's edge) of a round corner starts. */
-function cornerInset(radius: number, row: number): number {
-  if (row >= radius) return 0;
-  const dy = radius - (row + 0.5);
-  // The first pixel whose centre is inside the curve, so the edge never shows the window behind the frame's colour.
-  return Math.max(0, Math.ceil(radius - Math.sqrt(radius * radius - dy * dy) - 0.5));
+export function isResizeEdge(value: unknown): value is ResizeEdge {
+  return typeof value === 'string' && ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'].includes(value);
 }
 
 /**
- * The window's outline as rectangles (BrowserWindow.setShape takes rectangles, not curves): one per run of rows
- * that start and end at the same place, so the round corners become small steps and the middle is one big block.
- * Each radius is capped at half the window's smaller side.
+ * The window's bounds after dragging `edge` by (dx, dy) from where it was when the drag started. The opposite edge stays
+ * put, and the window never gets smaller than its minimum size (the dragged edge stops instead).
  */
-export function roundedShape(width: number, height: number, radii: CornerRadii): Area[] {
-  const w = Math.max(0, Math.floor(width));
-  const h = Math.max(0, Math.floor(height));
-  if (!w || !h) return [];
-  const cap = (r: number) => Math.max(0, Math.min(Math.floor(Number.isFinite(r) ? r : 0), Math.floor(Math.min(w, h) / 2)));
-  const tl = cap(radii.topLeft), tr = cap(radii.topRight), bl = cap(radii.bottomLeft), br = cap(radii.bottomRight);
-  const rects: Area[] = [];
-  for (let y = 0; y < h; ) {
-    const fromBottom = h - 1 - y;
-    const left = Math.max(cornerInset(tl, y), cornerInset(bl, fromBottom));
-    const right = Math.max(cornerInset(tr, y), cornerInset(br, fromBottom));
-    let end = y + 1;
-    while (end < h) {
-      const fb = h - 1 - end;
-      if (Math.max(cornerInset(tl, end), cornerInset(bl, fb)) !== left || Math.max(cornerInset(tr, end), cornerInset(br, fb)) !== right) break;
-      end++;
-    }
-    rects.push({ x: left, y, width: Math.max(0, w - left - right), height: end - y });
-    y = end;
-  }
-  return rects;
+export function resizeBounds(start: Area, edge: ResizeEdge, dx: number, dy: number, min: { width: number; height: number }): Area {
+  let { x, y, width, height } = start;
+  if (edge.includes('e')) width = Math.max(min.width, start.width + dx);
+  if (edge.includes('s')) height = Math.max(min.height, start.height + dy);
+  if (edge.includes('w')) { width = Math.max(min.width, start.width - dx); x = start.x + start.width - width; }
+  if (edge.includes('n')) { height = Math.max(min.height, start.height - dy); y = start.y + start.height - height; }
+  return { x: Math.round(x), y: Math.round(y), width: Math.round(width), height: Math.round(height) };
 }
