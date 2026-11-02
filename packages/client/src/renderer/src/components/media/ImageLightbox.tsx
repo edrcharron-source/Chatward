@@ -10,10 +10,18 @@ const DRAG_SLOP = 4;
 interface View { scale: number; x: number; y: number }
 const FITTED: View = { scale: 1, x: 0, y: 0 };
 
-/** The biggest size that fits the box while keeping the picture's shape. Small pictures are scaled up too. */
+/** Share of the window the picture may take when it opens, so there is breathing room around it. */
+const OPEN_SHARE = 0.8;
+/** Small pictures and GIFs are enlarged at most this much, so they don't turn blurry. */
+const MAX_UPSCALE = 2;
+
+/**
+ * Size a picture opens at: fits inside OPEN_SHARE of the box, keeping its shape,
+ * and is never blown up past MAX_UPSCALE times its own size.
+ */
 export function fitSize(natW: number, natH: number, boxW: number, boxH: number): { w: number; h: number } {
   if (natW <= 0 || natH <= 0 || boxW <= 0 || boxH <= 0) return { w: 0, h: 0 };
-  const k = Math.min(boxW / natW, boxH / natH);
+  const k = Math.min((boxW * OPEN_SHARE) / natW, (boxH * OPEN_SHARE) / natH, MAX_UPSCALE);
   return { w: Math.round(natW * k), h: Math.round(natH * k) };
 }
 
@@ -25,7 +33,7 @@ function clamp(v: View, w: number, h: number, boxW: number, boxH: number): View 
 }
 
 /**
- * Full-window picture viewer. The picture fills the window (keeping its shape);
+ * Full-window picture viewer. The picture opens at a comfortable size (see fitSize);
  * click zooms in on that spot, drag moves it while zoomed, click again or Esc goes back.
  */
 export default function ImageLightbox({ url, name, onClose, container }: {
