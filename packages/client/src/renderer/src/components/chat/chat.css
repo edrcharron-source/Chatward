@@ -109,7 +109,12 @@
 }
 .cv-chip button { padding: 0 4px; font-size: 14px; line-height: 1; }
 .cv-gif-chip { padding: 3px 6px 3px 3px; }
-.cv-row { display: flex; align-items: flex-end; gap: 6px; }
+.cv-row { display: flex; align-items: flex-end; gap: 6px; --cv-h: calc(var(--font-size) * 1.4 + 20px); }
+/* Everything in the row is at least as tall as a one-line message box, with its icon or word centred, so the buttons
+   line up with the box. They stay at the bottom while the box grows taller. */
+.cv-row > :not([hidden]) { min-height: var(--cv-h); }
+.cv-row > :not(.cv-input):not([hidden]) { display: inline-flex; align-items: center; justify-content: center; }
+.cv-row > .media-anchor { align-items: stretch; }
 .cv-tool { font-size: 16px; line-height: 1; }
 .cv-input {
   flex: 1; min-width: 0; resize: none; max-height: 160px; background: transparent; padding: 8px 4px;
