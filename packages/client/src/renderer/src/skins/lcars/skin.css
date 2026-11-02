@@ -86,8 +86,7 @@
 :root[data-skin='lcars'] h3,
 :root[data-skin='lcars'] .cw-members-title,
 :root[data-skin='lcars'] .cw-section-title,
-:root[data-skin='lcars'] .setting-section h3,
-:root[data-skin='lcars'] .cw-dialog-section h3 { text-transform: uppercase; letter-spacing: .06em; }
+:root[data-skin='lcars'] .setting-section h3 { text-transform: uppercase; letter-spacing: .06em; }
 :root[data-skin='lcars'] .cw-members-title { color: var(--lcs-text); font-size: 17px; font-weight: 600; }
 :root[data-skin='lcars'] .cv-title,
 :root[data-skin='lcars'] .cv-hash { color: var(--lcs-text); text-transform: uppercase; letter-spacing: .05em; }

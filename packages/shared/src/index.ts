@@ -254,7 +254,6 @@ export type ServerFrame =
   | { t: 'channel.update'; channel: Channel }
   | { t: 'channel.delete'; serverId: string; channelId: string }
   | { t: 'server.update'; server: Server }
-  | { t: 'server.delete'; serverId: string }
   | { t: 'member.role'; serverId: string; userId: string; role: Member['role'] }
   | { t: 'sound.new'; sound: SoundboardSound }
   | { t: 'sound.delete'; serverId: string; soundId: string }
