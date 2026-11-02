@@ -119,12 +119,13 @@
   display: flex; align-items: center; justify-content: center; height: 96px; width: 120px; padding: 0 8px;
   overflow: hidden; text-overflow: ellipsis; word-break: break-all; text-align: center; color: var(--text-muted);
 }
-.cv-chip .cv-thumb-x {
+/* Sits on top of the picture, so it looks the same in every skin (skins restyle plain icon buttons). */
+.cv-composer .cv-thumb .cv-thumb-x.icon {
   position: absolute; top: 6px; right: 6px; width: 22px; height: 22px; padding: 0; border-radius: 50%;
   display: inline-flex; align-items: center; justify-content: center;
-  background: rgba(0, 0, 0, .65); color: #fff; font-size: 15px;
+  background: rgba(0, 0, 0, .65); color: #fff; font: 400 16px/1 system-ui, sans-serif; box-shadow: none; min-height: 0;
 }
-.cv-chip .cv-thumb-x:hover { background: rgba(0, 0, 0, .85); }
+.cv-composer .cv-thumb .cv-thumb-x.icon:hover { background: rgba(0, 0, 0, .85); color: #fff; box-shadow: none; }
 .cv-row { display: flex; align-items: flex-end; gap: 6px; --cv-h: calc(var(--font-size) * 1.4 + 20px); }
 /* Everything in the row is at least as tall as a one-line message box, with its icon or word centred, so the buttons
    line up with the box. They stay at the bottom while the box grows taller. */
