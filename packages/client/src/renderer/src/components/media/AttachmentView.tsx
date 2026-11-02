@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactElement } from 'react';
+import { useEffect, useState, type CSSProperties, type ReactElement } from 'react';
 import type { Attachment } from '@chatward/shared';
 import { api } from '../../api/http';
 import { decryptBlob } from '../../crypto';
@@ -85,8 +85,12 @@ export function AttachmentView({ attachment, serverId }: { attachment: Attachmen
     );
   }
 
+  // With the picture's size known, the button gets the exact shown size, so the clickable area matches the picture.
+  const sized = attachment.width && attachment.height
+    ? ({ '--media-w': attachment.width, '--media-r': attachment.width / attachment.height } as CSSProperties)
+    : undefined;
   const image = (
-    <button type="button" className="media-open" onClick={() => setEnlarged(true)} aria-label={`View ${attachment.name} full size`}>
+    <button type="button" className={sized ? 'media-open media-open-sized' : 'media-open'} style={sized} onClick={() => setEnlarged(true)} aria-label={`View ${attachment.name} full size`}>
       <img
         className="media-image"
         src={url}

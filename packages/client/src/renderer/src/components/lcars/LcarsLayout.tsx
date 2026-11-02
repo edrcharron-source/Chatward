@@ -1,7 +1,8 @@
-import { useEffect, useState, type DragEvent, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type DragEvent, type ReactNode, type RefObject } from 'react';
 import { useSession } from '../../state/session';
 import StatusPicker from '../servers/StatusPicker';
 import VoiceDock from '../voice/VoiceDock';
+import { isLebserver } from '../brand/PoweredBy';
 import './lcars.css';
 
 /**
@@ -14,7 +15,9 @@ import './lcars.css';
  * - the top bar holds Split, the window's drag area, the server's name, your status, and minimize, maximize and close;
  * - the bottom bar holds the call controls, or Join voice when you are not in the call.
  *
- * While this frame is on screen it is the window's title bar, so lcars.css hides the app's usual one.
+ * While this frame is on screen it is the window's title bar, so lcars.css hides the app's usual one, and the window
+ * takes the frame's outline (round at the two sweeps and at the end caps on the right), so no window corner or edge
+ * shows past it. The "powered by" strip moves into the rail for the same reason.
  */
 export default function LcarsLayout(props: {
   serverName: string;
@@ -36,12 +39,17 @@ export default function LcarsLayout(props: {
   windows: ReactNode;
 }) {
   const user = useSession((s) => s.user);
+  const lebserver = useSession((s) => isLebserver(s.serverUrl));
+  const shell = useRef<HTMLDivElement>(null);
+  useFrameShape(shell);
   return (
-    <div className="lcars-shell" data-region="shell" data-layout="lcars">
+    <div className="lcars-shell" data-region="shell" data-layout="lcars" ref={shell}>
       <div className="lcars-rail" {...props.dropArea}>
         <span className="lcars-elbow top" aria-hidden="true" />
         {props.nav}
-        <span className="lcars-rail-fill" aria-hidden="true" />
+        <span className="lcars-rail-fill">
+          {lebserver && <span className="lcars-powered" aria-label="Powered by Lebserver">Powered by Lebserver</span>}
+        </span>
         {props.onOpenServerSettings && (
           <button type="button" className="lcars-seg lcars-rail-seg" title="Server settings" onClick={props.onOpenServerSettings}>
             <span className="lcars-label">Server settings</span>
@@ -89,6 +97,25 @@ export default function LcarsLayout(props: {
       {props.windows}
     </div>
   );
+}
+
+/**
+ * Asks the desktop app to shape the window like the frame: the sweeps' big curve on the left, and on the right the
+ * round ends of the top bar (Close) and the bottom bar (Leave, or the plain cap). The sizes come from lcars.css.
+ */
+function useFrameShape(shell: RefObject<HTMLDivElement | null>) {
+  useEffect(() => {
+    const controls = window.chatward?.windowControls;
+    const el = shell.current;
+    if (!controls?.setShape || controls.platform === 'darwin' || !el) return;
+    const css = getComputedStyle(el);
+    const px = (name: string) => parseFloat(css.getPropertyValue(name)) || 0;
+    controls.setShape({
+      topLeft: px('--lc-outer'), bottomLeft: px('--lc-outer'),
+      topRight: px('--lc-top') / 2, bottomRight: px('--lc-bottom') / 2,
+    });
+    return () => controls.setShape(null);
+  }, [shell]);
 }
 
 /** Minimize, maximize and close as the last segments of the top bar. Without the desktop app's bridge there are none. */

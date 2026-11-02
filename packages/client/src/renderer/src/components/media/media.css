@@ -39,8 +39,12 @@
 .media-gif-tile img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .media-more { width: 100%; margin-top: 8px; }
 
-.media-open { padding: 0; background: none; border-radius: 10px; display: block; max-width: 100%; }
+.media-open { padding: 0; background: none; border-radius: 10px; display: block; width: fit-content; max-width: 100%; }
 .media-open:hover { background: none; opacity: .92; }
+/* The button that opens a picture full size shows only the picture: no skin's button fill or outline behind it. The
+   doubled :root outranks the skins' ':root[data-skin=...] button' rules. */
+:root:root button.media-open,
+:root:root button.media-open:hover { background: transparent; box-shadow: none; border: 0; }
 /* Chat pictures: big enough to see without opening them, never wider than the chat or taller than most of the window.
    width/height auto (over the img's width/height attributes) lets the browser shrink both sides together, so a tall
    or wide picture keeps its shape when it hits either limit. Small pictures stay their own size. */
@@ -49,6 +53,12 @@
   max-width: min(560px, 100%); max-height: min(480px, 60vh);
   border-radius: 10px; background: var(--bg-3);
 }
+/* Known size: the button takes the picture's shown size (its own size, at most 560 wide and 480 / 60% of the window
+   tall, shape kept) and the picture fills it, so there is no empty clickable space beside a wide picture. */
+.media-open-sized {
+  width: min(calc(var(--media-w) * 1px), 560px, calc(min(480px, 60vh) * var(--media-r)));
+}
+.media-open-sized .media-image { width: 100%; max-width: none; max-height: none; }
 .media-image-placeholder {
   width: min(560px, 100%); height: auto; aspect-ratio: 16 / 10; max-height: min(480px, 60vh);
   border-radius: 10px; background: var(--bg-3);
