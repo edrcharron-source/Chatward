@@ -1,6 +1,6 @@
-# Home server (lebserver)
+# Home server
 
-Runs Chatward on a home Ubuntu box so friends can reach it from the internet at `https://chat.lebserver.com`.
+Runs Chatward on a home Ubuntu box so friends can reach it from the internet at `https://chat.example.com` (use your own domain).
 Profile: `deploy/home/`. It is the cloud profile adapted for a home network: Caddy gets its certificate by Cloudflare
 DNS-01 (so port 80 stays with the host's nginx), the database sits on the NVMe, uploads and backups on the RAID, and a
 5-minute timer keeps the DNS record on the home's public IP.
@@ -11,16 +11,16 @@ DNS-01 (so port 80 stays with the host's nginx), the database sits on the NVMe, 
 | livekit (voice, video, screen share) | `LAN_IP:7881`/tcp, `LAN_IP:7882`/udp | 7881/tcp, 7882/udp |
 | server (Node) | none (Docker network only) | never |
 
-Never forward 22, 80, 3000, 7880, Samba, Jellyfin, Ollama, Grafana or Portainer.
+Never forward 22, 80, 3000, 7880, or any other service on the box.
 
 ## 1. Before you start (once)
-1. **Fixed IP.** In UniFi, Client Devices → the server → Settings → Fixed IP `192.168.1.228`.
+1. **Fixed IP.** In UniFi, Client Devices → the server → Settings → Fixed IP (this guide calls it `LAN_IP`).
 2. **No double NAT.** UniFi → Internet: the WAN IP must match what https://1.1.1.1/cdn-cgi/trace shows as `ip=`.
 3. **Cloudflare token.** Cloudflare → My Profile → API Tokens → Create Token → "Edit zone DNS" template. Add a second
    permission Zone → Zone → Read (Caddy and `ddns-update.sh` look the zone up by name), set Zone Resources = Include →
-   Specific zone → `lebserver.com`, no expiry and no IP filter (the home IP changes). Copy the token; it goes in `.env` as `CF_API_TOKEN`. The A record for
+   Specific zone → your domain (e.g. `example.com`), no expiry and no IP filter (the home IP changes). Copy the token; it goes in `.env` as `CF_API_TOKEN`. The A record for
    `chat` is created by the install, as DNS only (grey cloud). Do not turn the orange proxy on: it breaks voice.
-4. **Router port forwards** (UniFi → Settings → Routing → Port Forwarding), all to `192.168.1.228`, from any source:
+4. **Router port forwards** (UniFi → Settings → Routing → Port Forwarding), all to `LAN_IP`, from any source:
    - `Chatward HTTPS` 443 TCP → 443
    - `Chatward voice TCP` 7881 TCP → 7881
    - `Chatward voice UDP` 7882 UDP → 7882 (until late October 2026 this was 50000-50100; replace that rule)
@@ -44,7 +44,7 @@ forwards are what actually gate the internet.
 
 ## 3. Check it with the test console
 1. Install the Windows app, choose **Create account**, and enter the sign-up code (the server is filled in as
-   `https://chat.lebserver.com`; **Change** under the password edits it).
+   your `https://chat.example.com` address; **Change** under the password edits it).
 2. Open the **🧪 Test** button at the top right (or Ctrl+Shift+T).
 3. **Run all**: connection, account, servers, encrypted text, encrypted upload, GIFs, link previews (it also checks a LAN
    address is refused), soundboard, voice state. Everything should say PASS.
@@ -84,8 +84,8 @@ itself while open.
 | DNS now | `./deploy/home/ddns-update.sh` · timer: `systemctl list-timers chatward-ddns.timer` |
 | Disk | The server logs free space for data and uploads at start and hourly, and warns above 85% |
 
-Portainer shows the stack as `chatward`; use it for logs and restarts, but run updates with `update-home.sh` so the backup
-happens first.
+If you use a Docker UI, the stack shows as `chatward`; run updates with `update-home.sh` anyway so the backup happens
+first.
 
 ## Files
 | Path | Holds |

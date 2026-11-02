@@ -1,4 +1,4 @@
-// Checks the upgrade from the multi-server releases: ensureSingleServer on databases shaped like lebserver's could be.
+// Checks the upgrade from the multi-server releases: ensureSingleServer on databases shaped like a real install's could be.
 // Run with: npm run test:e2e -w @chatward/server (it runs before the MLS check).
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -30,14 +30,14 @@ try {
   log('an empty database gets no server');
 
   // The live case: the owner registered but never made a server.
-  addUser(db, 'u1', 'carlube', 'Caleb');
+  addUser(db, 'u1', 'alice1', 'Alice');
   ensureSingleServer(db);
   const sid = mainServerId(db)!;
   assert.ok(sid, 'a server is made for the existing owner');
   assert.equal((db.prepare('SELECT owner_id FROM servers WHERE id=?').get(sid) as { owner_id: string }).owner_id, 'u1');
   const channels = db.prepare('SELECT name, kind FROM channels WHERE server_id=? ORDER BY kind').all(sid);
   assert.deepEqual(channels, [{ name: 'general', kind: 'text' }, { name: 'General', kind: 'voice' }]);
-  assert.equal((db.prepare("SELECT display_name FROM users WHERE id='u1'").get() as { display_name: string }).display_name, 'carlube',
+  assert.equal((db.prepare("SELECT display_name FROM users WHERE id='u1'").get() as { display_name: string }).display_name, 'alice1',
     'the display name follows the login name');
   ensureSingleServer(db);
   assert.equal((db.prepare('SELECT COUNT(*) AS n FROM servers').get() as { n: number }).n, 1, 'running again changes nothing');
