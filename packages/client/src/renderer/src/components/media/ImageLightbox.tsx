@@ -139,6 +139,7 @@ export default function ImageLightbox({ url, name, onClose, container }: {
           className="media-lightbox-img"
           src={url}
           alt={name}
+          referrerPolicy="no-referrer"
           draggable={false}
           onLoad={(e) => setNatural({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })}
           onClick={(e) => e.stopPropagation()}
