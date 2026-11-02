@@ -1,0 +1,169 @@
+/* The LCARS layout's frame (LcarsLayout.tsx). The frame is built from a few interlocking blocks:
+   - elbows: the sweeps at the top left and bottom left, thick on the rail side and thin on the bar side, with a big
+     outer curve and a small inner curve, so the frame is never the same thickness after a turn;
+   - segments: flat blocks that are the buttons themselves, label at the bottom right, 4px black gaps between them;
+   - fillers: plain segments that close up spare room, and round caps only on a free end.
+   Four colours with fixed meanings: frame/ready, selected/live, close/leave/alert, and text. Three text sizes: title 26,
+   header 17, data 14. 12px between the frame and the content.
+   The frame has its own colours so it reads the same under any skin; the LCARS skin dresses the content inside. */
+
+/* The frame is the window's title bar while it is on screen. */
+.cw-app:has(> .cw-app-body [data-layout='lcars']) > .cw-titlebar { display: none; }
+
+.lcars-shell {
+  --lc-frame: #4a9ee8; --lc-live: #f5a54a; --lc-alert: #e5484d; --lc-text: #cdd6ff;
+  --lc-ground: #000;
+  --lc-font: 'Antonio', 'Bahnschrift SemiCondensed', 'Bahnschrift', 'Arial Narrow', sans-serif;
+  --lc-rail: 150px; --lc-top: 30px; --lc-bottom: 40px; --lc-gap: 4px; --lc-pad: 12px;
+  --lc-outer: 60px; --lc-inner: 22px; --lc-arm: 96px;
+  flex: 1; min-height: 0; display: grid; background: var(--lc-ground);
+  grid-template-columns: var(--lc-rail) minmax(0, 1fr);
+  grid-template-rows: var(--lc-top) minmax(0, 1fr) var(--lc-bottom);
+  grid-template-areas: 'rail top' 'rail body' 'rail bottom';
+}
+
+/* Segments: the frame's buttons. */
+:root .lcars-shell .lcars-seg {
+  flex: none; display: flex; align-items: flex-end; justify-content: flex-end; gap: 6px;
+  min-width: 56px; margin: 0; padding: 0 8px 3px; border: 0; border-radius: 0; box-shadow: none;
+  background: var(--lc-frame); color: #000; opacity: 1;
+  font: 600 14px/1 var(--lc-font); letter-spacing: .05em; text-transform: uppercase; white-space: nowrap;
+  transition: background .12s;
+}
+:root .lcars-shell button.lcars-seg:hover:not(:disabled) { filter: brightness(1.18); }
+:root .lcars-shell button.lcars-seg.active,
+:root .lcars-shell button.lcars-seg[aria-pressed='true'],
+:root .lcars-shell button.lcars-seg[aria-expanded='true'],
+:root .lcars-shell button.lcars-seg.primary { background: var(--lc-live); }
+:root .lcars-shell button.lcars-seg.danger { background: var(--lc-alert); color: #000; }
+:root .lcars-shell button.lcars-seg:disabled { background: #2a4a6b; color: #000; cursor: not-allowed; }
+:root .lcars-shell button.lcars-seg:focus-visible { outline: 2px solid var(--lc-text); outline-offset: -2px; }
+.lcars-shell .lcars-end { border-radius: 0 999px 999px 0; padding-right: 16px; min-width: 66px; }
+
+/* The left rail: elbows, the tabs, a filler, then Server settings and Settings. */
+.lcars-rail { grid-area: rail; display: flex; flex-direction: column; gap: var(--lc-gap); min-height: 0; position: relative; z-index: 1; }
+.lcars-elbow { flex: none; position: relative; background: var(--lc-frame); -webkit-app-region: drag; }
+.lcars-elbow.top { height: calc(var(--lc-top) + var(--lc-outer)); border-top-left-radius: var(--lc-outer); }
+.lcars-elbow.bottom { height: calc(var(--lc-bottom) + var(--lc-outer)); border-bottom-left-radius: var(--lc-outer); }
+/* The inner curve where the rail turns into a bar. */
+.lcars-elbow::after {
+  content: ''; position: absolute; left: 100%; width: var(--lc-inner); height: var(--lc-inner); pointer-events: none;
+}
+.lcars-elbow.top::after {
+  top: var(--lc-top);
+  background: radial-gradient(circle at 100% 100%, transparent calc(var(--lc-inner) - .5px), var(--lc-frame) var(--lc-inner));
+}
+.lcars-elbow.bottom::after {
+  bottom: var(--lc-bottom);
+  background: radial-gradient(circle at 100% 0, transparent calc(var(--lc-inner) - .5px), var(--lc-frame) var(--lc-inner));
+}
+.lcars-rail-fill { flex: 1 1 0; min-height: 6px; background: var(--lc-frame); }
+.lcars-rail .lcars-rail-seg { height: 56px; flex: 0 1 56px; min-height: 34px; width: 100%; }
+
+/* The tabs are the same elements as the tabs layout's, laid down the rail. */
+.lcars-rail .cw-tabs { display: flex; flex-direction: column; gap: var(--lc-gap); margin: 0; flex: none; }
+.lcars-rail .cw-tab {
+  display: flex; align-items: stretch; gap: var(--lc-gap); height: 56px; min-height: 34px;
+  border: 0; border-radius: 0; background: transparent;
+}
+.lcars-rail .cw-tab-main {
+  flex: 1; min-width: 0; min-height: 0; display: flex; align-items: flex-end; justify-content: flex-end; gap: 6px;
+  padding: 0 8px 4px; border: 0; border-radius: 0; box-shadow: none; background: var(--lc-frame); color: #000;
+  font: 600 14px/1 var(--lc-font); letter-spacing: .05em; text-transform: uppercase; white-space: nowrap;
+}
+.lcars-rail .cw-tab-main:hover, .lcars-rail .cw-tab-pop:hover { filter: brightness(1.18); color: #000; }
+.lcars-rail .cw-tab.active .cw-tab-main { background: var(--lc-live); color: #000; }
+.lcars-rail .cw-tab-main:focus-visible, .lcars-rail .cw-tab-pop:focus-visible { outline: 2px solid var(--lc-text); outline-offset: -2px; }
+/* The tabs layout's [ ] brackets and pixel icons: the rail's segments carry words only. */
+.lcars-rail .cw-tab-main > [aria-hidden='true'], .lcars-rail .cw-tab-main > svg { display: none; }
+.lcars-rail .cw-tab-main .cw-badge {
+  order: -1; align-self: center; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 11px;
+  background: var(--lc-alert); color: #000; font: 600 14px/22px var(--lc-font); text-align: center;
+}
+.lcars-rail .cw-tab-live { order: -1; align-self: center; width: 10px; height: 10px; border-radius: 50%; background: #000; }
+.lcars-rail .cw-tab-pop {
+  flex: none; width: 28px; padding: 0 0 5px; display: flex; align-items: flex-end; justify-content: center;
+  border: 0; border-radius: 0; box-shadow: none; background: var(--lc-frame); color: #000;
+}
+.lcars-rail .cw-tab.active .cw-tab-pop { background: var(--lc-live); }
+.lcars-rail .cw-tab.dragging { opacity: .5; }
+.lcars-rail .cw-tab.drop-before::before, .lcars-rail .cw-tab.drop-after::after {
+  left: 0; right: 0; width: auto; height: 3px; background: var(--lc-text); box-shadow: 0 0 6px var(--lc-text);
+}
+.lcars-rail .cw-tab.drop-before::before { top: -4px; bottom: auto; }
+.lcars-rail .cw-tab.drop-after::after { top: auto; bottom: -4px; }
+
+/* The top bar: arm, Split, the drag area, the server's name, you, Test, and the window's buttons. */
+.lcars-top { grid-area: top; display: flex; align-items: stretch; gap: var(--lc-gap); min-width: 0; user-select: none; }
+.lcars-arm { flex: none; width: var(--lc-arm); margin-right: 0; background: var(--lc-frame); -webkit-app-region: drag; }
+.lcars-top > .lcars-arm + * { margin-left: 0; }
+.lcars-drag { flex: 1; min-width: 24px; background: var(--lc-frame); -webkit-app-region: drag; }
+.lcars-title {
+  flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 6px;
+  font: 700 26px/30px var(--lc-font); letter-spacing: .05em; text-transform: uppercase; color: var(--lc-text);
+  -webkit-app-region: drag;
+}
+.lcars-shell .lcars-me { align-items: center; padding: 0 4px 0 10px; gap: 4px; }
+.lcars-me-name { max-width: 140px; overflow: hidden; text-overflow: ellipsis; padding-top: 4px; }
+:root .lcars-shell .lcars-me .cw-status-select {
+  margin: 0; height: 24px; padding: 0 6px; border: 0; border-radius: 0; background: #000; color: var(--lc-frame);
+  font: 600 14px/1 var(--lc-font); letter-spacing: .05em; text-transform: uppercase;
+}
+.lcars-shell .lcars-win { min-width: 56px; }
+
+/* The content, 12px in from the frame. */
+.lcars-body {
+  grid-area: body; min-width: 0; min-height: 0; display: flex; gap: 24px;
+  padding: var(--lc-pad) var(--lc-pad) var(--lc-pad) calc(var(--lc-pad) + 2px);
+}
+.lcars-body > .cw-tabs-main { flex: 1; }
+.lcars-members { flex: none; width: 220px; min-height: 0; display: flex; flex-direction: column; }
+.lcars-members .cw-members { width: auto; flex: 1; min-height: 0; padding: 0; background: transparent; }
+
+/* The bottom bar: arm, the call controls, a filler, the call's status, and Leave on the free end. */
+.lcars-bottom { grid-area: bottom; display: flex; align-items: stretch; min-width: 0; }
+.lcars-bottom::before { content: ''; flex: none; width: var(--lc-arm); background: var(--lc-frame); }
+.lcars-dock { flex: 1; min-width: 0; display: flex; align-items: stretch; gap: var(--lc-gap); margin-left: var(--lc-gap); }
+.lcars-dock .lcars-flat { display: contents; }
+.lcars-dock .lcars-seg { min-width: 80px; }
+.lcars-dock .media-anchor { display: flex; }
+.lcars-fill { flex: 1; min-width: 16px; background: var(--lc-frame); }
+.lcars-cap { flex: none; width: 30px; background: var(--lc-frame); border-radius: 0 999px 999px 0; }
+.lcars-status {
+  flex: none; display: flex; align-items: center; gap: 8px; padding: 0 8px; white-space: nowrap;
+  font: 600 17px/1 var(--lc-font); letter-spacing: .05em; text-transform: uppercase; color: var(--lc-frame);
+}
+.lcars-status.live { color: var(--lc-live); }
+:root .lcars-status .cw-signal-btn { background: transparent; box-shadow: none; padding: 2px; }
+.lcars-alert {
+  flex: 0 1 auto; min-width: 0; align-self: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  padding: 0 8px; color: var(--lc-alert); font: 600 14px/1 var(--lc-font); letter-spacing: .05em; text-transform: uppercase;
+}
+
+/* The soundboard's pop-up wears a small frame of its own: an elbow, a thin top bar and a rail down the left. */
+:root .lcars-shell .lcars-pop.media-popover {
+  background: #000; border: 0; border-radius: 0; box-shadow: 0 0 0 6px #000;
+  padding: 26px 0 0 62px !important; min-height: 240px; color: var(--lc-text);
+}
+.lcars-popframe { position: absolute; inset: 0; pointer-events: none; }
+.lcars-popframe > span { position: absolute; background: var(--lc-live); }
+.lcars-popframe-elbow { left: 0; top: 0; width: 50px; height: 60px; border-top-left-radius: 24px; }
+.lcars-popframe-elbow::after {
+  content: ''; position: absolute; left: 100%; top: 16px; width: 10px; height: 10px;
+  background: radial-gradient(circle at 100% 100%, transparent 9.5px, var(--lc-live) 10px);
+}
+.lcars-popframe-bar { left: 50px; top: 0; right: 28px; height: 16px; }
+.lcars-popframe-cap { right: 0; top: 0; width: 24px; height: 16px; border-radius: 0 8px 8px 0; }
+.lcars-popframe-rail { left: 0; top: 64px; bottom: 0; width: 50px; border-radius: 0 0 25px 25px; }
+.lcars-pop > :not(.lcars-popframe) { position: relative; }
+.lcars-pop strong { font: 600 17px/1 var(--lc-font); letter-spacing: .05em; text-transform: uppercase; color: var(--lc-text); }
+:root .lcars-pop button {
+  border: 0; border-radius: 20px; box-shadow: none; background: var(--lc-frame); color: #000;
+  font: 600 14px/1.1 var(--lc-font); letter-spacing: .05em; text-transform: uppercase;
+}
+:root .lcars-pop button:hover { filter: brightness(1.18); }
+:root .lcars-pop button.primary { background: var(--lc-frame); padding: 10px 18px; }
+:root .lcars-pop .cw-sound-tile { background: var(--lc-frame) !important; color: #000 !important; border-radius: 20px; }
+:root .lcars-pop .cw-sound-tile[data-playing] { background: var(--lc-live) !important; }
+:root .lcars-pop .cw-sound-tile + button.icon { background: var(--lc-alert); color: #000; border-radius: 0 20px 0 10px; padding: 3px 7px; }
+.lcars-pop .muted { color: var(--lc-frame); font-family: var(--lc-font); letter-spacing: .03em; }

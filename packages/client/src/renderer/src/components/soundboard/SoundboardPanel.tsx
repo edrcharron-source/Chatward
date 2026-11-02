@@ -123,6 +123,8 @@ function SoundTile({ sound, playing, canDelete, onPlay, onDelete }: {
     <div style={{ position: 'relative' }}>
       <button
         type="button"
+        className="cw-sound-tile"
+        data-playing={playing || undefined}
         onClick={onPlay}
         aria-label={`Play ${sound.name}`}
         title={`${sound.name} (${(sound.durationMs / 1000).toFixed(1)}s)`}

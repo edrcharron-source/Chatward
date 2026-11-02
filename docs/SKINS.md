@@ -50,3 +50,24 @@ the look gets the `visual-change` label; the check then passes and the screensho
 - **Self-test.** `test/skins/broken/` holds a skin that must fail. The workflow runs parity with `--broken` and passes only if that skin is caught.
 
 Skins that must pass are listed in `SKINS` in `test/skins/parity.ts`. Once the skin registry exists, the check reads it instead.
+
+## LCARS (a skin with its own layout)
+
+The LCARS skin (`skins/lcars/skin.css`) comes with the LCARS layout (`components/lcars`). Picking the skin in Settings >
+Appearance also picks the layout, picking the LCARS layout also picks the skin, and picking another skin while the LCARS
+layout is on goes back to Tabs. A skin entry in `SKINS` names its layout with `layout`.
+
+- **Same features as Tabs.** The LCARS layout is the tabs layout drawn in a different frame: `TabsLayout` with
+  `frame="lcars"` hands its own tab bar, panes, member list, pop-out windows and dialogs to `LcarsLayout`, so a feature
+  added to the tabs layout shows up in LCARS too. The call controls are `VoiceDock` with `bar`.
+- **The frame** is built from interlocking blocks: two elbows (top left, bottom left) that turn the thick left rail into
+  the thin top and bottom bars, flat segments that are the buttons (4px black gaps, label bottom right), fillers, and
+  round caps on free ends only. The rail holds the tabs, Server settings and Settings; the top bar holds Split, the drag
+  area, the server name, your status, Test and the window's Min/Max/Close (the usual title bar is hidden while the frame
+  is up); the bottom bar holds the call controls or Join voice. The soundboard opens in a pop-up with a small frame.
+- **Rules:** four colours with fixed meanings (blue frame/ready, amber selected/live, red close/leave/alert, lilac text),
+  three text sizes (26, 17, 14), 12px between frame and content. The font is Antonio, bundled under the SIL Open Font
+  License (`skins/lcars/fonts/OFL.txt`).
+- **Check:** `npm run lcars:check -w @chatward/client -- <out dir>` (under `xvfb-run` on Linux) walks the same screens in
+  the Tabs and LCARS layouts, fails if LCARS is missing any control Tabs shows, uses the frame's own controls (split,
+  pop-out, tab reorder, Join voice, Leave, switching layouts) and saves screenshots of both.

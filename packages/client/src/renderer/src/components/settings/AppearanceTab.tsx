@@ -11,7 +11,10 @@ const THEMES = [
 const LAYOUTS = [
   { id: 'tabs', label: 'Tabs', hint: 'One text chat and one voice chat, picked from tabs along the top' },
   { id: 'classic', label: 'Classic', hint: 'Channel list on the left' },
+  { id: 'lcars', label: 'LCARS', hint: 'The LCARS frame: tabs down a rail on the left, call controls along the bottom. Comes with the LCARS skin' },
 ] as const;
+
+const LCARS_SKIN = SKINS.find((s) => s.layout === 'lcars')?.id ?? '';
 
 export default function AppearanceTab() {
   const theme = useSettings((s) => s.theme);
@@ -41,7 +44,7 @@ export default function AppearanceTab() {
           {LAYOUTS.map((l) => (
             <label key={l.id} className="choice" title={l.hint}>
               <input type="radio" name="layout" value={l.id} checked={layout === l.id}
-                onChange={() => set({ layout: l.id })} />
+                onChange={() => set(l.id === 'lcars' ? { layout: l.id, skin: LCARS_SKIN } : { layout: l.id })} />
               <span>{l.label}</span>
             </label>
           ))}
@@ -59,7 +62,7 @@ export default function AppearanceTab() {
               <span><span className="skin-swatch" style={{ background: current.swatch }} aria-hidden />{current.label}</span>
               <small className="muted">Changes how the app looks.</small>
             </span>
-            <select aria-label="Skin" value={current.id} onChange={(e) => set({ skin: e.target.value })}>
+            <select aria-label="Skin" value={current.id} onChange={(e) => set(skinChoice(e.target.value, layout))}>
               {choices.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
             </select>
           </label>
@@ -67,4 +70,15 @@ export default function AppearanceTab() {
       )}
     </>
   );
+}
+
+/**
+ * A skin that comes with its own layout brings it along, and leaving that skin goes back to the Tabs layout, so a skin's
+ * frame is never left on without its look. Any other pick leaves the layout as it is.
+ */
+function skinChoice(id: string, layout: string): { skin: string; layout?: 'tabs' | 'classic' | 'lcars' } {
+  const next = SKINS.find((s) => s.id === id);
+  if (next?.layout) return { skin: id, layout: next.layout };
+  if (SKINS.some((s) => s.layout === layout)) return { skin: id, layout: 'tabs' };
+  return { skin: id };
 }

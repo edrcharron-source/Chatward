@@ -33,12 +33,12 @@ const pinPage = (theme: string, skin: string) => `(() => {
   localStorage.setItem('chatward.settings', JSON.stringify({ theme: ${JSON.stringify(theme)}, skin: ${JSON.stringify(skin)}, layout: 'classic' }));
 })();`;
 
-// skin is a registered skin id, or '' for the plain app.
-export async function launch(theme: string, appDir: string, skin = ''): Promise<{ app: ElectronApplication; page: Page }> {
+// skin is a registered skin id, or '' for the plain app. extraArgs go to Electron (the LCARS check adds a fake microphone).
+export async function launch(theme: string, appDir: string, skin = '', extraArgs: string[] = []): Promise<{ app: ElectronApplication; page: Page }> {
   const userData = fs.mkdtempSync(path.join(fs.realpathSync(process.env.RUNNER_TEMP ?? '/tmp'), 'chatward-visual-'));
   const app = await _electron.launch({
     executablePath: electronPath,
-    args: [appDir, `--user-data-dir=${userData}`, '--no-sandbox', '--lang=en-US', '--force-device-scale-factor=1'],
+    args: [appDir, `--user-data-dir=${userData}`, '--no-sandbox', '--lang=en-US', '--force-device-scale-factor=1', ...extraArgs],
     env: { ...process.env, TZ: 'UTC', LANG: 'en_US.UTF-8' },
   });
   // CI machines have no OS keyring. Stand in for it so demo sign-in can store its keys; nothing here is real.

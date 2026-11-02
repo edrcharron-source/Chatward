@@ -1,0 +1,105 @@
+/* LCARS skin: a black ground, a condensed typeface and four colours with fixed meanings:
+   blue  #4a9ee8  frame and ready (buttons you can press, quiet labels)
+   amber #f5a54a  selected and live (the open tab, a pressed toggle, the call you are in, Send)
+   red   #e5484d  close, leave and alerts
+   lilac #cdd6ff  text
+   Buttons are pills, fields are outlined pills, headings and labels are upper case. It comes with the LCARS layout
+   (components/lcars), which draws the frame; this file dresses the content, the dialogs and the screens outside the
+   frame (sign-in, settings). Every rule sits under :root[data-skin='lcars']. The Antonio font files are under the SIL
+   Open Font License (fonts/OFL.txt). */
+
+@font-face { font-family: 'Antonio'; font-style: normal; font-weight: 400; font-display: swap; src: url('./fonts/antonio-latin-400-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Antonio'; font-style: normal; font-weight: 600; font-display: swap; src: url('./fonts/antonio-latin-600-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Antonio'; font-style: normal; font-weight: 700; font-display: swap; src: url('./fonts/antonio-latin-700-normal.woff2') format('woff2'); }
+
+:root[data-skin='lcars'] {
+  --bg-0: #000; --bg-1: #000; --bg-2: #000; --bg-3: #0f1b2c; --bg-hover: #16273d;
+  --text: #cdd6ff; --text-muted: #4a9ee8; --text-strong: #cdd6ff;
+  --accent: #f5a54a; --accent-hover: #ffb866; --accent-text: #000;
+  --accent-tint: rgba(245, 165, 74, .14); --hover-tint: rgba(74, 158, 232, .08);
+  --danger: #e5484d; --ok: #f5a54a; --warn: #f5a54a; --border: #10233a;
+  --shadow: none; --shadow-popover: 0 0 0 2px #4a9ee8; --shadow-composer: none; --shadow-header: none;
+  --radius: 24px; --radius-sm: 20px; --radius-modal: 28px;
+  --backdrop: rgba(0, 0, 0, .8); --overlay-bg: rgba(0, 0, 0, .75);
+  --danger-text: #000;
+  --font-body: 'Antonio', 'Bahnschrift SemiCondensed', 'Bahnschrift', 'Arial Narrow', sans-serif;
+  --font-size: 17px; --line-height: 1.35;
+  /* The usual title bar shows only outside the LCARS frame (sign-in, loading); it gets the frame's colours. */
+  --titlebar-height: 30px; --titlebar-bg: #000; --titlebar-text: #4a9ee8; --titlebar-text-strong: #000;
+  --titlebar-mark: #f5a54a; --titlebar-font: var(--font-body); --titlebar-font-size: 14px; --titlebar-letter-spacing: .08em;
+  --titlebar-button-hover: #4a9ee8; --titlebar-close-hover: #e5484d; --titlebar-close-hover-text: #000;
+}
+:root[data-skin='lcars'] body,
+:root[data-skin='lcars'] #root { background: #000; }
+:root[data-skin='lcars'] ::selection { background: #f5a54a; color: #000; }
+:root[data-skin='lcars'] ::-webkit-scrollbar-thumb { background: #4a9ee8; }
+:root[data-skin='lcars'] .cw-titlebar-title { text-transform: uppercase; }
+
+/* Buttons are blue pills with black words. Amber is the one picked or live, red closes, leaves or deletes. */
+:root[data-skin='lcars'] button {
+  background: #4a9ee8; color: #000; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; box-shadow: none;
+}
+:root[data-skin='lcars'] button:hover { background: #74b6f0; }
+:root[data-skin='lcars'] button.primary,
+:root[data-skin='lcars'] button[aria-pressed='true'] { background: #f5a54a; color: #000; }
+:root[data-skin='lcars'] button.primary:hover { background: #ffb866; }
+:root[data-skin='lcars'] button.danger { background: #e5484d; color: #000; }
+:root[data-skin='lcars'] button.danger:hover { background: #f0686c; }
+:root[data-skin='lcars'] button:disabled { background: #1d3550; color: #000; }
+/* Icon buttons stay quiet: a blue glyph on black that lights up on hover. */
+:root[data-skin='lcars'] button.icon { background: transparent; color: #4a9ee8; }
+:root[data-skin='lcars'] button.icon:hover { background: #16273d; color: #cdd6ff; }
+/* Names and avatars that open a profile are buttons too, but read as text. */
+:root[data-skin='lcars'] button.profile-trigger,
+:root[data-skin='lcars'] button.profile-trigger:hover { background: transparent; color: inherit; text-transform: none; letter-spacing: normal; font-weight: inherit; }
+:root[data-skin='lcars'] .cw-titlebar .cw-titlebar-button { background: transparent; color: var(--titlebar-text); }
+:root[data-skin='lcars'] .cw-titlebar .cw-titlebar-button:hover { background: var(--titlebar-button-hover); color: #000; }
+:root[data-skin='lcars'] .cw-titlebar .cw-titlebar-button.close:hover { background: var(--titlebar-close-hover); color: #000; }
+:root[data-skin='lcars'] .cw-demo-banner button { background: #000; color: #f5a54a; }
+
+/* Fields are outlined pills on black. */
+:root[data-skin='lcars'] input:not([type='checkbox']):not([type='radio']):not([type='range']),
+:root[data-skin='lcars'] textarea,
+:root[data-skin='lcars'] select { background: #000; color: #cdd6ff; border: 2px solid #4a9ee8; border-radius: 20px; }
+:root[data-skin='lcars'] input:focus,
+:root[data-skin='lcars'] textarea:focus,
+:root[data-skin='lcars'] select:focus { border-color: #f5a54a; }
+:root[data-skin='lcars'] input[type='checkbox'],
+:root[data-skin='lcars'] input[type='radio'],
+:root[data-skin='lcars'] input[type='range'] { accent-color: #f5a54a; }
+:root[data-skin='lcars'] ::placeholder { color: #4a9ee8; opacity: 1; }
+
+/* Panels are black with a thin blue edge, so content floats on the ground like a display. */
+:root[data-skin='lcars'] .modal,
+:root[data-skin='lcars'] .media-popover { background: #000; box-shadow: 0 0 0 2px #4a9ee8; }
+:root[data-skin='lcars'] .card { background: #000; box-shadow: inset 0 0 0 2px #10233a; }
+:root[data-skin='lcars'] .setting-row { border-radius: 20px; }
+:root[data-skin='lcars'] .cv-composer { background: #000; box-shadow: inset 0 0 0 2px #4a9ee8; border-radius: 24px; }
+
+/* Headings and labels: upper case. Titles amber-free lilac; quiet labels blue. */
+:root[data-skin='lcars'] h1,
+:root[data-skin='lcars'] h2,
+:root[data-skin='lcars'] h3,
+:root[data-skin='lcars'] .cw-members-title,
+:root[data-skin='lcars'] .cw-section-title,
+:root[data-skin='lcars'] .setting-section h3,
+:root[data-skin='lcars'] .cw-dialog-section h3 { text-transform: uppercase; letter-spacing: .06em; }
+:root[data-skin='lcars'] .cw-members-title { color: #cdd6ff; font-size: 17px; font-weight: 600; }
+:root[data-skin='lcars'] .cv-title,
+:root[data-skin='lcars'] .cv-hash { color: #cdd6ff; text-transform: uppercase; letter-spacing: .05em; }
+:root[data-skin='lcars'] .cv-name,
+:root[data-skin='lcars'] button.profile-trigger.cv-name { color: #4a9ee8; text-transform: uppercase; letter-spacing: .05em; font-weight: 600; }
+:root[data-skin='lcars'] .cv-time { color: #4a9ee8; }
+:root[data-skin='lcars'] .cw-badge { background: #e5484d; color: #000; }
+:root[data-skin='lcars'] .cw-role { background: transparent; color: #f5a54a; box-shadow: inset 0 0 0 1px #f5a54a; }
+:root[data-skin='lcars'] .cw-split-divider { background: #4a9ee8; }
+:root[data-skin='lcars'] .cw-split-divider:hover { background: #f5a54a; }
+
+/* The tabs and classic layouts under this skin: blue segments, the open one amber. */
+:root[data-skin='lcars'] .cw-tab { background: #4a9ee8; border-color: #4a9ee8; }
+:root[data-skin='lcars'] .cw-tab .cw-tab-main,
+:root[data-skin='lcars'] .cw-tab .cw-tab-pop { background: transparent; color: #000; }
+:root[data-skin='lcars'] .cw-tab.active { background: #f5a54a; border-color: #f5a54a; }
+:root[data-skin='lcars'] .cw-channel.active { color: #f5a54a; background: rgba(245, 165, 74, .1); }
+:root[data-skin='lcars'] .cw-tool.active,
+:root[data-skin='lcars'] .cw-tool[aria-pressed='true'] { background: #f5a54a; color: #000; }

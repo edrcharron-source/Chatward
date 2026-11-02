@@ -2,12 +2,21 @@ import { useRef, useState, type CSSProperties } from 'react';
 import PixelIcon from '../icons/PixelIcon';
 import { usePopover } from '../media/Popover';
 import SoundboardPanel from './SoundboardPanel';
+import { LcarsPopFrame } from '../lcars/LcarsPopFrame';
 
 const WIDTH = 360;
 const GAP = 8;
 
-/** The call controls' Soundboard button. The sounds open in a pop-up above it and close on a click outside or Escape. */
-export default function SoundboardButton({ serverId, channelId }: { serverId: string; channelId: string }) {
+/**
+ * The call controls' Soundboard button. The sounds open in a pop-up above it and close on a click outside or Escape.
+ * `labelled` shows the word instead of the icon (the LCARS bottom bar), and the pop-up then wears the LCARS frame.
+ */
+export default function SoundboardButton({ serverId, channelId, labelled = false, className }: {
+  serverId: string;
+  channelId: string;
+  labelled?: boolean;
+  className?: string;
+}) {
   const { open, setOpen, ref } = usePopover();
   const button = useRef<HTMLButtonElement>(null);
   const [place, setPlace] = useState<CSSProperties>({});
@@ -27,16 +36,17 @@ export default function SoundboardButton({ serverId, channelId }: { serverId: st
 
   return (
     <div ref={ref} className="media-anchor">
-      <button ref={button} aria-label="Soundboard" title="Soundboard" aria-haspopup="dialog" aria-expanded={open} onClick={toggle}>
-        <PixelIcon name="sounds" size={18} />
+      <button ref={button} className={className} aria-label="Soundboard" title="Soundboard" aria-haspopup="dialog" aria-expanded={open} onClick={toggle}>
+        {labelled ? <span className="lcars-label">Soundboard</span> : <PixelIcon name="sounds" size={18} />}
       </button>
       {open && (
         <div
-          className="media-popover"
+          className={`media-popover cw-soundboard-pop${labelled ? ' lcars-pop' : ''}`}
           role="dialog"
           aria-label="Soundboard"
           style={{ position: 'fixed', top: 'auto', right: 'auto', padding: 0, overflowY: 'auto', ...place }}
         >
+          {labelled && <LcarsPopFrame />}
           <SoundboardPanel serverId={serverId} channelId={channelId} />
         </div>
       )}
