@@ -5,7 +5,13 @@ import { libraryGifUrl } from '../../state/gifLibrary';
  * A GIF from the server's library. The file needs the auth header, so it is fetched once it scrolls into view
  * and shown through an object URL. A GIF deleted from the library shows a small "GIF removed" box.
  */
-export default function LibraryGifImage({ id, title, className }: { id: string; title: string; className?: string }) {
+export default function LibraryGifImage({ id, title, className, onOpen }: {
+  id: string;
+  title: string;
+  className?: string;
+  /** When given, the GIF is a button that hands its file address (and the window it is in) to this, to show it big. */
+  onOpen?: (src: string, container: HTMLElement) => void;
+}) {
   const [src, setSrc] = useState<string | null>(null);
   const [gone, setGone] = useState(false);
   const [visible, setVisible] = useState(false);
@@ -35,10 +41,16 @@ export default function LibraryGifImage({ id, title, className }: { id: string; 
   if (gone) return <span className="muted media-gif-blocked gif-removed">GIF removed</span>;
   if (!src) return <span ref={boxRef} className={`gif-loading ${className ?? ''}`} aria-label={`Loading ${title || 'GIF'}`} />;
   // An object URL revoked after a delete fails to load; asking again finds out the GIF is gone.
-  return <img className={className} src={src} alt={title || 'GIF'} onError={() => {
+  const img = <img className={className} src={src} alt={title || 'GIF'} onError={() => {
     if (retried.current) { setGone(true); return; }
     retried.current = true;
     setSrc(null);
     setVisible(false);
   }} />;
+  if (!onOpen) return img;
+  return (
+    <button type="button" className="media-open" aria-label={`View ${title || 'GIF'} full size`} onClick={(e) => onOpen(src, e.currentTarget.ownerDocument.body)}>
+      {img}
+    </button>
+  );
 }

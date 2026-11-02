@@ -112,7 +112,7 @@ export default function MessageItem({ message, payload, author, grouped, canEdit
         <JamCards payload={payload} />
         {payload.listenAlong && author && <ListenAlongCard host={author} serverId={serverId} />}
         {payload.attachments?.map((a) => <AttachmentView key={a.uploadId} attachment={a} serverId={serverId} />)}
-        {payload.gif && <GifView gif={payload.gif} serverId={serverId} />}
+        {payload.gif && <GifView gif={payload.gif} serverId={serverId} openable />}
         {payload.linkPreviews?.filter((p) => !jamLinkSet.has(p.url)).map((p) => <LinkPreviewCard key={p.url} preview={p} />)}
       </>
     );
