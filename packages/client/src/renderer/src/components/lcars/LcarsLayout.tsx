@@ -136,6 +136,8 @@ function useShapedFrame(shell: RefObject<HTMLDivElement | null>): boolean {
     const css = getComputedStyle(el);
     const px = (name: string) => parseFloat(css.getPropertyValue(name)) || 0;
     const fit = () => {
+      // The frame has been drawn at the window's current size: tell the main process it may take the next resize step.
+      requestAnimationFrame(() => window.chatward?.windowControls?.ackResize?.());
       // A strip above the frame (the demo banner) holds the window's top edge, so the top corners stay square then;
       // the frame's own sweep still shows the desktop past its curve, as the ground behind it is clear.
       const top = el.getBoundingClientRect().top > 0.5 ? 0 : 1;
