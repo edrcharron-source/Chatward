@@ -110,6 +110,8 @@
 
 /* Avatars are squares; status dots are small diamonds. */
 :root[data-skin='orbit'] .avatar { border-radius: 0; }
+/* A picture brings its own shape (the demo's letter pictures are round), so no grey square behind it. */
+:root[data-skin='orbit'] img.avatar { background: transparent; }
 :root[data-skin='orbit'] .cw-dot { border-radius: 0; transform: rotate(45deg); }
 :root[data-skin='orbit'] .cw-dot.online { background: var(--orb-live); }
 :root[data-skin='orbit'] .cw-badge { background: var(--orb-gold); color: #0a101c; border-radius: 0; }
