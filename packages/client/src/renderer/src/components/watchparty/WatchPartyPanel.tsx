@@ -71,7 +71,6 @@ export function WatchPartyPanel({ callChannelId: channelId, keyChannelId }: { ca
 
   const frameRef = useRef<HTMLIFrameElement>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const frameWrapRef = useRef<HTMLDivElement>(null);
   const popupRef = useRef<Window | null>(null);
   const readyRef = useRef(false);
   const remoteRef = useRef<StampedState | null>(null);
@@ -156,10 +155,14 @@ export function WatchPartyPanel({ callChannelId: channelId, keyChannelId }: { ca
     const prev = local.current;
     local.current = { position: e.currentTime, at: now, playing: e.playing, rate: e.rate };
     const cur = remoteRef.current;
-    if (!prev || !mediaKey(cur) || now < suppressUntil.current) return;
+    if (!prev || !mediaKey(cur)) return;
+    // Our own commands echo back as events for a moment after each sync. A file or Jellyfin play or pause that
+    // disagrees with the shared state is the viewer's own click, so it still goes out even inside that window.
+    const ownClick = e.playing !== cur!.playing && Boolean(cur!.url || cur!.jellyfinId);
+    if (now < suppressUntil.current && !ownClick) return;
 
     const seeked = Math.abs(e.currentTime - playhead(prev, now)) > SEEK_SECONDS;
-    if (seeked || e.playing !== prev.playing || e.rate !== prev.rate) {
+    if (seeked || ownClick || e.playing !== prev.playing || e.rate !== prev.rate) {
       void publish({ ...carry(cur!), playing: e.playing, position: e.currentTime, rate: e.rate });
     }
   };
@@ -349,13 +352,6 @@ export function WatchPartyPanel({ callChannelId: channelId, keyChannelId }: { ca
     else stop();
   };
 
-  const togglePlay = () => {
-    const s = remoteRef.current;
-    if (!mediaKey(s) || !s) return;
-    const position = local.current ? playhead(local.current, performance.now()) : s.position;
-    void publish({ ...carry(s), playing: !s.playing, position, rate: s.rate });
-  };
-
   /** Brings the embed back into the panel and closes the pop-out. Closing the pop-out window itself lands here too. */
   const dock = () => {
     popupRef.current?.close();
@@ -376,8 +372,6 @@ export function WatchPartyPanel({ callChannelId: channelId, keyChannelId }: { ca
     popupRef.current = win;
     setPopped(true);
   };
-
-  const fullscreen = () => void frameWrapRef.current?.requestFullscreen();
 
   const stop = () => {
     // Clear our own view first, so nothing the old embed reports while the stop is in flight gets published.
@@ -450,7 +444,7 @@ export function WatchPartyPanel({ callChannelId: channelId, keyChannelId }: { ca
               <button type="button" onClick={dock}>Bring back</button>
             </div>
           ) : (
-            <div className="watch-party-frame" ref={frameWrapRef}>
+            <div className="watch-party-frame">
               {useVideo ? (
                 <video key={fileUrl ?? jellyfinId} ref={videoRef} src={fileUrl ?? undefined} controls playsInline preload="metadata" />
               ) : (
@@ -466,10 +460,8 @@ export function WatchPartyPanel({ callChannelId: channelId, keyChannelId }: { ca
             </div>
           )}
           <div className="watch-party-bar">
-            <button type="button" onClick={togglePlay}>{remote?.playing ? 'Pause' : 'Play'}</button>
             <button type="button" onClick={skip}>{queue.length ? 'Skip' : 'End'}</button>
-            {!popped && <button type="button" onClick={fullscreen}>Fullscreen</button>}
-            <span className="watch-party-hint">Play, pause, seeks and speed sync for everyone.</span>
+            <span className="watch-party-hint">Play, pause and seeks in the player sync for everyone.</span>
           </div>
         </>
       ) : (
