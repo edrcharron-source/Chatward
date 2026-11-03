@@ -110,8 +110,12 @@
 
 /* Avatars are squares; status dots are small diamonds. */
 :root[data-skin='orbit'] .avatar { border-radius: 0; }
-/* A picture brings its own shape (the demo's letter pictures are round), so no grey square behind it. */
-:root[data-skin='orbit'] img.avatar { background: transparent; }
+/* Avatars are squares everywhere, and diamonds on the voice tiles (scaled up so the cut corners don't shrink the face). */
+:root[data-skin='orbit'] .profile-trigger:has(> .avatar:only-child) { border-radius: 0; }
+:root[data-skin='orbit'] .card > div > .avatar,
+:root[data-skin='orbit'] .card > div > .profile-trigger > .avatar {
+  clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%); transform: scale(1.3);
+}
 :root[data-skin='orbit'] .cw-dot { border-radius: 0; transform: rotate(45deg); }
 :root[data-skin='orbit'] .cw-dot.online { background: var(--orb-live); }
 :root[data-skin='orbit'] .cw-badge { background: var(--orb-gold); color: #0a101c; border-radius: 0; }

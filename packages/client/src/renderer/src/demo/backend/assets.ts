@@ -10,7 +10,7 @@ function memo(key: string, make: () => Promise<Uint8Array>): Promise<Uint8Array>
   return hit;
 }
 
-/** Round avatar with the first letter of the name. <img> needs a real raster type, so this is PNG. */
+/** Square avatar with the first letter of the name (each skin shapes it: round, square or diamond). <img> needs a real raster type, so this is PNG. */
 export function avatarPng(name: string, hue: number): Promise<Uint8Array> {
   return memo(`avatar:${name}:${hue}`, async () => {
     const canvas = document.createElement('canvas');
@@ -18,9 +18,7 @@ export function avatarPng(name: string, hue: number): Promise<Uint8Array> {
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error('canvas unavailable');
     ctx.fillStyle = `hsl(${hue} 60% 45%)`;
-    ctx.beginPath();
-    ctx.arc(64, 64, 64, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.fillRect(0, 0, 128, 128);
     ctx.fillStyle = '#fff';
     ctx.font = 'bold 64px sans-serif';
     ctx.textAlign = 'center';
