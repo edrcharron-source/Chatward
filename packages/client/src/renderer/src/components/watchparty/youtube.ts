@@ -60,18 +60,45 @@ export type PlayerEvent =
 /** playerState 1 = playing, 3 = buffering; buffering counts as playing so it does not look like a pause. */
 const isPlayingState = (state: number) => state === 1 || state === 3;
 
+/** How long to wait for a fresh time after a state change before reporting with the last known time. */
+const STATE_WAIT_MS = 300;
+
 /** Listens to one embed. Returns an unbind function. Call again with the new iframe when the src changes. */
 export function bindPlayer(frame: HTMLIFrameElement, onEvent: (e: PlayerEvent) => void): () => void {
   const listen = () => frame.contentWindow?.postMessage(JSON.stringify({ event: 'listening' }), YT_ORIGIN);
+
+  // infoDelivery is periodic, so it may not arrive right after a pause or play from the embed's own controls.
+  // Those arrive as onStateChange, so a state change asks for the time and reports the change as soon as it is known.
+  let lastTime = 0;
+  let lastRate = 1;
+  let pending: { playing: boolean; timer: ReturnType<typeof setTimeout> } | null = null;
+  const report = (playing: boolean, currentTime: number) => {
+    if (pending) clearTimeout(pending.timer);
+    pending = null;
+    onEvent({ kind: 'info', currentTime, playing, rate: lastRate });
+  };
 
   const onMessage = (e: MessageEvent) => {
     if (e.source !== frame.contentWindow || e.origin !== YT_ORIGIN) return;
     const data = parse(e.data);
     if (!data) return;
     if (data.event === 'onReady') onEvent({ kind: 'ready' });
+    if (data.event === 'onStateChange' && typeof data.info === 'number') {
+      const playing = isPlayingState(data.info);
+      if (pending) clearTimeout(pending.timer);
+      sendCommand(frame, 'getCurrentTime');
+      pending = { playing, timer: setTimeout(() => report(playing, lastTime), STATE_WAIT_MS) };
+      return;
+    }
     const info = data.event === 'infoDelivery' ? (data.info as Partial<InfoDelivery> | undefined) : undefined;
     if (info && typeof info.currentTime === 'number' && typeof info.playerState === 'number') {
-      onEvent({ kind: 'info', currentTime: info.currentTime, playing: isPlayingState(info.playerState), rate: info.playbackRate ?? 1 });
+      lastTime = info.currentTime;
+      lastRate = info.playbackRate ?? 1;
+      if (pending && isPlayingState(info.playerState) === pending.playing) {
+        report(pending.playing, info.currentTime);
+        return;
+      }
+      onEvent({ kind: 'info', currentTime: info.currentTime, playing: isPlayingState(info.playerState), rate: lastRate });
     }
   };
 
@@ -81,6 +108,8 @@ export function bindPlayer(frame: HTMLIFrameElement, onEvent: (e: PlayerEvent) =
   frame.addEventListener('load', listen);
   listen();
   return () => {
+    if (pending) clearTimeout(pending.timer);
+    pending = null;
     win.removeEventListener('message', onMessage);
     frame.removeEventListener('load', listen);
   };
@@ -90,7 +119,7 @@ export function sendCommand(frame: HTMLIFrameElement | null, func: string, args:
   frame?.contentWindow?.postMessage(JSON.stringify({ event: 'command', func, args }), YT_ORIGIN);
 }
 
-function parse(raw: unknown): { event?: string; info?: Record<string, unknown> } | null {
+function parse(raw: unknown): { event?: string; info?: unknown } | null {
   if (typeof raw !== 'string') return raw && typeof raw === 'object' ? (raw as { event?: string }) : null;
   try {
     const v: unknown = JSON.parse(raw);
