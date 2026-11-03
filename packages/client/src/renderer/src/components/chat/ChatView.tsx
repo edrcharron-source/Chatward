@@ -1,7 +1,11 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { Channel, Member } from '@chatward/shared';
 import { useSession } from '../../state/session';
-import { loadHistory, useChat } from '../../state/chat';
+import { loadHistory, loadUntil, useChat } from '../../state/chat';
+import { chatterView, guestMember, useGuestMembers } from '../../state/guests';
+import { clearJump, closeSearch, openSearch, useSearch } from '../../state/search';
+import PixelIcon from '../icons/PixelIcon';
+import SearchPanel from '../search/SearchPanel';
 import Composer from './Composer';
 import MessageItem from './MessageItem';
 import './chat.css';
@@ -24,18 +28,32 @@ export default function ChatView({ channel }: { channel: Channel }) {
   const payloads = useChat((s) => s.payloads);
   const typing = useChat((s) => s.typing[channel.id]);
   const me = useSession((s) => s.user);
-  const members = useSession((s) => s.servers.find((b) => b.server.id === channel.serverId)?.members ?? NO_MEMBERS);
+  const accounts = useSession((s) => s.servers.find((b) => b.server.id === channel.serverId)?.members ?? NO_MEMBERS);
+  const guests = useGuestMembers(channel.serverId);
+  const members = guests.length ? [...accounts, ...guests] : accounts;
   const [now, setNow] = useState(() => Date.now());
+  const searchOpen = useSearch((s) => !!s.panels[channel.id]);
+  const jump = useSearch((s) => (s.jump?.channelId === channel.id ? s.jump : null));
+  /** The message last opened from search, lit up and scrolled to once it is drawn. */
+  const [flash, setFlash] = useState<{ id: string; seq: number } | null>(null);
+  const [jumpNote, setJumpNote] = useState<string | null>(null);
 
   const listRef = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
+  // Where the list was last scrolled to, so a scroll the reader made can be told apart from content growing under them.
+  const lastTop = useRef(0);
   // Scroll bookkeeping: remember the first message and height so a prepended page keeps the view in place.
   const prev = useRef<{ channelId: string; firstId?: string; height: number }>({ channelId: channel.id, height: 0 });
 
   const messages = chat?.messages ?? [];
   const firstId = messages[0]?.id;
   const myRole = members.find((m) => m.user.id === me?.id)?.role;
-  const memberOf = (id: string) => members.find((m) => m.user.id === id);
+  // Guest lines show as the guest; their hosts' bookkeeping messages are not shown at all.
+  const shown = messages.flatMap((m) => {
+    const view = chatterView(payloads[m.id]);
+    return view.hidden ? [] : [{ m, view, authorId: view.author?.id ?? m.authorId }];
+  });
+  const memberOf = (id: string) => members.find((m) => m.user.id === id) ?? guestMember(id);
 
   useEffect(() => {
     stick.current = true;
@@ -44,12 +62,15 @@ export default function ChatView({ channel }: { channel: Channel }) {
     loadHistory(channel.id).catch(() => {});
 
     // Reading the channel clears its unread count, including when the window regains focus.
-    const markRead = () => { if (!document.hidden) useSession.getState().clearUnread(channel.id); };
-    document.addEventListener('visibilitychange', markRead);
-    window.addEventListener('focus', markRead);
+    // The chat may be drawn in a popped-out window, so watch that window rather than the main one.
+    const doc = listRef.current?.ownerDocument ?? document;
+    const win = doc.defaultView ?? window;
+    const markRead = () => { if (!doc.hidden) useSession.getState().clearUnread(channel.id); };
+    doc.addEventListener('visibilitychange', markRead);
+    win.addEventListener('focus', markRead);
     return () => {
-      document.removeEventListener('visibilitychange', markRead);
-      window.removeEventListener('focus', markRead);
+      doc.removeEventListener('visibilitychange', markRead);
+      win.removeEventListener('focus', markRead);
     };
   }, [channel.id]);
 
@@ -73,10 +94,70 @@ export default function ChatView({ channel }: { channel: Channel }) {
     prev.current = { channelId: channel.id, firstId, height: el.scrollHeight };
   }, [channel.id, firstId, messages.length]);
 
+  // Pictures, GIFs, videos and link cards finish loading after the message is drawn and make it taller,
+  // and the message bar can grow too. Watch every message's size (and the list's own) and, while the reader
+  // is at the bottom, keep them there so a newly sent picture is shown in full.
+  useEffect(() => {
+    const el = listRef.current;
+    if (!el) return;
+    // A popped-out chat window only reports sizes to its own observers.
+    const win = el.ownerDocument.defaultView ?? window;
+    const RO = win.ResizeObserver ?? ResizeObserver;
+    const MO = win.MutationObserver ?? MutationObserver;
+    const resize = new RO(() => {
+      if (stick.current) el.scrollTop = el.scrollHeight;
+      prev.current.height = el.scrollHeight;
+    });
+    resize.observe(el);
+    for (const child of Array.from(el.children)) resize.observe(child);
+    const added = new MO((records) => {
+      for (const r of records) {
+        r.addedNodes.forEach((n) => { if (n.nodeType === 1) resize.observe(n as Element); });
+        r.removedNodes.forEach((n) => { if (n.nodeType === 1) resize.unobserve(n as Element); });
+      }
+    });
+    added.observe(el, { childList: true });
+    return () => { added.disconnect(); resize.disconnect(); };
+  }, []);
+
+  // A result picked in search: load older pages until the message is here, then bring it into view.
+  useEffect(() => {
+    if (!jump) return;
+    let alive = true;
+    setJumpNote(null);
+    void loadUntil(channel.id, jump.messageId, jump.createdAt).then((found) => {
+      if (!alive) return;
+      clearJump(jump.seq);
+      if (found) setFlash({ id: jump.messageId, seq: jump.seq });
+      else setJumpNote('That message could not be found. It may have been deleted.');
+    });
+    return () => { alive = false; };
+  }, [jump?.seq, channel.id]);
+
+  useEffect(() => {
+    if (!flash) return;
+    const el = listRef.current?.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(flash.id)}"]`);
+    if (!el) return;
+    stick.current = false;
+    el.scrollIntoView({ block: 'center' });
+    const t = setTimeout(() => setFlash((f) => (f?.seq === flash.seq ? null : f)), 2500);
+    return () => clearTimeout(t);
+  }, [flash?.seq]);
+
+  useEffect(() => {
+    if (!jumpNote) return;
+    const t = setTimeout(() => setJumpNote(null), 5000);
+    return () => clearTimeout(t);
+  }, [jumpNote]);
+
   const onScroll = () => {
     const el = listRef.current;
     if (!el) return;
-    stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_PX;
+    // Only the reader scrolling up lets go of the bottom. A picture that finished loading also makes the list
+    // taller, and the scroll event can see that before the size watcher below catches up; that must not let go.
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_PX;
+    stick.current = nearBottom || (stick.current && el.scrollTop >= lastTop.current);
+    lastTop.current = el.scrollTop;
     if (el.scrollTop < NEAR_TOP_PX && chat?.hasMore) {
       loadHistory(channel.id, 'older').catch(() => {});
     }
@@ -91,46 +172,64 @@ export default function ChatView({ channel }: { channel: Channel }) {
       <header className="cv-header">
         <span className="cv-hash">#</span>
         <span className="cv-title">{channel.name}</span>
+        <button
+          type="button"
+          className="icon cv-search-btn"
+          aria-label="Search messages"
+          aria-pressed={searchOpen}
+          title="Search messages"
+          onClick={() => (searchOpen ? closeSearch(channel.id) : openSearch(channel.id))}
+        >
+          <PixelIcon name="search" />
+        </button>
       </header>
 
-      <div className="cv-list" ref={listRef} onScroll={onScroll}>
-        {chat?.hasMore === false && chat.loaded && (
-          <div className="cv-start">This is the start of #{channel.name}</div>
-        )}
-        {chat?.loadingOlder && <div className="cv-hint muted">Loading older messages…</div>}
-        {(chat?.error || chat?.olderError) && (
-          <div className="cv-error">
-            {chat.error ?? chat.olderError}
-            <button
-              className="cv-retry"
-              disabled={chat.loading}
-              onClick={() => loadHistory(channel.id, chat.loaded ? 'older' : 'initial').catch(() => {})}
-            >
-              Retry
-            </button>
+      <div className="cv-body">
+        <div className="cv-col">
+          <div className="cv-list" ref={listRef} onScroll={onScroll}>
+            {chat?.hasMore === false && chat.loaded && (
+              <div className="cv-start">This is the start of #{channel.name}</div>
+            )}
+            {chat?.loadingOlder && <div className="cv-hint muted">Loading older messages…</div>}
+            {(chat?.error || chat?.olderError) && (
+              <div className="cv-error">
+                {chat.error ?? chat.olderError}
+                <button
+                  className="cv-retry"
+                  disabled={chat.loading}
+                  onClick={() => loadHistory(channel.id, chat.loaded ? 'older' : 'initial').catch(() => {})}
+                >
+                  Retry
+                </button>
+              </div>
+            )}
+            {chat?.loaded && shown.length === 0 && <div className="cv-empty muted">No messages yet. Say hi 👋</div>}
+            {shown.map(({ m, view, authorId }, i) => {
+              const before = shown[i - 1];
+              const grouped = !!before && before.authorId === authorId && m.createdAt - before.m.createdAt < GROUP_MS;
+              const canDelete = m.authorId === me?.id || myRole === 'owner' || myRole === 'admin';
+              return (
+                <MessageItem
+                  key={m.id}
+                  message={m}
+                  payload={view.payload ?? payloads[m.id]}
+                  author={view.author ?? memberOf(m.authorId)?.user}
+                  grouped={grouped}
+                  canEdit={m.authorId === me?.id && !view.author}
+                  canDelete={canDelete}
+                  serverId={channel.serverId}
+                  flash={flash?.id === m.id}
+                />
+              );
+            })}
           </div>
-        )}
-        {chat?.loaded && messages.length === 0 && <div className="cv-empty muted">No messages yet. Say hi 👋</div>}
-        {messages.map((m, i) => {
-          const before = messages[i - 1];
-          const grouped = !!before && before.authorId === m.authorId && m.createdAt - before.createdAt < GROUP_MS;
-          const canDelete = m.authorId === me?.id || myRole === 'owner' || myRole === 'admin';
-          return (
-            <MessageItem
-              key={m.id}
-              message={m}
-              payload={payloads[m.id]}
-              author={memberOf(m.authorId)?.user}
-              grouped={grouped}
-              canEdit={m.authorId === me?.id}
-              canDelete={canDelete}
-            />
-          );
-        })}
-      </div>
 
-      <div className="cv-typing muted" aria-live="polite">{typingLabel(names)}</div>
-      <Composer channelId={channel.id} channelName={channel.name} onSent={() => { stick.current = true; }} />
+          {jumpNote && <div className="cv-error" role="status">{jumpNote}</div>}
+          <div className="cv-typing muted" aria-live="polite">{typingLabel(names)}</div>
+          <Composer channelId={channel.id} channelName={channel.name} serverId={channel.serverId} onSent={() => { stick.current = true; }} />
+        </div>
+        {searchOpen && <SearchPanel channel={channel} members={members} />}
+      </div>
     </div>
   );
 }

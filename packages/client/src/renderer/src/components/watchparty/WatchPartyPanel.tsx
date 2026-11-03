@@ -4,7 +4,9 @@ import { api } from '../../api/http';
 import { onFrame } from '../../api/ws';
 import { decryptMessage, encryptPayload, onKeysChanged } from '../../crypto';
 import { useSession } from '../../state/session';
-import { decodeState, DRIFT_SECONDS, encodeState, mediaKey, parseVideoUrl, playhead, SEEK_SECONDS, type StampedState, type WatchState } from './sync';
+import { decodeState, DRIFT_SECONDS, encodeState, mediaKey, parseVideoUrl, playhead, QUEUE_MAX, SEEK_SECONDS, stateForItem, type QueueItem, type StampedState, type WatchState } from './sync';
+import { registerQueueHandler } from './bridge';
+import { attachJellyfin, startJellyfinPlayback } from '../jellyfin/JellyfinBrowser';
 import { bindPlayer, embedSrc, parseYouTubeUrl, sendCommand, type PlayerEvent } from './youtube';
 import { popoutUrl, type PanelToPopout, type PopoutToPanel } from './popout';
 import './watchparty.css';
@@ -47,6 +49,11 @@ async function openSnapshot(channelId: string, snap: Snapshot): Promise<StampedS
 const remotePlayhead = (s: StampedState, serverNow: number) =>
   playhead({ position: s.position, at: s.ts, playing: s.playing, rate: s.rate }, serverNow);
 
+/** Keeps what is playing and the queue when only the playhead changes. */
+const carry = (s: WatchState) => ({ videoId: s.videoId, url: s.url, jellyfinId: s.jellyfinId, title: s.title, queue: s.queue, n: s.n });
+
+const itemLabel = (it: QueueItem) => it.title ?? (it.kind === 'youtube' ? `YouTube ${it.ref}` : it.kind === 'url' ? new URL(it.ref).pathname.split('/').pop() || it.ref : 'Jellyfin item');
+
 const errorText = (e: unknown) => (e instanceof Error ? e.message : 'Something went wrong.');
 
 /**
@@ -64,7 +71,6 @@ export function WatchPartyPanel({ callChannelId: channelId, keyChannelId }: { ca
 
   const frameRef = useRef<HTMLIFrameElement>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const frameWrapRef = useRef<HTMLDivElement>(null);
   const popupRef = useRef<Window | null>(null);
   const readyRef = useRef(false);
   const remoteRef = useRef<StampedState | null>(null);
@@ -149,11 +155,15 @@ export function WatchPartyPanel({ callChannelId: channelId, keyChannelId }: { ca
     const prev = local.current;
     local.current = { position: e.currentTime, at: now, playing: e.playing, rate: e.rate };
     const cur = remoteRef.current;
-    if (!prev || !mediaKey(cur) || now < suppressUntil.current) return;
+    if (!prev || !mediaKey(cur)) return;
+    // Our own commands echo back as events for a moment after each sync. A file or Jellyfin play or pause that
+    // disagrees with the shared state is the viewer's own click, so it still goes out even inside that window.
+    const ownClick = e.playing !== cur!.playing && Boolean(cur!.url || cur!.jellyfinId);
+    if (now < suppressUntil.current && !ownClick) return;
 
     const seeked = Math.abs(e.currentTime - playhead(prev, now)) > SEEK_SECONDS;
-    if (seeked || e.playing !== prev.playing || e.rate !== prev.rate) {
-      void publish({ videoId: cur!.videoId, url: cur!.url, playing: e.playing, position: e.currentTime, rate: e.rate });
+    if (seeked || ownClick || e.playing !== prev.playing || e.rate !== prev.rate) {
+      void publish({ ...carry(cur!), playing: e.playing, position: e.currentTime, rate: e.rate });
     }
   };
 
@@ -207,13 +217,17 @@ export function WatchPartyPanel({ callChannelId: channelId, keyChannelId }: { ca
 
   const videoId = remote?.videoId ?? null;
   const fileUrl = remote?.url ?? null;
+  const jellyfinId = remote?.jellyfinId ?? null;
+  const queue = remote?.queue ?? [];
+  /** files and Jellyfin both play in a <video>; only YouTube uses the iframe */
+  const useVideo = Boolean(fileUrl || jellyfinId);
   const active = mediaKey(remote);
 
   // Re-bind whenever the embed is (re)mounted: a new video, or it moving between the panel and the pop-out window.
   useEffect(() => {
     readyRef.current = false;
     local.current = null;
-    if (fileUrl) return bindVideo();
+    if (useVideo) return bindVideo();
     if (!videoId) return;
     if (popped) {
       postToPopout({ kind: 'load', videoId });
@@ -222,7 +236,7 @@ export function WatchPartyPanel({ callChannelId: channelId, keyChannelId }: { ca
     const frame = frameRef.current;
     if (!frame) return;
     return bindPlayer(frame, (e) => onPlayerEvent.current(e));
-  }, [videoId, fileUrl, channelId, popped]);
+  }, [videoId, fileUrl, jellyfinId, channelId, popped]);
 
   /** Reports a <video> element's state like the YouTube embed does, so the rest of the sync logic is shared. */
   const bindVideo = () => {
@@ -233,13 +247,39 @@ export function WatchPartyPanel({ callChannelId: channelId, keyChannelId }: { ca
     const ready = () => onPlayerEvent.current({ kind: 'ready' });
     const events = ['play', 'pause', 'seeked', 'ratechange'] as const;
     events.forEach((n) => video.addEventListener(n, info));
+    video.addEventListener('ended', onEnded);
     video.addEventListener('loadedmetadata', ready);
     if (video.readyState >= 1) ready();
     return () => {
       events.forEach((n) => video.removeEventListener(n, info));
       video.removeEventListener('loadedmetadata', ready);
+      video.removeEventListener('ended', onEnded);
     };
   };
+
+  /** Everyone's video ends at about the same time. A random delay plus the play counter keeps the queue from advancing once per person. */
+  const onEnded = () => {
+    const cur = remoteRef.current;
+    if (!cur || !(cur.queue?.length)) return;
+    const n = cur.n ?? 0;
+    setTimeout(() => {
+      const now = remoteRef.current;
+      if (!now || (now.n ?? 0) !== n || !now.queue?.length) return;
+      const [next, ...rest] = now.queue;
+      void publish(stateForItem(next, rest, n + 1, now.rate));
+    }, Math.random() * 1500);
+  };
+
+  // Jellyfin: every viewer gets their own ticket and plays the HLS stream through the Chatward server.
+  useEffect(() => {
+    if (!jellyfinId) return;
+    let live = true;
+    let detach = () => {};
+    startJellyfinPlayback(jellyfinId)
+      .then((p) => { if (live && videoRef.current) detach = attachJellyfin(videoRef.current, p, setError); })
+      .catch((e: unknown) => { if (live) setError(errorText(e)); });
+    return () => { live = false; detach(); };
+  }, [jellyfinId]);
 
   // A remote change, or our own publish echoed back into state, is applied here.
   useEffect(() => {
@@ -270,14 +310,46 @@ export function WatchPartyPanel({ callChannelId: channelId, keyChannelId }: { ca
       return;
     }
     setDraft('');
-    void publish(link ? { videoId: link.videoId, playing: true, position: link.start, rate } : { videoId: null, url: file, playing: true, position: 0, rate });
+    const item: QueueItem = link ? { kind: 'youtube', ref: link.videoId } : { kind: 'url', ref: file! };
+    // With nothing playing, the first link starts. Otherwise "Change video" replaces, keeping the queue.
+    void publish({ ...stateForItem(item, remoteRef.current?.queue ?? [], (remoteRef.current?.n ?? 0) + 1, rate, link?.start ?? 0) });
   };
 
-  const togglePlay = () => {
-    const s = remoteRef.current;
-    if (!mediaKey(s) || !s) return;
-    const position = local.current ? playhead(local.current, performance.now()) : s.position;
-    void publish({ videoId: s.videoId, url: s.url, playing: !s.playing, position, rate: s.rate });
+  const addToQueue = (item: QueueItem) => {
+    const cur = remoteRef.current;
+    if (!mediaKey(cur) || !cur) {
+      void publish(stateForItem(item, [], (cur?.n ?? 0) + 1));
+      return;
+    }
+    if ((cur.queue?.length ?? 0) >= QUEUE_MAX) { setError('The queue is full.'); return; }
+    const position = local.current ? playhead(local.current, performance.now()) : cur.position;
+    void publish({ ...carry(cur), queue: [...(cur.queue ?? []), item], playing: cur.playing, position, rate: cur.rate });
+  };
+  const addRef = useRef(addToQueue);
+  addRef.current = addToQueue;
+  useEffect(() => registerQueueHandler((item) => addRef.current(item)), []);
+
+  const addDraft = () => {
+    const link = parseYouTubeUrl(draft);
+    const file = link ? null : parseVideoUrl(draft);
+    if (!link && !file) { setError("That doesn't look like a YouTube link or an https video file link."); return; }
+    setDraft('');
+    addToQueue(link ? { kind: 'youtube', ref: link.videoId } : { kind: 'url', ref: file! });
+  };
+
+  const removeQueued = (i: number) => {
+    const cur = remoteRef.current;
+    if (!cur?.queue) return;
+    const position = local.current ? playhead(local.current, performance.now()) : cur.position;
+    void publish({ ...carry(cur), queue: cur.queue.filter((_, j) => j !== i), playing: cur.playing, position, rate: cur.rate });
+  };
+
+  const skip = () => {
+    const cur = remoteRef.current;
+    if (!cur) return;
+    const [next, ...rest] = cur.queue ?? [];
+    if (next) void publish(stateForItem(next, rest, (cur.n ?? 0) + 1, cur.rate));
+    else stop();
   };
 
   /** Brings the embed back into the panel and closes the pop-out. Closing the pop-out window itself lands here too. */
@@ -301,14 +373,12 @@ export function WatchPartyPanel({ callChannelId: channelId, keyChannelId }: { ca
     setPopped(true);
   };
 
-  const fullscreen = () => void frameWrapRef.current?.requestFullscreen();
-
   const stop = () => {
     // Clear our own view first, so nothing the old embed reports while the stop is in flight gets published.
     stopping.current = true;
     local.current = null;
     readyRef.current = false;
-    void publish({ videoId: null, url: null, playing: false, position: 0, rate: 1 });
+    void publish({ videoId: null, url: null, jellyfinId: null, title: null, queue: [], n: remoteRef.current?.n ?? 0, playing: false, position: 0, rate: 1 });
   };
 
   // Messages from the pop-out: it says hello on load, relays player events, and says closed when it goes away.
@@ -341,8 +411,8 @@ export function WatchPartyPanel({ callChannelId: channelId, keyChannelId }: { ca
 
   // The party ending, from Stop here or from another member, closes the pop-out too.
   useEffect(() => {
-    if ((!videoId || fileUrl) && popupRef.current) dock();
-  }, [videoId, fileUrl]);
+    if ((!videoId || useVideo) && popupRef.current) dock();
+  }, [videoId, useVideo]);
 
   // Leaving the panel, or the app closing, takes the pop-out with it.
   useEffect(() => {
@@ -360,7 +430,7 @@ export function WatchPartyPanel({ callChannelId: channelId, keyChannelId }: { ca
         <span>Watch party</span>
         {active && (
           <span className="watch-party-head-actions">
-            {!fileUrl && !popped && <button type="button" onClick={popOut}>Pop out</button>}
+            {!useVideo && !popped && <button type="button" onClick={popOut}>Pop out</button>}
             <button type="button" className="watch-party-stop" onClick={stop}>Stop</button>
           </span>
         )}
@@ -368,15 +438,15 @@ export function WatchPartyPanel({ callChannelId: channelId, keyChannelId }: { ca
 
       {active ? (
         <>
-          {popped && !fileUrl ? (
+          {popped && !useVideo ? (
             <div className="watch-party-popped">
               <p>Playing in a separate window. Closing that window brings the player back here.</p>
               <button type="button" onClick={dock}>Bring back</button>
             </div>
           ) : (
-            <div className="watch-party-frame" ref={frameWrapRef}>
-              {fileUrl ? (
-                <video key={fileUrl} ref={videoRef} src={fileUrl} controls playsInline preload="metadata" />
+            <div className="watch-party-frame">
+              {useVideo ? (
+                <video key={fileUrl ?? jellyfinId} ref={videoRef} src={fileUrl ?? undefined} controls playsInline preload="metadata" />
               ) : (
               <iframe
                 key={videoId ?? ""}
@@ -390,13 +460,24 @@ export function WatchPartyPanel({ callChannelId: channelId, keyChannelId }: { ca
             </div>
           )}
           <div className="watch-party-bar">
-            <button type="button" onClick={togglePlay}>{remote?.playing ? 'Pause' : 'Play'}</button>
-            {!popped && <button type="button" onClick={fullscreen}>Fullscreen</button>}
-            <span className="watch-party-hint">Play, pause, seeks and speed sync for everyone.</span>
+            <button type="button" onClick={skip}>{queue.length ? 'Skip' : 'End'}</button>
+            <span className="watch-party-hint">Play, pause and seeks in the player sync for everyone.</span>
           </div>
         </>
       ) : (
-        <p className="watch-party-empty">Paste a YouTube link or an https video file (mp4/webm) link to watch together in sync.</p>
+        <p className="watch-party-empty">Paste a YouTube link or an https video file (mp4/webm) link, or add a movie from 🍿 Movies, to watch together in sync.</p>
+      )}
+
+      {active && remote?.title && <p className="watch-party-now">Now playing: {remote.title}</p>}
+      {queue.length > 0 && (
+        <ol className="watch-party-queue" aria-label="Up next">
+          {queue.map((it, i) => (
+            <li key={`${i}-${it.ref}`}>
+              <span>{itemLabel(it)}</span>
+              <button type="button" aria-label={`Remove ${itemLabel(it)} from the queue`} onClick={() => removeQueued(i)}>Remove</button>
+            </li>
+          ))}
+        </ol>
       )}
 
       <form className="watch-party-form" onSubmit={submit}>
@@ -407,7 +488,8 @@ export function WatchPartyPanel({ callChannelId: channelId, keyChannelId }: { ca
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
         />
-        <button type="submit" disabled={!draft.trim()}>{active ? 'Change video' : 'Start'}</button>
+        <button type="submit" disabled={!draft.trim()}>{active ? 'Play now' : 'Start'}</button>
+        {active && <button type="button" disabled={!draft.trim()} onClick={addDraft}>Add to queue</button>}
       </form>
       {error && <p role="alert" className="watch-party-error">{error}</p>}
     </section>

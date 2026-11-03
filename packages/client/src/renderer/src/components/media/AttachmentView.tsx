@@ -1,8 +1,11 @@
-import { useEffect, useState, type ReactElement } from 'react';
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactElement } from 'react';
 import type { Attachment } from '@chatward/shared';
 import { api } from '../../api/http';
 import { decryptBlob } from '../../crypto';
 import { INLINE_IMAGE_MIMES } from './upload';
+import SaveGifButton from '../gifs/SaveGifButton';
+import { nameFromFile } from '../gifs/AddGifsDialog';
+import ImageLightbox from './ImageLightbox';
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -11,7 +14,7 @@ function formatSize(bytes: number): string {
 }
 
 /** Fetches the encrypted blob and decrypts it in memory. Returns an object URL, or null while loading/failed. */
-function useDecryptedUrl(attachment: Attachment): { url: string | null; failed: boolean } {
+export function useDecryptedUrl(attachment: Attachment): { url: string | null; failed: boolean } {
   const [state, setState] = useState<{ url: string | null; failed: boolean }>({ url: null, failed: false });
 
   useEffect(() => {
@@ -38,19 +41,13 @@ function useDecryptedUrl(attachment: Attachment): { url: string | null; failed: 
   return state;
 }
 
-export function AttachmentView({ attachment }: { attachment: Attachment }): ReactElement | null {
+/** With `serverId`, an animated GIF attachment gets a hover button that saves it to the server's GIF library. */
+export function AttachmentView({ attachment, serverId }: { attachment: Attachment; serverId?: string }): ReactElement | null {
   const { url, failed } = useDecryptedUrl(attachment);
   const [enlarged, setEnlarged] = useState(false);
   const isImage = INLINE_IMAGE_MIMES.has(attachment.mime);
-
-  useEffect(() => {
-    if (!enlarged) return;
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setEnlarged(false);
-    };
-    document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
-  }, [enlarged]);
+  const openRef = useRef<HTMLButtonElement>(null);
+  const close = useCallback(() => setEnlarged(false), []);
 
   if (failed) {
     return <p className="media-error">Couldn't load “{attachment.name}”.</p>;
@@ -82,24 +79,32 @@ export function AttachmentView({ attachment }: { attachment: Attachment }): Reac
     );
   }
 
+  // With the picture's size known, the button gets the exact shown size, so the clickable area matches the picture.
+  const sized = attachment.width && attachment.height
+    ? ({ '--media-w': attachment.width, '--media-r': attachment.width / attachment.height } as CSSProperties)
+    : undefined;
+  const image = (
+    <button ref={openRef} type="button" className={sized ? 'media-open media-open-sized' : 'media-open'} style={sized} onClick={() => setEnlarged(true)} aria-label={`View ${attachment.name} full size`}>
+      <img
+        className="media-image"
+        src={url}
+        alt={attachment.name}
+        width={attachment.width}
+        height={attachment.height}
+      />
+    </button>
+  );
+
   return (
     <>
-      <button type="button" className="media-open" onClick={() => setEnlarged(true)} aria-label={`View ${attachment.name} full size`}>
-        <img
-          className="media-image"
-          src={url}
-          alt={attachment.name}
-          width={attachment.width}
-          height={attachment.height}
-        />
-      </button>
+      {serverId && attachment.mime === 'image/gif' ? (
+        <span className="media-gif-wrap">
+          {image}
+          <SaveGifButton serverId={serverId} source={{ kind: 'local', url }} defaultName={nameFromFile(attachment.name)} />
+        </span>
+      ) : image}
       {enlarged && (
-        <div className="modal-backdrop media-lightbox" role="dialog" aria-modal="true" aria-label={attachment.name} onClick={() => setEnlarged(false)}>
-          <img className="media-lightbox-img" src={url} alt={attachment.name} onClick={(e) => e.stopPropagation()} />
-          <button type="button" className="media-lightbox-close" autoFocus onClick={() => setEnlarged(false)}>
-            Close
-          </button>
-        </div>
+        <ImageLightbox url={url} name={attachment.name} onClose={close} container={openRef.current?.ownerDocument.body} />
       )}
     </>
   );

@@ -54,7 +54,7 @@ async function captureTheme(theme: string) {
     await shot(page, p('gif-picker'));
     await closePopups(page);
 
-    await page.getByRole('complementary', { name: 'Members' }).getByText('Avery').click();
+    await page.getByRole('complementary', { name: 'Members' }).getByText('Avery', { exact: true }).click();
     await shot(page, p('profile-card'));
     await closePopups(page);
 

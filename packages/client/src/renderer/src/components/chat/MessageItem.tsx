@@ -2,9 +2,15 @@ import { useState, type KeyboardEvent } from 'react';
 import type { Message, MessagePayload, User } from '@chatward/shared';
 import { AttachmentView, GifView, LinkPreviewCard } from '../media';
 import { deleteMessage, editMessage } from '../../state/chat';
+import { pings } from '../../state/mentions';
+import { useSession } from '../../state/session';
+import { useSettings } from '../../state/settings';
+import { useConfirm } from '../confirm/ConfirmDialog';
 import Avatar from './Avatar';
-import MessageText from './MessageText';
+import MessageText, { isEmojiOnly } from './MessageText';
 import ProfileTrigger from '../profile/ProfileTrigger';
+import JamCards, { jamLinks } from '../spotify/JamCard';
+import ListenAlongCard from '../spotify/ListenAlongCard';
 
 interface Props {
   message: Message;
@@ -14,6 +20,10 @@ interface Props {
   grouped: boolean;
   canEdit: boolean;
   canDelete: boolean;
+  /** The server the message is in, so GIFs in it can be saved to that server's GIF library. */
+  serverId?: string;
+  /** Lit up for a moment, after a jump from search. */
+  flash?: boolean;
 }
 
 function formatTime(ms: number): string {
@@ -24,8 +34,20 @@ function formatTime(ms: number): string {
     : d.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
-export default function MessageItem({ message, payload, author, grouped, canEdit, canDelete }: Props) {
+export default function MessageItem({ message, payload, author, grouped, canEdit, canDelete, serverId, flash }: Props) {
   const [editing, setEditing] = useState(false);
+  const meId = useSession((s) => s.user?.id);
+  // Someone else's message that pings this user (by name or @everyone) is lit up for them.
+  // @everyone lights up for everyone, the sender included. A named mention pings the person named, not the sender.
+  const pinged = !!payload && (!!payload.mentions?.everyone || (message.authorId !== meId && pings(payload.mentions, meId)));
+  const members = useSession((s) => (serverId ? s.servers.find((b) => b.server.id === serverId)?.members : undefined));
+  // The names this message pings, so they can be shown as pills.
+  const mentionNames = payload?.mentions
+    ? [
+        ...(payload.mentions.everyone ? ['everyone'] : []),
+        ...(members ?? []).filter((m) => payload.mentions?.userIds.includes(m.user.id)).map((m) => m.user.displayName),
+      ]
+    : undefined;
   const [draft, setDraft] = useState('');
   const [error, setError] = useState<string | null>(null);
   const canStartEdit = canEdit && payload != null;
@@ -56,8 +78,19 @@ export default function MessageItem({ message, payload, author, grouped, canEdit
     }
   };
 
-  const remove = () => {
-    if (!window.confirm('Delete this message?')) return;
+  const confirm = useConfirm();
+  const remove = async () => {
+    if (useSettings.getState().confirmDeleteMessages) {
+      const r = await confirm({
+        title: 'Delete this message?',
+        message: 'This cannot be undone.',
+        confirmLabel: 'Delete',
+        danger: true,
+        checkboxLabel: "Don't ask me again",
+      });
+      if (!r.ok) return;
+      if (r.checked) useSettings.getState().set({ confirmDeleteMessages: false });
+    }
     setError(null);
     deleteMessage(message).catch((e: unknown) => setError(e instanceof Error ? e.message : 'Could not delete'));
   };
@@ -66,23 +99,27 @@ export default function MessageItem({ message, payload, author, grouped, canEdit
   if (payload === undefined) body = <div className="cv-muted">Decrypting…</div>;
   else if (payload === null) body = <div className="cv-muted">🔒 Waiting for this channel's key…</div>;
   else {
+    // A link that became a Join Jam card doesn't also get the plain "spotify.link / Spotify" preview.
+    const jamLinkSet = new Set(jamLinks(payload).map((j) => j.link));
     body = (
       <>
         {payload.text && (
-          <div className="cv-text">
-            <MessageText text={payload.text} />
+          <div className={`cv-text${isEmojiOnly(payload.text) ? ' cv-text-emoji' : ''}`}>
+            <MessageText text={payload.text} names={mentionNames} />
             {message.editedAt != null && <span className="cv-edited"> (edited)</span>}
           </div>
         )}
-        {payload.attachments?.map((a) => <AttachmentView key={a.uploadId} attachment={a} />)}
-        {payload.gif && <GifView gif={payload.gif} />}
-        {payload.linkPreviews?.map((p) => <LinkPreviewCard key={p.url} preview={p} />)}
+        <JamCards payload={payload} />
+        {payload.listenAlong && author && <ListenAlongCard host={author} serverId={serverId} />}
+        {payload.attachments?.map((a) => <AttachmentView key={a.uploadId} attachment={a} serverId={serverId} />)}
+        {payload.gif && <GifView gif={payload.gif} serverId={serverId} openable />}
+        {payload.linkPreviews?.filter((p) => !jamLinkSet.has(p.url)).map((p) => <LinkPreviewCard key={p.url} preview={p} />)}
       </>
     );
   }
 
   return (
-    <div className={`cv-msg${grouped ? ' cv-grouped' : ''}`}>
+    <div className={`cv-msg${grouped ? ' cv-grouped' : ''}${flash ? ' cv-flash' : ''}${pinged ? ' cv-pinged' : ''}`} data-message-id={message.id}>
       {grouped ? (
         <time className="cv-time-gutter">{new Date(message.createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</time>
       ) : (

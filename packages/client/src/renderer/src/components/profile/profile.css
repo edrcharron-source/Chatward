@@ -3,6 +3,9 @@
   background: none; color: inherit; font: inherit; cursor: pointer; border-radius: 6px;
 }
 .profile-trigger:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* the base button:hover shade would draw a square behind a round avatar */
+.profile-trigger:hover { background: none; }
+.profile-trigger:has(> .avatar:only-child) { border-radius: 50%; }
 
 .profile-card {
   background: var(--bg-1); color: var(--text); border-radius: 10px; overflow: hidden;
@@ -10,6 +13,15 @@
 }
 .profile-banner { height: 84px; position: relative; overflow: hidden; }
 .profile-banner img { width: 100%; height: 100%; object-fit: cover; display: block; }
+/* Picture and banner open in the full-window viewer when clicked. */
+:root:root button.profile-image-open,
+:root:root button.profile-image-open:hover {
+  display: block; width: 100%; height: 100%; padding: 0; margin: 0; border: 0; border-radius: inherit;
+  background: transparent; box-shadow: none; cursor: zoom-in; color: inherit; font: inherit; text-transform: none; letter-spacing: normal;
+}
+button.profile-image-open:hover { opacity: .92; }
+button.profile-image-open:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+:root:root button.profile-avatar-open { width: 72px; height: 72px; }
 .profile-body { padding: 0 14px 14px; position: relative; }
 .profile-avatar {
   margin-top: -36px; width: 80px; height: 80px; border-radius: 50%;

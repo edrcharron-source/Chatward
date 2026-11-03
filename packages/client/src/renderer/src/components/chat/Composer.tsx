@@ -1,16 +1,22 @@
-import { useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent } from 'react';
+import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent } from 'react';
 import { EmojiPickerButton, GifPickerButton, GifView } from '../media';
+import ListenAlongButton from '../spotify/ListenAlongButton';
+import type { Member } from '@chatward/shared';
 import { sendMessage, sendTyping, useChat, type Gif } from '../../state/chat';
+import { activeMention, mentionOptions, type MentionOption } from '../../state/mentions';
+import { useSession } from '../../state/session';
 
 const MAX_FILES = 10;
+const NO_MEMBERS: Member[] = [];
 
 interface Props {
   channelId: string;
   channelName: string;
+  serverId: string;
   onSent: () => void;
 }
 
-export default function Composer({ channelId, channelName, onSent }: Props) {
+export default function Composer({ channelId, channelName, serverId, onSent }: Props) {
   const text = useChat((s) => s.drafts[channelId] ?? '');
   const setDraft = useChat((s) => s.setDraft);
   const [files, setFiles] = useState<File[]>([]);
@@ -18,11 +24,35 @@ export default function Composer({ channelId, channelName, onSent }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [caret, setCaret] = useState(0);
+  const [picked, setPicked] = useState(0);
+  /** The @ the picker was closed on with Escape, so it stays closed while that @ is still being typed. */
+  const [closedAt, setClosedAt] = useState<number | null>(null);
+  const members = useSession((s) => s.servers.find((b) => b.server.id === serverId)?.members ?? NO_MEMBERS);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const addFiles = (picked: File[]) => setFiles((cur) => [...cur, ...picked].slice(0, MAX_FILES));
   const canSend = !busy && (text.trim() !== '' || files.length > 0 || gif !== null);
+
+  // The @ picker: open while an @ is being typed before the caret and at least one name matches.
+  const pos = Math.min(caret, text.length);
+  const mention = activeMention(text, pos);
+  const options = mention && mention.at !== closedAt ? mentionOptions(mention.query, members) : [];
+  const picking = options.length > 0;
+  const current = Math.min(picked, options.length - 1);
+
+  const pick = (opt: MentionOption) => {
+    if (!mention) return;
+    const insert = `@${opt.name} `;
+    onChange(text.slice(0, mention.at) + insert + text.slice(pos));
+    const next = mention.at + insert.length;
+    setCaret(next);
+    requestAnimationFrame(() => {
+      inputRef.current?.focus();
+      inputRef.current?.setSelectionRange(next, next);
+    });
+  };
 
   const submit = async () => {
     if (!canSend) return;
@@ -47,6 +77,24 @@ export default function Composer({ channelId, channelName, onSent }: Props) {
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (picking && mention) {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        const step = e.key === 'ArrowDown' ? 1 : -1;
+        setPicked((current + step + options.length) % options.length);
+        return;
+      }
+      if ((e.key === 'Enter' || e.key === 'Tab') && !e.shiftKey && !e.nativeEvent.isComposing) {
+        e.preventDefault();
+        pick(options[current]);
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setClosedAt(mention.at);
+        return;
+      }
+    }
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
       void submit();
@@ -55,6 +103,7 @@ export default function Composer({ channelId, channelName, onSent }: Props) {
 
   const onChange = (value: string) => {
     setDraft(channelId, value);
+    setPicked(0);
     if (value) sendTyping(channelId);
   };
 
@@ -93,16 +142,17 @@ export default function Composer({ channelId, channelName, onSent }: Props) {
     >
       {(files.length > 0 || gif) && (
         <div className="cv-chips">
-          {files.map((f, i) => (
-            <span key={`${f.name}-${i}`} className="cv-chip">
-              {f.name}
-              <button
-                className="icon"
-                aria-label={`Remove ${f.name}`}
-                onClick={() => setFiles((cur) => cur.filter((_, j) => j !== i))}
-              >×</button>
-            </span>
-          ))}
+          {files.map((f, i) => {
+            const remove = () => setFiles((cur) => cur.filter((_, j) => j !== i));
+            return f.type.startsWith('image/') ? (
+              <PendingImage key={`${f.name}-${i}`} file={f} onRemove={remove} />
+            ) : (
+              <span key={`${f.name}-${i}`} className="cv-chip">
+                {f.name}
+                <button className="icon" aria-label={`Remove ${f.name}`} onClick={remove}>×</button>
+              </span>
+            );
+          })}
           {gif && (
             <span className="cv-chip cv-gif-chip">
               <GifView gif={gif} />
@@ -112,6 +162,25 @@ export default function Composer({ channelId, channelName, onSent }: Props) {
         </div>
       )}
       {error && <div className="cv-error">{error}</div>}
+      {picking && (
+        <div className="cv-mention-picker" role="listbox" aria-label="Mention someone">
+          {options.map((o, i) => (
+            <button
+              type="button"
+              key={o.everyone ? 'everyone' : o.userId}
+              role="option"
+              aria-selected={i === current}
+              className={`cv-mention-opt${i === current ? ' cv-mention-on' : ''}`}
+              onMouseDown={(e) => e.preventDefault()}
+              onMouseEnter={() => setPicked(i)}
+              onClick={() => pick(o)}
+            >
+              <span className="cv-mention-name">{o.everyone ? '@everyone' : o.name}</span>
+              <span className="cv-mention-note">{o.note}</span>
+            </button>
+          ))}
+        </div>
+      )}
       <div className="cv-row">
         <button className="icon cv-tool" title="Attach files" aria-label="Attach files" onClick={() => fileRef.current?.click()}>📎</button>
         <input
@@ -131,14 +200,38 @@ export default function Composer({ channelId, channelName, onSent }: Props) {
           value={text}
           placeholder={`Message #${channelName}`}
           aria-label="Message"
-          onChange={(e) => onChange(e.target.value)}
+          onChange={(e) => { setCaret(e.target.selectionStart); onChange(e.target.value); }}
+          onSelect={(e) => setCaret(e.currentTarget.selectionStart)}
           onKeyDown={onKeyDown}
           onPaste={onPaste}
         />
-        <GifPickerButton onPick={setGif} />
+        <ListenAlongButton channelId={channelId} onError={setError} />
+        <GifPickerButton serverId={serverId} onPick={setGif} />
         <EmojiPickerButton onPick={insertEmoji} />
         <button className="primary cv-send" disabled={!canSend} onClick={() => void submit()}>Send</button>
       </div>
     </div>
+  );
+}
+
+/** A picture waiting to be sent: a small preview of it, with its name on hover and a button to take it off. */
+function PendingImage({ file, onRemove }: { file: File; onRemove: () => void }) {
+  const [url, setUrl] = useState<string | null>(null);
+  const [broken, setBroken] = useState(false);
+  useEffect(() => {
+    const u = URL.createObjectURL(file);
+    setUrl(u);
+    setBroken(false);
+    return () => URL.revokeObjectURL(u);
+  }, [file]);
+  return (
+    <span className="cv-chip cv-thumb" title={file.name}>
+      {url && !broken ? (
+        <img src={url} alt={file.name} draggable={false} onError={() => setBroken(true)} />
+      ) : (
+        <span className="cv-thumb-name">{file.name}</span>
+      )}
+      <button className="icon cv-thumb-x" aria-label={`Remove ${file.name}`} onClick={onRemove}>×</button>
+    </span>
   );
 }

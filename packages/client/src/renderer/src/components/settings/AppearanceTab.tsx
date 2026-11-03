@@ -1,5 +1,5 @@
 import { useSettings } from '../../state/settings';
-import { SKINS } from '../../skins';
+import { SKINS, PLAIN_SKIN } from '../../skins';
 import { Section, Toggle } from './controls';
 
 const THEMES = [
@@ -8,10 +8,23 @@ const THEMES = [
   { id: 'system', label: 'Match system' },
 ] as const;
 
+const LAYOUTS = [
+  { id: 'tabs', label: 'Tabs', hint: 'One text chat and one voice chat, picked from tabs along the top' },
+  { id: 'classic', label: 'Classic', hint: 'Channel list on the left' },
+  { id: 'lcars', label: 'LCARS', hint: 'The LCARS frame: tabs down a rail on the left, call controls along the bottom. Comes with the LCARS skin' },
+] as const;
+
+const LCARS_SKIN = SKINS.find((s) => s.layout === 'lcars')?.id ?? '';
+
 export default function AppearanceTab() {
   const theme = useSettings((s) => s.theme);
   const skin = useSettings((s) => s.skin);
+  const layout = useSettings((s) => s.layout);
+  const confirmDeleteMessages = useSettings((s) => s.confirmDeleteMessages);
   const set = useSettings((s) => s.set);
+  const choices = [PLAIN_SKIN, ...SKINS];
+  // An unknown id counts as no skin, so it shows as Plain.
+  const current = choices.find((s) => s.id === skin) ?? PLAIN_SKIN;
   return (
     <>
       <Section title="Theme">
@@ -26,16 +39,46 @@ export default function AppearanceTab() {
           ))}
         </div>
       </Section>
-      {SKINS.length > 0 && (
-        <Section title="Skins">
-          {SKINS.map((s) => (
-            <Toggle key={s.id}
-              label={<><span className="skin-swatch" style={{ background: s.swatch }} aria-hidden />{s.label}</>}
-              checked={skin === s.id}
-              onChange={(on) => set({ skin: on ? s.id : '' })} />
+      <Section title="Layout">
+        <div className="choice-group" role="radiogroup" aria-label="Layout">
+          {LAYOUTS.map((l) => (
+            <label key={l.id} className="choice" title={l.hint}>
+              <input type="radio" name="layout" value={l.id} checked={layout === l.id}
+                onChange={() => set(l.id === 'lcars' ? { layout: l.id, skin: LCARS_SKIN } : { layout: l.id })} />
+              <span>{l.label}</span>
+            </label>
           ))}
+        </div>
+      </Section>
+      <Section title="Confirmations">
+        <Toggle label="Ask before deleting a message"
+          hint="Turn off to delete a message straight away. Turn on again to be asked each time."
+          checked={confirmDeleteMessages} onChange={(on) => set({ confirmDeleteMessages: on })} />
+      </Section>
+      {SKINS.length > 0 && (
+        <Section title="Skin">
+          <label className="setting-row">
+            <span className="setting-text">
+              <span><span className="skin-swatch" style={{ background: current.swatch }} aria-hidden />{current.label}</span>
+              <small className="muted">Changes how the app looks.</small>
+            </span>
+            <select aria-label="Skin" value={current.id} onChange={(e) => set(skinChoice(e.target.value, layout))}>
+              {choices.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+            </select>
+          </label>
         </Section>
       )}
     </>
   );
+}
+
+/**
+ * A skin that comes with its own layout brings it along, and leaving that skin goes back to the Tabs layout, so a skin's
+ * frame is never left on without its look. Any other pick leaves the layout as it is.
+ */
+function skinChoice(id: string, layout: string): { skin: string; layout?: 'tabs' | 'classic' | 'lcars' } {
+  const next = SKINS.find((s) => s.id === id);
+  if (next?.layout) return { skin: id, layout: next.layout };
+  if (SKINS.some((s) => s.layout === layout)) return { skin: id, layout: 'tabs' };
+  return { skin: id };
 }

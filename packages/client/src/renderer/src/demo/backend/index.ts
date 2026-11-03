@@ -1,5 +1,5 @@
 // Offline stand-in for the server. Implements docs/CONTRACT.md REST routes and the WS frame stream in memory.
-import { DEFAULT_VOICE_BITRATE_KBPS, LIMITS, VOICE_BITRATES_KBPS, type Channel, type Member, type Message, type ServerFrame, type SoundboardSound, type User } from '@chatward/shared';
+import { CHATTER_LINES, CHATTER_REPLIES, CHATTER_TIMING, chatterWait, DEFAULT_VOICE_BITRATE_KBPS, LIMITS, VOICE_BITRATES_KBPS, type Channel, type Member, type Message, type LibraryGif, type ServerFrame, type SoundboardSound, type User } from '@chatward/shared';
 import { avatarPng } from './assets';
 import { createWorld, makeMessage, newId, SERVER_ID, YOU_ID } from './world';
 
@@ -35,6 +35,12 @@ export function attachSocket(send: (f: ServerFrame) => void): () => void {
   sockets.add(send);
   send({ t: 'ready', user: world.you, presence: {} });
   for (const b of world.bots) send({ t: 'presence', userId: b.user.id, status: 'online' });
+  // One friend is listening to something, to show the Spotify "listening to" line.
+  const listener = world.bots[0];
+  if (listener) send({ t: 'activity', userId: listener.user.id, activity: { kind: 'spotify', title: 'Clair de Lune', artist: 'Claude Debussy', durationMs: 303_000, progressMs: 41_000 } });
+  // A second friend listens along with the first, so the Listen Along card has someone in it.
+  const along = world.bots[1];
+  if (listener && along) send({ t: 'activity', userId: along.user.id, activity: { kind: 'spotify', title: 'Clair de Lune', artist: 'Claude Debussy', alongWith: listener.user.id } });
   return () => sockets.delete(send);
 }
 
@@ -44,11 +50,6 @@ function later(ms: number, fn: () => void) {
 
 // ---------- bots ----------
 
-const BOT_LINES = [
-  'anyone seen the patch notes?', 'lol that is so true', 'brb getting snacks', 'gg that was close',
-  'who wants to hop in the Lounge', 'this app feels snappy 👀', 'not gonna lie, that gif got me', 'ok I am back',
-];
-const BOT_REPLIES = ['lol', 'ha yes', 'agreed 😂', 'nice one', 'wait say that again', 'ok fair'];
 
 function randomBot() {
   const bots = activeBots();
@@ -63,11 +64,11 @@ function scheduleBotChatter() {
     if (bot) {
       const channel = pick(['demo-ch-general', 'demo-ch-memes']);
       emit({ t: 'typing', channelId: channel, userId: bot.user.id });
-      later(1500 + Math.random() * 1500, () => postBotMessage(channel, bot.user.id, pick(BOT_LINES)));
+      later(chatterWait(CHATTER_TIMING.lineTyping), () => postBotMessage(channel, bot.user.id, pick(CHATTER_LINES)));
     }
-    later(20_000 + Math.random() * 25_000, loop);
+    later(chatterWait(CHATTER_TIMING.nextLine), loop);
   };
-  later(8_000, loop);
+  later(chatterWait(CHATTER_TIMING.firstLine), loop);
 }
 
 function scheduleVoiceChurn() {
@@ -79,9 +80,9 @@ function scheduleVoiceChurn() {
       world.voice['demo-vc-lounge'] = inLounge ? lounge.filter((id) => id !== 'demo-casey') : [...lounge, 'demo-casey'];
       emit({ t: 'voice.state', serverId: SERVER_ID, channelId: 'demo-vc-lounge', userIds: world.voice['demo-vc-lounge'] });
     }
-    later(40_000 + Math.random() * 30_000, loop);
+    later(chatterWait(CHATTER_TIMING.nextChurn), loop);
   };
-  later(45_000, loop);
+  later(chatterWait(CHATTER_TIMING.firstChurn), loop);
 }
 
 function isMember(userId: string): boolean {
@@ -138,9 +139,9 @@ function postBotMessage(channelId: string, authorId: string, text: string) {
 function botReplyToUser(channelId: string) {
   const bot = randomBot();
   if (!bot) return;
-  later(1500 + Math.random() * 1500, () => {
+  later(chatterWait(CHATTER_TIMING.replyPause), () => {
     emit({ t: 'typing', channelId, userId: bot.user.id });
-    later(1200 + Math.random() * 800, () => postBotMessage(channelId, bot.user.id, pick(BOT_REPLIES)));
+    later(chatterWait(CHATTER_TIMING.replyTyping), () => postBotMessage(channelId, bot.user.id, pick(CHATTER_REPLIES)));
   });
 }
 
@@ -305,8 +306,6 @@ on('GET', /^\/api\/avatars\/([^/]+)$/, async (r) => {
 });
 
 on('GET', /^\/api\/servers$/, () => json({ servers: [bundle()] }));
-// The offline demo has exactly one server, so creating another is refused rather than faked.
-on('POST', /^\/api\/servers$/, () => json({ error: 'The offline demo has one server' }, 403));
 on('POST', /^\/api\/servers\/([^/]+)\/channels$/, (r) => {
   serverGuard(r.match[1]);
   const body = (r.body ?? {}) as { name?: unknown; kind?: unknown };
@@ -356,15 +355,6 @@ on('PATCH', /^\/api\/servers\/([^/]+)$/, (r) => {
   emit({ t: 'server.update', server: world.server });
   return json({ server: world.server });
 });
-// The demo keeps its one server so there is always something to look at. Deleting is turned off here.
-on('DELETE', /^\/api\/servers\/([^/]+)$/, (r) => {
-  serverGuard(r.match[1]);
-  throw new HttpError(403, 'Deleting the server is turned off in the offline demo');
-});
-on('POST', /^\/api\/servers\/([^/]+)\/leave$/, (r) => {
-  serverGuard(r.match[1]);
-  throw new HttpError(400, 'the owner cannot leave; delete the server instead');
-});
 on('PATCH', /^\/api\/servers\/([^/]+)\/members\/([^/]+)$/, (r) => {
   serverGuard(r.match[1]);
   const role = (r.body as { role?: unknown })?.role;
@@ -381,36 +371,6 @@ on('DELETE', /^\/api\/servers\/([^/]+)\/members\/([^/]+)$/, (r) => {
   const { user } = demoTarget(YOU_ID, r.match[2]);
   world.bans = [...world.bans.filter((b) => b.user.id !== user.id), { user, bannedAt: Date.now() }];
   removeDemoMember(r.match[2]);
-  return json({ ok: true });
-});
-// Same as the server's transfer route: the old owner becomes an admin and the target becomes the owner.
-on('POST', /^\/api\/servers\/([^/]+)\/transfer$/, (r) => {
-  serverGuard(r.match[1]);
-  const targetId = (r.body as { userId?: unknown })?.userId;
-  if (typeof targetId !== 'string' || !targetId) throw new HttpError(400, 'userId is required');
-  if (targetId === YOU_ID) throw new HttpError(400, 'you already own this server');
-  memberOrThrow(targetId);
-  world.members = world.members.map((m) => {
-    if (m.user.id === YOU_ID) return { ...m, role: 'admin' };
-    if (m.user.id === targetId) return { ...m, role: 'owner' };
-    return m;
-  });
-  world.server = { ...world.server, ownerId: targetId };
-  emit({ t: 'member.role', serverId: SERVER_ID, userId: YOU_ID, role: 'admin' });
-  emit({ t: 'member.role', serverId: SERVER_ID, userId: targetId, role: 'owner' });
-  return json({ ok: true });
-});
-on('POST', /^\/api\/servers\/([^/]+)\/invites$/, (r) => {
-  serverGuard(r.match[1]);
-  return json({ code: 'DEMO-INVITE', expiresAt: Date.now() + 7 * 24 * 3600_000 }, 201);
-});
-on('POST', /^\/api\/invites\/([^/]+)\/join$/, () => json({ server: world.server }));
-on('GET', /^\/api\/servers\/([^/]+)\/invites$/, (r) => {
-  serverGuard(r.match[1]);
-  return json({ invites: [] });
-});
-on('DELETE', /^\/api\/servers\/([^/]+)\/invites\/([^/]+)$/, (r) => {
-  serverGuard(r.match[1]);
   return json({ ok: true });
 });
 on('GET', /^\/api\/servers\/([^/]+)\/bans$/, (r) => {
@@ -561,6 +521,73 @@ on('POST', /^\/api\/channels\/([^/]+)\/sound-play$/, (r) => {
   const soundId = str((r.body as { soundId?: unknown })?.soundId, 'soundId', 64);
   emit({ t: 'sound.play', serverId: SERVER_ID, channelId: ch.id, soundId, userId: YOU_ID });
   return json({ ok: true });
+});
+
+// The server's GIF library. Same rules as the real server, kept in memory.
+function demoGifDetails(name: unknown, tags: unknown): { name: string; tags: string[] } {
+  const n = typeof name === 'string' ? name.trim().replace(/\s+/g, ' ') : '';
+  if (!n || n.length > LIMITS.LIBRARY_GIF_NAME_MAX) throw new HttpError(400, `Give the GIF a name (up to ${LIMITS.LIBRARY_GIF_NAME_MAX} characters).`);
+  const list = (Array.isArray(tags) ? tags : typeof tags === 'string' ? tags.split(',') : []).map((t) => String(t).trim().toLowerCase()).filter(Boolean);
+  const unique = [...new Set(list)];
+  if (unique.length > LIMITS.LIBRARY_GIF_TAGS_MAX || unique.some((t) => t.length > LIMITS.LIBRARY_GIF_TAG_MAX)) {
+    throw new HttpError(400, `Up to ${LIMITS.LIBRARY_GIF_TAGS_MAX} tags, each up to ${LIMITS.LIBRARY_GIF_TAG_MAX} characters.`);
+  }
+  return { name: n, tags: unique };
+}
+function demoGif(id: string): LibraryGif {
+  const gif = world.gifs.find((g) => g.id === id);
+  if (!gif) throw new HttpError(404, 'GIF not found');
+  return gif;
+}
+on('GET', /^\/api\/servers\/([^/]+)\/library-gifs$/, (r) => {
+  serverGuard(r.match[1]);
+  return json({ gifs: world.gifs });
+});
+on('POST', /^\/api\/servers\/([^/]+)\/library-gifs$/, (r) => {
+  serverGuard(r.match[1]);
+  const { name, tags } = demoGifDetails(r.url.searchParams.get('name'), r.url.searchParams.get('tags'));
+  const b = r.bytes;
+  const sig = b && b.length >= 13 ? String.fromCharCode(...b.subarray(0, 6)) : '';
+  if (!b || (sig !== 'GIF87a' && sig !== 'GIF89a')) throw new HttpError(400, "That file isn't a GIF.");
+  if (b.length > LIMITS.LIBRARY_GIF_MAX_BYTES) throw new HttpError(413, `GIFs must be ${LIMITS.LIBRARY_GIF_MAX_BYTES / (1024 * 1024)} MB or smaller.`);
+  const id = newId(world, 'gif');
+  const gif: LibraryGif = {
+    id, serverId: SERVER_ID, ownerId: YOU_ID, name, tags,
+    width: b[6] | (b[7] << 8), height: b[8] | (b[9] << 8), size: b.length, uses: 0, createdAt: Date.now(),
+  };
+  world.blobs.set(id, { bytes: b, mime: 'image/gif' });
+  world.gifs.unshift(gif);
+  emit({ t: 'gif.new', gif });
+  return json({ gif }, 201);
+});
+on('POST', /^\/api\/servers\/([^/]+)\/library-gifs\/from-url$/, () => {
+  throw new HttpError(400, "The offline demo can't download KLIPY GIFs. Upload a .gif file instead.");
+});
+on('PATCH', /^\/api\/library-gifs\/([^/]+)$/, (r) => {
+  const gif = demoGif(r.match[1]);
+  const body = (r.body ?? {}) as { name?: unknown; tags?: unknown };
+  const details = demoGifDetails(body.name ?? gif.name, body.tags ?? gif.tags);
+  const updated = { ...gif, ...details };
+  world.gifs = world.gifs.map((g) => (g.id === gif.id ? updated : g));
+  emit({ t: 'gif.update', gif: updated });
+  return json({ gif: updated });
+});
+on('DELETE', /^\/api\/library-gifs\/([^/]+)$/, (r) => {
+  const gif = demoGif(r.match[1]);
+  world.gifs = world.gifs.filter((g) => g !== gif);
+  world.blobs.delete(gif.id);
+  emit({ t: 'gif.delete', serverId: SERVER_ID, gifId: gif.id });
+  return json({ ok: true });
+});
+on('POST', /^\/api\/library-gifs\/([^/]+)\/use$/, (r) => {
+  const gif = demoGif(r.match[1]);
+  world.gifs = world.gifs.map((g) => (g === gif ? { ...g, uses: g.uses + 1 } : g));
+  return json({ ok: true });
+});
+on('GET', /^\/api\/library-gifs\/([^/]+)\/file$/, (r) => {
+  const blob = world.blobs.get(demoGif(r.match[1]).id);
+  if (!blob) throw new HttpError(404, 'GIF not found');
+  return bytesResponse(blob.bytes, blob.mime);
 });
 
 on('GET', /^\/api\/gifs\/(search|trending)$/, async (r) => {

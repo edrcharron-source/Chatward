@@ -2,24 +2,34 @@ import { useState, type ReactNode } from 'react';
 import type { Member } from '@chatward/shared';
 import { api } from '../../api/http';
 import { useSession } from '../../state/session';
+import { useVoice } from '../../state/voice';
+import { isGuest, useGuestMembers, useGuestVoice } from '../../state/guests';
+import PixelIcon from '../icons/PixelIcon';
 import Avatar from './Avatar';
 import './servers.css';
 import ProfileTrigger from '../profile/ProfileTrigger';
 import { errorText } from './util';
+import ListeningLine from '../spotify/ListeningLine';
 
 type Presence = 'online' | 'idle' | 'dnd' | 'offline';
 
-export default function MemberList({ serverId, members }: { serverId: string; members: Member[] }) {
+export default function MemberList({ serverId, members: accounts }: { serverId: string; members: Member[] }) {
+  const guests = useGuestMembers(serverId);
+  const guestVoice = useGuestVoice(serverId);
+  const members = guests.length ? [...accounts, ...guests] : accounts;
   const presence = useSession((s) => s.presence);
   const meId = useSession((s) => s.user?.id);
   const [error, setError] = useState<string | null>(null);
+  const channels = useSession((s) => s.servers.find((b) => b.server.id === serverId)?.channels);
+  const occupants = useSession((s) => s.voiceOccupants);
+  const myCallId = useVoice((s) => s.channelId);
   // Our own socket can miss its own presence frame, so count yourself as online by default.
-  const statusOf = (m: Member): Presence => presence[m.user.id] ?? (m.user.id === meId ? 'online' : 'offline');
+  const statusOf = (m: Member): Presence => (isGuest(m.user.id) ? 'online' : presence[m.user.id] ?? (m.user.id === meId ? 'online' : 'offline'));
 
   const myRole = members.find((m) => m.user.id === meId)?.role;
   // Admins can remove members; only the owner can act on an admin. The server enforces this too.
   const canActOn = (m: Member) =>
-    m.user.id !== meId && (myRole === 'owner' || (myRole === 'admin' && m.role === 'member'));
+    m.user.id !== meId && !isGuest(m.user.id) && (myRole === 'owner' || (myRole === 'admin' && m.role === 'member'));
 
   // There is one server, so removing someone turns their account off. Settings lists them to turn back on.
   async function remove(m: Member) {
@@ -38,22 +48,32 @@ export default function MemberList({ serverId, members }: { serverId: string; me
     </span>
   );
 
+  // Who is in one of this server's voice channels, by channel name. The server may not list us yet, so add our own call.
+  const voiceOf = new Map<string, string>();
+  for (const c of channels ?? []) {
+    if (c.kind !== 'voice') continue;
+    for (const id of occupants[c.id] ?? []) voiceOf.set(id, c.name);
+    if (meId && c.id === myCallId) voiceOf.set(meId, c.name);
+    for (const [id, ch] of guestVoice) if (ch === c.id) voiceOf.set(id, c.name);
+  }
+
   const online = members.filter((m) => statusOf(m) !== 'offline');
   const offline = members.filter((m) => statusOf(m) === 'offline');
 
   return (
     <aside className="cw-members" data-region="members" aria-label="Members">
-      {online.length > 0 && <Group title="Online" list={online} statusOf={statusOf} actions={actions} />}
-      {offline.length > 0 && <Group title="Offline" list={offline} statusOf={statusOf} actions={actions} />}
+      {online.length > 0 && <Group title="Online" list={online} statusOf={statusOf} voiceOf={voiceOf} actions={actions} />}
+      {offline.length > 0 && <Group title="Offline" list={offline} statusOf={statusOf} voiceOf={voiceOf} actions={actions} />}
       {error && <p className="cw-error" role="alert">{error}</p>}
     </aside>
   );
 }
 
-function Group({ title, list, statusOf, actions }: {
+function Group({ title, list, statusOf, voiceOf, actions }: {
   title: string;
   list: Member[];
   statusOf: (m: Member) => Presence;
+  voiceOf: Map<string, string>;
   actions: (m: Member) => ReactNode;
 }) {
   return (
@@ -62,6 +82,7 @@ function Group({ title, list, statusOf, actions }: {
       <ul className="cw-members-list">
         {list.map((m) => {
           const status = statusOf(m);
+          const call = voiceOf.get(m.user.id);
           return (
             <li key={m.user.id} className={`cw-member${status === 'offline' ? ' offline' : ''}`}>
               <ProfileTrigger user={m.user} className="cw-member-profile">
@@ -69,8 +90,16 @@ function Group({ title, list, statusOf, actions }: {
                   <Avatar user={m.user} size={32} />
                   <span className={`cw-dot ${status}`} aria-label={status} />
                 </span>
-                <span className="cw-member-name">{m.user.displayName}</span>
+                <span className="cw-member-who">
+                  <span className="cw-member-name">{m.user.displayName}</span>
+                  <ListeningLine userId={m.user.id} link={false} />
+                </span>
               </ProfileTrigger>
+              {call !== undefined && (
+                <span className="cw-member-voice" title={`In voice: ${call}`} aria-label={`In voice: ${call}`} role="img">
+                  <PixelIcon name="voice" size={14} />
+                </span>
+              )}
               {m.role !== 'member' && <span className="cw-role">{m.role}</span>}
               {actions(m)}
             </li>

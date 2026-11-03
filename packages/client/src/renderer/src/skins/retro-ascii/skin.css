@@ -17,23 +17,27 @@
   --radius: 0; --radius-sm: 0; --radius-modal: 0;
   --overlay-bg: rgba(8, 5, 2, .8); --backdrop: rgba(8, 5, 2, .75);
   --font-body: 'JetBrains Mono', Consolas, 'Cascadia Mono', ui-monospace, monospace;
+  /* The skin's own colours, so the light version (below) can swap them in one place. */
+  --ra-ground: #0a0703; --ra-well: #0a0703; --ra-panel: #120b04;
+  --ra-star: #9a6a2a; --ra-star-mid: #ffb347; --ra-star-bright: #ffe9a8;
+  --ra-scanline: rgba(0, 0, 0, .25); --ra-glow: 0 0 6px rgba(255, 176, 0, .35);
   --font-code: var(--font-body); --font-digits: var(--font-body);
 }
 
 /* Starfield and scanline. The stars sit on the window, so they show through the panels above. */
-:root[data-skin='retro-ascii'] body { background: #0a0703; }
+:root[data-skin='retro-ascii'] body { background: var(--ra-ground); }
 :root[data-skin='retro-ascii'] #root {
-  background-color: #0a0703;
+  background-color: var(--ra-ground);
   background-image:
-    radial-gradient(1px 1px at 12% 18%, #ffe9a8 50%, transparent 51%),
-    radial-gradient(1px 1px at 63% 42%, #9a6a2a 50%, transparent 51%),
-    radial-gradient(1px 1px at 88% 77%, #ffb347 50%, transparent 51%),
-    radial-gradient(1px 1px at 31% 91%, #9a6a2a 50%, transparent 51%);
+    radial-gradient(1px 1px at 12% 18%, var(--ra-star-bright) 50%, transparent 51%),
+    radial-gradient(1px 1px at 63% 42%, var(--ra-star) 50%, transparent 51%),
+    radial-gradient(1px 1px at 88% 77%, var(--ra-star-mid) 50%, transparent 51%),
+    radial-gradient(1px 1px at 31% 91%, var(--ra-star) 50%, transparent 51%);
   background-size: 640px 420px;
 }
 :root[data-skin='retro-ascii'] #root::after {
   content: ''; position: fixed; inset: 0; z-index: 1000; pointer-events: none; opacity: .5;
-  background: repeating-linear-gradient(to bottom, transparent 0 2px, rgba(0, 0, 0, .25) 2px 3px);
+  background: repeating-linear-gradient(to bottom, transparent 0 2px, var(--ra-scanline) 2px 3px);
 }
 
 /* Square corners everywhere, including the round avatars and the server rail. */
@@ -44,7 +48,7 @@
 /* Phosphor glow on headings and names. Kept faint so the text stays easy to read. */
 :root[data-skin='retro-ascii'] h2,
 :root[data-skin='retro-ascii'] .cv-title,
-:root[data-skin='retro-ascii'] .cv-name { text-shadow: 0 0 6px rgba(255, 176, 0, .35); }
+:root[data-skin='retro-ascii'] .cv-name { text-shadow: var(--ra-glow); }
 
 /* Buttons are outlined. An inset shadow draws the outline, so no box gains a pixel. Icon-only buttons stay bare. */
 :root[data-skin='retro-ascii'] button { background: transparent; color: var(--accent); box-shadow: inset 0 0 0 1px var(--border); }
@@ -55,11 +59,18 @@
 :root[data-skin='retro-ascii'] button.danger { background: transparent; color: var(--danger); box-shadow: inset 0 0 0 1px var(--danger); }
 :root[data-skin='retro-ascii'] button.danger:hover { background: var(--danger); color: var(--danger-text); }
 
+/* The demo banner is amber, so its button gets the dark (or paper) ground to stay visible. */
+:root[data-skin='retro-ascii'] .cw-demo-banner button { background: var(--ra-ground); color: var(--accent); box-shadow: none; }
+
+/* Names and avatars that open a profile are buttons too, but read as text: no outline and no hover box. */
+:root[data-skin='retro-ascii'] button.profile-trigger,
+:root[data-skin='retro-ascii'] button.profile-trigger:hover { box-shadow: none; background: transparent; color: inherit; }
+
 /* Fields get a dark well and an amber rule, with a one-pixel glow on focus. Their border is already 1px in the base. */
 :root[data-skin='retro-ascii'] input:not([type='checkbox']):not([type='radio']):not([type='range']),
 :root[data-skin='retro-ascii'] textarea,
 :root[data-skin='retro-ascii'] select {
-  background: #0a0703; color: var(--text-strong); border-color: var(--border);
+  background: var(--ra-well); color: var(--text-strong); border-color: var(--border);
 }
 :root[data-skin='retro-ascii'] input:focus,
 :root[data-skin='retro-ascii'] textarea:focus,
@@ -73,18 +84,15 @@
 :root[data-skin='retro-ascii'] .setting-row { outline: 1px solid var(--border); outline-offset: -1px; }
 :root[data-skin='retro-ascii'] .modal,
 :root[data-skin='retro-ascii'] .cv-actions,
-:root[data-skin='retro-ascii'] .media-popover { background: #120b04; }
+:root[data-skin='retro-ascii'] .media-popover { background: var(--ra-panel); }
 :root[data-skin='retro-ascii'] .card,
 :root[data-skin='retro-ascii'] .modal,
 :root[data-skin='retro-ascii'] .cv-actions,
-:root[data-skin='retro-ascii'] .media-popover { box-shadow: 6px 6px 0 #4a2f0c; }
+:root[data-skin='retro-ascii'] .media-popover { box-shadow: 6px 6px 0 var(--border); }
 
 /* Dashed section rules under headers. The base already has a 1px bottom border there. */
 :root[data-skin='retro-ascii'] .cw-channels-head,
 :root[data-skin='retro-ascii'] .cv-header { border-bottom-style: dashed; }
-
-/* Avatars take the amber tint so photos sit in the palette. */
-:root[data-skin='retro-ascii'] .avatar { filter: sepia(.7) saturate(1.1); }
 
 /* ASCII accents. The banner and the cursor are generated text placed outside the flow (absolute), so the empty
    state keeps its size and position. */
@@ -100,4 +108,35 @@
 @keyframes cw-skin-blink { to { visibility: hidden; } }
 @media (prefers-reduced-motion: reduce) {
   :root[data-skin='retro-ascii'] .cw-main-empty::after { animation: none; }
+}
+
+/* The title bar: amber on black with an amber rule, close lights up in the danger orange. */
+:root[data-skin='retro-ascii'] {
+  --titlebar-bg: var(--ra-ground); --titlebar-border: var(--border); --titlebar-text: var(--text-muted); --titlebar-text-strong: var(--accent);
+  --titlebar-mark: var(--accent); --titlebar-letter-spacing: .14em;
+  --titlebar-button-hover: var(--accent-tint); --titlebar-close-hover: var(--danger); --titlebar-close-hover-text: var(--accent-text);
+}
+:root[data-skin='retro-ascii'] .cw-titlebar-mark { border-radius: 0; }
+:root[data-skin='retro-ascii'] .cw-titlebar-title { text-transform: uppercase; color: var(--accent); }
+:root[data-skin='retro-ascii'] .cw-titlebar .cw-titlebar-button { background: transparent; color: var(--titlebar-text); box-shadow: none; }
+:root[data-skin='retro-ascii'] .cw-titlebar .cw-titlebar-button:hover { background: var(--titlebar-button-hover); color: var(--titlebar-text-strong); }
+:root[data-skin='retro-ascii'] .cw-titlebar .cw-titlebar-button.close:hover { background: var(--titlebar-close-hover); color: var(--titlebar-close-hover-text); }
+
+/* The light version, used when Settings > Appearance > Theme is Light (or Match system picks light). An amber
+   printout instead of an amber screen: brown-amber ink on cream paper, the same boxes, outlines, hard offset shadows
+   and ASCII accents, with faint ruled lines where the scanlines were and ink specks for stars. */
+:root[data-skin='retro-ascii'][data-theme='light'] {
+  --bg-0: rgba(240, 225, 190, .92); --bg-1: rgba(248, 238, 214, .9); --bg-2: rgba(252, 246, 230, .86);
+  --bg-3: #f0dfb6; --bg-hover: #ead19b;
+  --text: #6e3f00; --text-muted: #9a6a2a; --text-strong: #3b2100;
+  --accent: #b36b00; --accent-hover: #965800; --accent-text: #fff7e3;
+  --accent-tint: rgba(179, 107, 0, .12); --hover-tint: rgba(179, 107, 0, .07);
+  --danger: #c23d0c; --ok: #6f6400; --warn: #b36b00;
+  --border: #d8b46e;
+  --shadow: 6px 6px 0 #e6cb92; --shadow-popover: 6px 6px 0 #e0c07c;
+  --overlay-bg: rgba(252, 246, 230, .85); --backdrop: rgba(70, 40, 0, .35);
+  --danger-text: #fff7e3;
+  --ra-ground: #f7ecd2; --ra-well: #fffaf0; --ra-panel: #fcf4e0;
+  --ra-star: #c9a76a; --ra-star-mid: #b98b3e; --ra-star-bright: #a87422;
+  --ra-scanline: rgba(150, 95, 10, .07); --ra-glow: none;
 }

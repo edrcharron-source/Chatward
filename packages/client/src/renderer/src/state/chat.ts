@@ -3,8 +3,10 @@ import { LIMITS, type Attachment, type Message, type MessagePayload } from '@cha
 import { ApiError, api } from '../api/http';
 import { onFrame, sendFrame } from '../api/ws';
 import { buildLinkPreviews, extractUrls, shrinkPreviewImage, uploadAttachment } from '../components/media';
+import { resolveSpotifyJams } from '../components/spotify/JamCard';
 import { decryptMessage, encryptPayload, onKeysChanged } from '../crypto';
 import { fitPayload } from './fitPayload';
+import { parseMentions } from './mentions';
 import { isLiveChannel, onBeforeSignOut, refreshUnread, useSession } from './session';
 
 export type Gif = NonNullable<MessagePayload['gif']>;
@@ -211,6 +213,38 @@ export async function loadHistory(channelId: string, mode: 'initial' | 'older' =
   }
 }
 
+function whenIdle(channelId: string): Promise<void> {
+  return new Promise((resolve) => {
+    if (!channelOf(channelId).loading) return resolve();
+    const stop = useChat.subscribe((s) => {
+      if (!(s.channels[channelId] ?? EMPTY).loading) { stop(); resolve(); }
+    });
+  });
+}
+
+/**
+ * Loads older pages until the channel holds the message, for a jump from search. Gives up once the held history
+ * reaches back past the message's time (it was deleted) or the start of the channel. Returns whether it is held.
+ */
+export async function loadUntil(channelId: string, messageId: string, createdAt: number): Promise<boolean> {
+  for (;;) {
+    if (!isLiveChannel(channelId)) return false;
+    const c = channelOf(channelId);
+    if (c.messages.some((m) => m.id === messageId)) return true;
+    if (c.loading) { await whenIdle(channelId); continue; }
+    if (c.loaded && (!c.hasMore || (c.messages.length > 0 && c.messages[0].createdAt < createdAt))) return false;
+    const oldest = c.messages[0]?.id;
+    try {
+      await loadHistory(channelId, c.loaded ? 'older' : 'initial');
+    } catch {
+      return false;
+    }
+    // An older page that added nothing would loop forever.
+    const after = channelOf(channelId);
+    if (c.loaded && after.messages[0]?.id === oldest) return after.messages.some((m) => m.id === messageId);
+  }
+}
+
 /**
  * After a reconnect, frames may have been missed. Fetch only what is newer than the newest message we hold, one
  * page at a time, so a gap of any length is filled. Then read the latest page once more and merge it, so edits
@@ -298,21 +332,30 @@ function requireMe(): string {
   return me.id;
 }
 
-async function buildPayload(text: string, attachments?: Attachment[], gif?: Gif): Promise<MessagePayload> {
+/** Members of the server a channel belongs to, for mention parsing. */
+function membersForChannel(channelId: string) {
+  return useSession.getState().servers.find((b) => b.channels.some((c) => c.id === channelId))?.members ?? [];
+}
+
+async function buildPayload(channelId: string, text: string, attachments?: Attachment[], gif?: Gif, listenAlong?: boolean): Promise<MessagePayload> {
   const urls = extractUrls(text);
-  const linkPreviews = urls.length ? await buildLinkPreviews(urls) : [];
+  const [linkPreviews, spotifyJams] = urls.length ? await Promise.all([buildLinkPreviews(urls), resolveSpotifyJams(urls)]) : [[], []];
+  const mentions = parseMentions(text, membersForChannel(channelId));
   return {
     text,
+    ...(mentions ? { mentions } : {}),
     ...(attachments?.length ? { attachments } : {}),
     ...(gif ? { gif } : {}),
     ...(linkPreviews.length ? { linkPreviews } : {}),
+    ...(spotifyJams.length ? { spotifyJams } : {}),
+    ...(listenAlong ? { listenAlong: true as const } : {}),
   };
 }
 
-export async function sendMessage(channelId: string, input: { text: string; files: File[]; gif?: Gif }) {
+export async function sendMessage(channelId: string, input: { text: string; files: File[]; gif?: Gif; listenAlong?: boolean }) {
   const me = requireMe();
   const attachments = input.files.length ? await Promise.all(input.files.map((f) => uploadAttachment(f))) : undefined;
-  const built = await buildPayload(input.text, attachments, input.gif);
+  const built = await buildPayload(channelId, input.text, attachments, input.gif, input.listenAlong);
   const { payload, ciphertext, keyVersion } = await encryptWithinLimit(channelId, me, built);
   const attachmentIds = attachments?.map((a) => a.uploadId) ?? [];
   // One id for every try of this send, so the server returns the first copy instead of storing a second.
@@ -339,7 +382,7 @@ export async function sendMessage(channelId: string, input: { text: string; file
 
 export async function editMessage(m: Message, text: string) {
   const old = useChat.getState().payloads[m.id];
-  const built = await buildPayload(text, old?.attachments, old?.gif);
+  const built = await buildPayload(m.channelId, text, old?.attachments, old?.gif);
   const { payload, ciphertext, keyVersion } = await encryptWithinLimit(m.channelId, m.authorId, built);
   const { message } = await api.patch<{ message: Message }>(`/api/messages/${m.id}`, { ciphertext, keyVersion });
   mergeMessages(m.channelId, [message]);

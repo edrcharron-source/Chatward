@@ -6,6 +6,10 @@
 }
 .cv-hash { color: var(--text-muted); font-size: 20px; line-height: 1; }
 .cv-title { color: var(--text-strong); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cv-search-btn { margin-left: auto; }
+/* The chat column, with the search box beside it when open. */
+.cv-body { position: relative; flex: 1; display: flex; min-height: 0; container: cv-body / inline-size; }
+.cv-col { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 
 .cv-list { flex: 1; overflow-y: auto; padding: 16px 0 8px; display: flex; flex-direction: column; min-height: 0; }
 .cv-start { padding: 12px 16px 20px; color: var(--text-muted); font-weight: 600; }
@@ -21,13 +25,36 @@
 }
 .cv-msg:hover { background: var(--hover-tint); }
 .cv-msg.cv-grouped { margin-top: 0; }
+/* A message that pings you (by name or @everyone) stays lit up, so it is easy to find. */
+.cv-msg.cv-pinged { background: color-mix(in srgb, var(--accent) 12%, transparent); box-shadow: inset 3px 0 0 var(--accent); }
+/* An @mention in a message shows as a small pill. */
+.cv-mention {
+  display: inline-block; padding: 0 6px; margin: 0 1px; border-radius: 999px; line-height: 1.5;
+  background: var(--accent-tint); color: var(--accent); font-weight: 600; white-space: nowrap;
+}
+/* A message opened from search is lit up for a moment. */
+.cv-msg.cv-flash { animation: cv-flash 2.4s ease-out; }
+@keyframes cv-flash {
+  0%, 40% { background: color-mix(in srgb, var(--accent) 28%, transparent); box-shadow: inset 3px 0 0 var(--accent); }
+  100% { background: transparent; box-shadow: inset 3px 0 0 transparent; }
+}
+/* Back-to-back messages from one person sit as close as lines of one message: no padding between them. */
+.cv-msg.cv-grouped { padding-top: 0; }
+.cv-msg:has(+ .cv-grouped) { padding-bottom: 0; }
 .cv-msg-main { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .cv-msg-head { display: flex; align-items: baseline; gap: 8px; }
 .cv-name { color: var(--text-strong); font-weight: 600; }
 .cv-time { color: var(--text-muted); font-size: 12px; }
-.cv-time-gutter { width: 36px; flex: none; color: transparent; font-size: 11px; text-align: right; padding-top: 4px; }
+/* The hover time beside a follow-up message. It takes no height (and stays on one line), so a one-line message is
+   only as tall as its text and back-to-back messages read like lines of one message. */
+.cv-time-gutter {
+  width: 36px; height: 0; flex: none; display: flex; justify-content: flex-end; padding-top: 3px;
+  color: transparent; font-size: 11px; white-space: nowrap;
+}
 .cv-msg:hover .cv-time-gutter { color: var(--text-muted); }
 .cv-text { white-space: pre-wrap; }
+/* A message of only emoji is shown larger. */
+.cv-text-emoji { font-size: 2em; line-height: 1.25; }
 .cv-edited { color: var(--text-muted); font-size: 11px; }
 .cv-text a { color: var(--accent); text-decoration: none; }
 .cv-text a:hover { text-decoration: underline; }
@@ -39,6 +66,8 @@
 .cv-code-block code { font-family: var(--font-code); font-size: 13px; }
 
 .cv-avatar { flex: none; }
+/* The avatar's profile button keeps the avatar's own height next to a tall message (a GIF, an image). */
+.cv-msg > .profile-trigger { align-self: flex-start; }
 .cv-avatar-fallback { display: grid; place-items: center; color: var(--text-strong); font-weight: 600; }
 
 .cv-actions {
@@ -52,12 +81,27 @@
 .cv-edit-hint { font-size: 11px; }
 
 .cv-composer {
+  position: relative;
   flex: none; margin: 0 16px 16px; padding: 8px 10px; background: var(--bg-3); border-radius: var(--radius);
   border: 2px solid transparent; transition: border-color .12s;
   box-shadow: var(--shadow-composer);
+  container: cv-composer / inline-size;
 }
 .cv-composer:focus-within { border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
 .cv-composer.cv-dragging { border-color: var(--accent); }
+/* The @ picker opens above the message box. */
+.cv-mention-picker {
+  position: absolute; left: 8px; right: 8px; bottom: calc(100% + 6px); z-index: 5;
+  display: flex; flex-direction: column; padding: 4px; max-height: 320px; overflow-y: auto;
+  background: var(--bg-1); border-radius: var(--radius-sm); box-shadow: var(--shadow);
+}
+.cv-mention-opt {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 6px 10px;
+  text-align: left; background: transparent; border-radius: 6px; color: var(--text);
+}
+.cv-mention-opt.cv-mention-on { background: var(--accent-tint); }
+.cv-mention-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.cv-mention-note { font-size: 12px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cv-chips { display: flex; flex-wrap: wrap; gap: 6px; padding-bottom: 6px; }
 .cv-chip {
   display: inline-flex; align-items: center; gap: 4px; max-width: 100%; padding: 3px 6px 3px 10px;
@@ -65,14 +109,44 @@
 }
 .cv-chip button { padding: 0 4px; font-size: 14px; line-height: 1; }
 .cv-gif-chip { padding: 3px 6px 3px 3px; }
-.cv-row { display: flex; align-items: flex-end; gap: 6px; }
+/* Pictures and GIFs waiting to be sent show as small previews, not at full chat size. */
+.cv-gif-chip .media-gif { max-width: 200px; max-height: 120px; border-radius: 6px; }
+.cv-thumb { position: relative; padding: 3px; }
+.cv-thumb img {
+  display: block; height: 96px; width: auto; max-width: 200px; min-width: 48px; object-fit: cover; border-radius: 6px;
+}
+.cv-thumb-name {
+  display: flex; align-items: center; justify-content: center; height: 96px; width: 120px; padding: 0 8px;
+  overflow: hidden; text-overflow: ellipsis; word-break: break-all; text-align: center; color: var(--text-muted);
+}
+/* Sits on top of the picture, so it looks the same in every skin (skins restyle plain icon buttons). */
+.cv-composer .cv-thumb .cv-thumb-x.icon {
+  position: absolute; top: 6px; right: 6px; width: 22px; height: 22px; padding: 0; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: rgba(0, 0, 0, .65); color: #fff; font: 400 16px/1 system-ui, sans-serif; box-shadow: none; min-height: 0;
+}
+.cv-composer .cv-thumb .cv-thumb-x.icon:hover { background: rgba(0, 0, 0, .85); color: #fff; box-shadow: none; }
+.cv-row { display: flex; align-items: flex-end; gap: 6px; --cv-h: calc(var(--font-size) * 1.4 + 20px); }
+/* Everything in the row is at least as tall as a one-line message box, with its icon or word centred, so the buttons
+   line up with the box. They stay at the bottom while the box grows taller. */
+.cv-row > :not([hidden]) { min-height: var(--cv-h); }
+.cv-row > :not(.cv-input):not([hidden]) { display: inline-flex; align-items: center; justify-content: center; }
+.cv-row > .media-anchor { align-items: stretch; }
 .cv-tool { font-size: 16px; line-height: 1; }
 .cv-input {
   flex: 1; min-width: 0; resize: none; max-height: 160px; background: transparent; padding: 8px 4px;
   line-height: 1.4;
+  /* the box grows with what you type, up to max-height, then scrolls */
+  field-sizing: content;
 }
 .cv-input:focus { border-color: transparent; }
 .cv-send { padding: 8px 14px; }
+/* In a narrow chat (split view, small window) the message box takes a full row of its own above the buttons. */
+@container cv-composer (max-width: 460px) {
+  .cv-row { flex-wrap: wrap; }
+  .cv-input { flex: 1 0 100%; order: -1; min-height: calc(3lh + 16px); }
+  .cv-send { margin-left: auto; }
+}
 
 @media (max-width: 640px) {
   .cv-msg { gap: 10px; }

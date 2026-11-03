@@ -3,6 +3,10 @@ import type { MessagePayload } from '@chatward/shared';
 import { api } from '../../api/http';
 import { usePopover } from './Popover';
 import { isSafeGifUrl } from './safeUrls';
+import GifLibraryPanel from '../gifs/GifLibraryPanel';
+import LibraryGifImage from '../gifs/LibraryGifImage';
+import SaveGifButton from '../gifs/SaveGifButton';
+import ImageLightbox from './ImageLightbox';
 
 type Gif = NonNullable<MessagePayload['gif']>;
 
@@ -115,8 +119,17 @@ function GifPanel({ onPick }: { onPick: (gif: Gif) => void }) {
   );
 }
 
-export function GifPickerButton({ onPick }: { onPick: (gif: Gif) => void }): ReactElement {
+type Tab = 'server' | 'klipy';
+// Library ids come from other people's messages, so only plain ids reach the request path.
+const LIBRARY_ID = /^[0-9a-z-]{1,40}$/;
+
+export function GifPickerButton({ serverId, onPick }: { serverId: string; onPick: (gif: Gif) => void }): ReactElement {
   const { open, setOpen, ref } = usePopover();
+  const [tab, setTab] = useState<Tab>('server');
+  const pick = (gif: Gif) => {
+    onPick(gif);
+    setOpen(false);
+  };
   return (
     <div className="media-anchor" ref={ref}>
       <button
@@ -131,19 +144,54 @@ export function GifPickerButton({ onPick }: { onPick: (gif: Gif) => void }): Rea
       </button>
       {open && (
         <div className="media-popover media-gif-popover" role="dialog" aria-label="GIF picker">
-          <GifPanel
-            onPick={(gif) => {
-              onPick(gif);
-              setOpen(false);
-            }}
-          />
+          <div className="gif-tabs" role="tablist">
+            <button type="button" role="tab" aria-selected={tab === 'server'} onClick={() => setTab('server')}>Server</button>
+            <button type="button" role="tab" aria-selected={tab === 'klipy'} onClick={() => setTab('klipy')}>Klipy</button>
+          </div>
+          {tab === 'server' ? <GifLibraryPanel serverId={serverId} onPick={pick} /> : <GifPanel onPick={pick} />}
         </div>
       )}
     </div>
   );
 }
 
-export function GifView({ gif }: { gif: Gif }): ReactElement | null {
+/**
+ * A GIF in a message or the composer. With `serverId`, a hover button saves a KLIPY GIF to the server's library.
+ * With `openable`, clicking the GIF opens it in the full-window picture viewer, still animating.
+ */
+export function GifView({ gif, serverId, openable }: { gif: Gif; serverId?: string; openable?: boolean }): ReactElement | null {
+  const [opened, setOpened] = useState<{ src: string; container: HTMLElement } | null>(null);
+  const close = useCallback(() => setOpened(null), []);
+  const open = openable ? (src: string, container: HTMLElement) => setOpened({ src, container }) : undefined;
+  const title = gif.title || 'GIF';
+  const viewer = opened && <ImageLightbox url={opened.src} name={title} onClose={close} container={opened.container} />;
+
+  if (gif.provider === 'library') {
+    if (!gif.libraryId || !LIBRARY_ID.test(gif.libraryId)) return <span className="muted media-gif-blocked">GIF removed</span>;
+    return (
+      <>
+        <LibraryGifImage id={gif.libraryId} title={gif.title} className="media-gif" onOpen={open} />
+        {viewer}
+      </>
+    );
+  }
   if (!isSafeGifUrl(gif.url)) return <span className="muted media-gif-blocked">GIF blocked</span>;
-  return <img className="media-gif" src={gif.url} alt={gif.title || 'GIF'} loading="lazy" referrerPolicy="no-referrer" />;
+  const picture = <img className="media-gif" src={gif.url} alt={title} loading="lazy" referrerPolicy="no-referrer" />;
+  const img = open ? (
+    <button type="button" className="media-open" aria-label={`View ${title} full size`} onClick={(e) => open(gif.url, e.currentTarget.ownerDocument.body)}>
+      {picture}
+    </button>
+  ) : picture;
+  const shown = !serverId || gif.url.startsWith('data:') ? img : (
+    <span className="media-gif-wrap">
+      {img}
+      <SaveGifButton serverId={serverId} source={{ kind: 'klipy', url: gif.url }} defaultName={gif.title} />
+    </span>
+  );
+  return (
+    <>
+      {shown}
+      {viewer}
+    </>
+  );
 }

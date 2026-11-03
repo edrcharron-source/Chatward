@@ -2,10 +2,12 @@ import { createRoot } from 'react-dom/client';
 import './styles/theme.css';
 import './styles/layout.css';
 import { App } from './App';
+import { ConfirmProvider } from './components/confirm/ConfirmDialog';
 import { PopoutPlayer } from './components/watchparty/PopoutPlayer';
 import { isPopoutWindow } from './components/watchparty/popout';
 import { restoreSession, useSession } from './state/session';
 import { DEMO_URL } from './demo';
+import { syncShapedWindow } from './components/lcars/shapedWindow';
 
 // The token comes from secureStore, so wait for it before the first request goes out.
 // The page's connection rules are fixed when it loads. If the saved server is not the one they were set for, reload once.
@@ -20,6 +22,7 @@ async function start() {
   } catch (err) {
     console.warn('[server]', err);
   }
-  createRoot(document.getElementById('root')!).render(isPopoutWindow() ? <PopoutPlayer /> : <App />);
+  if (!isPopoutWindow()) syncShapedWindow();
+  createRoot(document.getElementById('root')!).render(isPopoutWindow() ? <PopoutPlayer /> : <ConfirmProvider><App /></ConfirmProvider>);
 }
 void start();

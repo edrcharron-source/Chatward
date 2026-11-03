@@ -40,11 +40,12 @@ function MemberMenu({ x, y, userId, channelId, serverId, onClose }: Target & { x
   useEffect(() => {
     const onDown = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) onClose(); };
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    document.addEventListener('mousedown', onDown);
-    document.addEventListener('keydown', onKey);
+    const doc = ref.current?.ownerDocument ?? document;
+    doc.addEventListener('mousedown', onDown);
+    doc.addEventListener('keydown', onKey);
     return () => {
-      document.removeEventListener('mousedown', onDown);
-      document.removeEventListener('keydown', onKey);
+      doc.removeEventListener('mousedown', onDown);
+      doc.removeEventListener('keydown', onKey);
     };
   }, [onClose]);
 

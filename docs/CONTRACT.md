@@ -75,6 +75,19 @@ Voice (module `voice`)
 
 `channel.update` {channel}: a channel's settings changed (voice bitrateKbps). PATCH /api/servers/:id/channels/:channelId {bitrateKbps} (admin; one of 8/16/32/64/96/128, default 64) broadcasts it; live calls re-publish at the new bitrate.
 
+`activity` (Spotify "listening to"): client sends `{t:'activity', activity: Activity | null}` while its owner has sharing on. The
+server keeps only kind/title/artist (each cut to 200 characters) and a `https://open.spotify.com/track/<id>` url, holds it
+in memory (never stored), and broadcasts `{t:'activity', userId, activity}` to members. A new socket gets everyone's
+current activity after `ready`; the last socket closing clears it. The Spotify sign-in (PKCE, no client secret) and the
+currently-playing check run in the client's main process; the client ID is the `SPOTIFY_CLIENT_ID` build secret.
+Listen Along: a joiner's activity carries `alongWith: <hostUserId>` (letters, digits, dashes; anything else dropped).
+A message payload with `listenAlong: true` is an invite card for its author's live activity. The joiner's app starts the
+host's track at the host's position (`PUT /me/player/play`, scopes user-read-playback-state + user-modify-playback-state)
+and follows each new host activity frame; the host polls every 5 s while anyone is along with them.
+Jam invites: Spotify's Invite button copies a `spotify.link/<code>` short link. The sender's app resolves it (main process,
+following redirects only on spotify.link / spotify.app.link) and puts `spotifyJams: [{link, url}]` in the message payload;
+readers draw a Join Jam card only for a `url` of the form `https://open.spotify.com/socialsession/<id>`.
+
 WS fan-out: server pushes ServerFrame events to every connected socket whose user is a member of the relevant server.
 Server exposes `ctx.broadcastToServer(serverId, frame)` and `ctx.sendToUser(userId, frame)`.
 

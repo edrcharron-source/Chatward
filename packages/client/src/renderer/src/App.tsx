@@ -8,8 +8,10 @@ import { useSettings, applyTheme } from './state/settings';
 import { applySkin } from './skins';
 import { useVoice, rekeyActiveCall, resumeVoiceSlot, clearLeftoverVoiceSlot, leaveCallOnExit } from './state/voice';
 import { forgetChatChannels, useChat } from './state/chat';
+import { installGuestKeys } from './state/guests';
 import { accountKey, adoptLegacyIfOwned, initDevice, syncChannelKeys, handleEnvelope, handleMemberLeave, forgetChannels } from './crypto';
 import { installNotifications } from './notify/notify';
+import { installSpotifyActivity } from './state/spotify';
 import AuthScreen from './components/auth/AuthScreen';
 import ChannelList from './components/servers/ChannelList';
 import MemberList from './components/servers/MemberList';
@@ -21,13 +23,17 @@ import { WatchPartyPanel } from './components/watchparty';
 import SettingsModal from './components/settings/SettingsModal';
 import { JellyfinBrowser, useJellyfinEnabled } from './components/jellyfin/JellyfinBrowser';
 import TestConsole from './components/testconsole/TestConsole';
+import MysteryButton from './components/mystery/MysteryButton';
+import TabsLayout from './components/tabs/TabsLayout';
 import DemoBanner from './demo/DemoBanner';
 import UpdateBanner from './components/updates/UpdateBanner';
 import DeviceAlertBanner from './components/devices/DeviceAlertBanner';
 import { showDeviceAlert } from './state/deviceAlerts';
 import UpdateRequired from './components/updates/UpdateRequired';
 import PoweredBy from './components/brand/PoweredBy';
+import { TitleBar } from './components/titlebar/TitleBar';
 import { checkServerVersion, useUpdates } from './state/updates';
+import MediaContextMenu from './components/media/MediaContextMenu';
 
 export function App() {
   const token = useSession((s) => s.token);
@@ -47,6 +53,8 @@ export function App() {
   useEffect(() => { void applySkin(skin); }, [skin]);
   return (
     <div className="cw-app">
+      <TitleBar />
+      <MediaContextMenu />
       <UpdateBanner />
       <DeviceAlertBanner />
       <DemoBanner />
@@ -79,6 +87,7 @@ function Shell() {
   const [moviesOpen, setMoviesOpen] = useState(false);
   const jellyfinEnabled = useJellyfinEnabled();
   const [vaultOpen, setVaultOpen] = useState(false);
+  const layout = useSettings((s) => s.layout);
   const { servers, activeServerId, activeChannelId } = useSession();
   const bundle = servers.find((s) => s.server.id === activeServerId);
   const channel = bundle?.channels.find((c) => c.id === activeChannelId);
@@ -116,14 +125,17 @@ function Shell() {
   const hideSidebars = theaterKey !== null && sidebarsCollapsed;
   // The chat under the share is on screen, so its new messages should not count as unread.
   const theaterChatId = theaterWithChat && chatChannel ? chatChannel.id : null;
+  // The tabs layout says which chat is on screen itself.
   useEffect(() => {
+    if (layout !== 'classic') return;
     useSession.getState().setTheaterChatId(theaterChatId);
     return () => useSession.getState().setTheaterChatId(null);
-  }, [theaterChatId]);
+  }, [theaterChatId, layout]);
 
   useEffect(() => {
     let off: (() => void) | undefined;
     let stopNotify: (() => void) | undefined;
+    let stopSpotify: (() => void) | undefined;
     let stopTokenCheck: (() => void) | undefined;
     let seenReady = false;
     let active = true;
@@ -138,6 +150,7 @@ function Shell() {
       connectWs();
       stopTokenCheck = keepTokenFresh();
       stopNotify = installNotifications();
+      stopSpotify = installSpotifyActivity();
       off = onFrame((f) => {
         const st = useSession.getState();
         switch (f.t) {
@@ -192,17 +205,6 @@ function Shell() {
           case 'server.update': {
             const b = st.servers.find((x) => x.server.id === f.server.id);
             if (b) st.upsertServer({ ...b, server: f.server });
-            break;
-          }
-          case 'server.delete': {
-            // the server has already dropped every voice slot, so end our own call in it too
-            if (useVoice.getState().serverId === f.serverId) void useVoice.getState().leave();
-            const channelIds = st.servers.find((b) => b.server.id === f.serverId)?.channels.map((c) => c.id) ?? [];
-            st.removeServer(f.serverId);
-            forgetChatChannels(channelIds);
-            void forgetChannels(channelIds).catch((e) => console.error(e));
-            // A sync still running or retrying for this server must not keep using its channels.
-            void syncChannelKeys(useSession.getState().servers).catch((e) => console.error(e));
             break;
           }
           case 'member.role': {
@@ -278,7 +280,7 @@ function Shell() {
       setReady(true);
     })().catch((e) => console.error(e));
     window.addEventListener('pagehide', leaveCallOnExit);
-    return () => { active = false; off?.(); stopNotify?.(); stopTokenCheck?.(); disconnectWs(); window.removeEventListener('pagehide', leaveCallOnExit); };
+    return () => { active = false; off?.(); stopNotify?.(); stopSpotify?.(); stopTokenCheck?.(); disconnectWs(); window.removeEventListener('pagehide', leaveCallOnExit); };
   }, []);
 
   /** A reconnect refresh passes stillWanted: once a newer refresh has started, this answer may be older, so it is dropped. */
@@ -335,6 +337,7 @@ function Shell() {
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, []);
+  useEffect(() => installGuestKeys(), []);
 
   if (!ready) {
     return (
@@ -348,7 +351,27 @@ function Shell() {
       </div>
     );
   }
+  const modals = (
+    <>
+      {moviesOpen && <JellyfinBrowser onClose={() => setMoviesOpen(false)} />}
+      {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
+    </>
+  );
+  // The modals sit after the layout in both branches, so switching the layout in settings keeps the settings open.
+  if (layout !== 'classic') {
+    return (
+      <>
+        {testOpen
+          ? <div className="cw-shell" data-region="shell"><main className="cw-main" data-region="main"><TestConsole onClose={() => setTestOpen(false)} /></main></div>
+          : <TabsLayout bundle={bundle} onOpenSettings={() => setSettingsOpen(true)} onReload={loadServers}
+              onOpenTest={() => setTestOpen(true)} onOpenMovies={jellyfinEnabled ? () => setMoviesOpen(true) : null}
+              frame={layout === 'lcars' ? 'lcars' : undefined} />}
+        {modals}
+      </>
+    );
+  }
   return (
+    <>
     <div className="cw-shell" data-region="shell">
       {!hideSidebars && <ChannelList onOpenSettings={() => setSettingsOpen(true)} onReload={loadServers} />}
       <main className="cw-main" data-region="main">
@@ -359,6 +382,7 @@ function Shell() {
                 {sidebarsCollapsed ? 'Show sidebars' : 'Hide sidebars'}
               </button>
             )}
+            <MysteryButton>🔪 Mystery</MysteryButton>
             <button className="icon" onClick={() => setTestOpen(true)} title="Feature test console (Ctrl+Shift+T)">🧪 Test</button>
             {jellyfinEnabled && <button className="icon" onClick={() => setMoviesOpen(true)} title="Browse the Jellyfin library">🍿 Movies</button>}
             {bundle && (
@@ -408,11 +432,11 @@ function Shell() {
         </>}
       </main>
       {bundle && !hideSidebars && <MemberList serverId={bundle.server.id} members={bundle.members as Member[]} />}
-      {moviesOpen && <JellyfinBrowser onClose={() => setMoviesOpen(false)} />}
-      {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
       {/* keep voice room mounted even when browsing text channels */}
       {voiceChannelId && null}
     </div>
+    {modals}
+    </>
   );
 }
 export type { Channel };

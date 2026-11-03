@@ -1,0 +1,11 @@
+.confirm-dialog {
+  width: min(380px, calc(100vw - 32px));
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.confirm-dialog h2 { margin: 0; font-size: 1.1em; }
+.confirm-dialog p { margin: 0; color: var(--text-muted, inherit); }
+.confirm-check { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.confirm-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }

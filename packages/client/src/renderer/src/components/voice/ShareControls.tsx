@@ -1,6 +1,7 @@
 import { useCallback, useState, type ReactElement } from 'react';
 import { isDemo } from '../../demo';
 import { useVoice } from '../../state/voice';
+import PixelIcon from '../icons/PixelIcon';
 import ScreenPicker from './ScreenPicker';
 import { setScreenShareOptions, type ScreenShareOptions } from './media';
 
@@ -10,7 +11,8 @@ function message(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
-export default function ShareControls(): ReactElement {
+/** `labelled` (the LCARS bottom bar) shows each button's name instead of its icon, and lays the buttons out flat. */
+export default function ShareControls({ labelled = false }: { labelled?: boolean } = {}): ReactElement {
   const cameraOn = useVoice((s) => s.cameraOn);
   const screenOn = useVoice((s) => s.screenOn);
   const connected = useVoice((s) => s.status === 'connected' && (s.room !== null || isDemo()));
@@ -43,18 +45,19 @@ export default function ShareControls(): ReactElement {
   const disabled = !connected || pending !== null;
 
   return (
-    <div role="group" aria-label="Camera and screen share" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      <div style={{ display: 'flex', gap: 8 }}>
+    <div role="group" aria-label="Camera and screen share" className={labelled ? 'lcars-flat' : undefined}
+      style={labelled ? undefined : { display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div className={labelled ? 'lcars-flat' : undefined} style={labelled ? undefined : { display: 'flex', gap: 8 }}>
         <button
           type="button"
           aria-pressed={cameraOn}
           aria-label={cameraOn ? 'Turn camera off' : 'Turn camera on'}
           title={cameraOn ? 'Turn camera off' : 'Turn camera on'}
           disabled={disabled}
-          className={cameraOn ? 'primary' : undefined}
+          className={[labelled ? 'lcars-seg' : '', cameraOn ? 'primary' : ''].filter(Boolean).join(' ') || undefined}
           onClick={() => void run('camera', () => setCamera(!cameraOn))}
         >
-          {cameraOn ? 'Camera on' : 'Camera off'}
+          {labelled ? <span className="lcars-label">{cameraOn ? 'Camera on' : 'Camera'}</span> : <PixelIcon name={cameraOn ? 'camera' : 'cameraoff'} size={18} />}
         </button>
         <button
           type="button"
@@ -62,13 +65,13 @@ export default function ShareControls(): ReactElement {
           aria-label={screenOn ? 'Stop sharing' : 'Share screen'}
           title={screenOn ? 'Stop sharing' : 'Share screen'}
           disabled={disabled}
-          className={screenOn ? 'danger' : undefined}
+          className={[labelled ? 'lcars-seg' : '', screenOn ? 'danger' : ''].filter(Boolean).join(' ') || undefined}
           onClick={() => (screenOn ? void run('screen', () => setScreen(false)) : setPickerOpen(true))}
         >
-          {screenOn ? 'Stop sharing' : 'Share'}
+          {labelled ? <span className="lcars-label">{screenOn ? 'Stop stream' : 'Stream'}</span> : <PixelIcon name={screenOn ? 'shareoff' : 'share'} size={18} />}
         </button>
       </div>
-      {error && <p role="alert" className="muted" style={{ margin: 0, color: 'var(--danger)', fontSize: 12 }}>{error}</p>}
+      {error && <p role="alert" className={labelled ? 'muted lcars-alert' : 'muted'} style={{ margin: 0, color: 'var(--danger)', fontSize: 12 }}>{error}</p>}
       {pickerOpen && <ScreenPicker onPick={share} onClose={closePicker} />}
     </div>
   );

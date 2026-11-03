@@ -13,11 +13,13 @@ export function usePopover() {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setOpen(false);
     };
-    document.addEventListener('mousedown', onPointerDown);
-    document.addEventListener('keydown', onKeyDown);
+    // the popover may sit in a popped-out window, so listen on the document it is drawn in
+    const doc = ref.current?.ownerDocument ?? document;
+    doc.addEventListener('mousedown', onPointerDown);
+    doc.addEventListener('keydown', onKeyDown);
     return () => {
-      document.removeEventListener('mousedown', onPointerDown);
-      document.removeEventListener('keydown', onKeyDown);
+      doc.removeEventListener('mousedown', onPointerDown);
+      doc.removeEventListener('keydown', onKeyDown);
     };
   }, [open]);
 

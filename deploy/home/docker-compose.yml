@@ -1,10 +1,10 @@
-# Home server profile (lebserver): Chatward on a home Ubuntu box, reachable from the internet at https://$DOMAIN.
+# Home server profile: Chatward on a home Ubuntu box, reachable from the internet at https://$DOMAIN.
 # Setup: docs/HOME_SERVER.md. First install: sudo ./install.sh. Updates: ./update-home.sh vX.Y.Z.
 # Differences from the cloud profile (deploy/docker-compose.yml):
-#  - Caddy gets its certificate by Cloudflare DNS-01, so port 80 stays with the host's nginx (Pelican panel).
-#  - Caddy publishes 443 on the LAN address only. The Node server publishes no host port (lebai owns 3000 on the host).
+#  - Caddy gets its certificate by Cloudflare DNS-01, so port 80 stays free for whatever else the host runs.
+#  - Caddy publishes 443 on the LAN address only. The Node server publishes no host port.
 #  - Data lives in bind mounts: database on the NVMe, uploads on the RAID, so backups are plain file copies.
-#  - CPU and memory caps, so a busy call and the box's other services (Ollama, Jellyfin, game servers) leave each other room.
+#  - CPU and memory caps, so a busy call and the box's other services leave each other room.
 name: chatward
 x-logging: &logging
   driver: journald
@@ -29,7 +29,8 @@ services:
     image: livekit/livekit-server:v1.13.11
     command: '--config /etc/livekit.yaml --keys "${LIVEKIT_API_KEY:?set LIVEKIT_API_KEY in deploy/home/.env}: ${LIVEKIT_API_SECRET:?set LIVEKIT_API_SECRET in deploy/home/.env}"'
     volumes: ["./livekit.yaml:/etc/livekit.yaml:ro"]
-    ports: ["7881:7881", "50000-50100:50000-50100/udp"]
+    # Bound to LAN_IP like Caddy: Docker publishes around ufw, so this keeps them off the Tailscale and IPv6 addresses.
+    ports: ["${LAN_IP}:7881:7881", "${LAN_IP}:7882:7882/udp"]
     restart: unless-stopped
     logging: *logging
     deploy: { resources: { limits: { cpus: "4", memory: 2G } } }

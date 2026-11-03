@@ -1,0 +1,11 @@
+/* Each icon carries all three skins' versions; only the active skin's one shows. No skin pack means the Original
+   look, which uses the solid set. */
+.cw-pixel-icon .cw-ic-blueprint,
+.cw-pixel-icon .cw-ic-chunky { display: none; }
+.cw-pixel-icon .cw-ic-solid { fill: currentColor; stroke: none; }
+.cw-pixel-icon .cw-ic-blueprint { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: square; stroke-linejoin: miter; }
+
+:root[data-skin='lebserver'] .cw-pixel-icon .cw-ic-solid,
+:root[data-skin='retro-ascii'] .cw-pixel-icon .cw-ic-solid { display: none; }
+:root[data-skin='lebserver'] .cw-pixel-icon .cw-ic-blueprint { display: inline; }
+:root[data-skin='retro-ascii'] .cw-pixel-icon .cw-ic-chunky { display: inline; }

@@ -1,4 +1,6 @@
-// Generated media for the demo world: avatars (PNG via canvas), GIF cards (animated SVG), sound clips (WAV).
+// Generated media for the demo world: avatars (PNG via canvas), GIF cards (animated SVG), sound clips (WAV),
+// and real GIF files for the server's GIF library.
+import { GIFEncoder } from 'gifenc';
 
 const cache = new Map<string, Promise<Uint8Array>>();
 
@@ -64,4 +66,31 @@ export function toneWav(freq: number, ms: number): Uint8Array {
     v.setInt16(44 + i * 2, Math.round(s * 32767), true);
   }
   return new Uint8Array(buf);
+}
+
+/** A small real animated GIF: a coloured card with a white bar sweeping across. For the demo GIF library. */
+export function sweepGif(hue: number): Uint8Array {
+  const w = 96, h = 64, frames = 8;
+  const [r, g, b] = hslToRgb(hue / 360, 0.7, 0.45);
+  const palette = [[r, g, b], [255, 255, 255]];
+  const gif = GIFEncoder();
+  for (let f = 0; f < frames; f++) {
+    const index = new Uint8Array(w * h);
+    const x0 = Math.round((f / frames) * w);
+    for (let y = 0; y < h; y++) for (let x = x0; x < Math.min(w, x0 + 12); x++) index[y * w + x] = 1;
+    gif.writeFrame(index, w, h, { palette, delay: 100 });
+  }
+  gif.finish();
+  return gif.bytes();
+}
+
+function hslToRgb(hh: number, s: number, l: number): [number, number, number] {
+  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+  const p = 2 * l - q;
+  const ch = (t: number) => {
+    const u = (t + 1) % 1;
+    const v = u < 1 / 6 ? p + (q - p) * 6 * u : u < 1 / 2 ? q : u < 2 / 3 ? p + (q - p) * (2 / 3 - u) * 6 : p;
+    return Math.round(v * 255);
+  };
+  return [ch(hh + 1 / 3), ch(hh), ch(hh - 1 / 3)];
 }

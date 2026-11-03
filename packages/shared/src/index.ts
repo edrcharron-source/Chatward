@@ -10,6 +10,13 @@ export const LIMITS = {
   AVATAR_MAX_BYTES: 512 * 1024,
   SOUND_MAX_BYTES: 1024 * 1024,
   SOUND_MAX_SECONDS: 10,
+  /** One GIF in a server's shared GIF library. */
+  LIBRARY_GIF_MAX_BYTES: 10 * 1024 * 1024,
+  LIBRARY_GIF_NAME_MAX: 40,
+  LIBRARY_GIF_TAGS_MAX: 5,
+  LIBRARY_GIF_TAG_MAX: 20,
+  /** Longest clip the GIF maker turns into a GIF. */
+  GIF_MAKER_MAX_SECONDS: 15,
   HISTORY_PAGE: 50,
   BIO_MAX: 190,
   PRONOUNS_MAX: 40,
@@ -96,9 +103,31 @@ export interface Message {
 export interface MessagePayload {
   text: string;
   attachments?: Attachment[];
-  gif?: { url: string; previewUrl: string; title: string; provider: 'klipy' | 'tenor' };
+  /** A library GIF carries `libraryId` and empty urls; the file is fetched from the server's GIF library. */
+  gif?: { url: string; previewUrl: string; title: string; provider: 'klipy' | 'tenor' | 'library'; libraryId?: string };
   linkPreviews?: LinkPreview[];
+  /** Set on demo chatter guest messages (client state/guests.ts). Absent on everything people write. */
+  chatter?: ChatterTag;
+  /** Who the message pings: @everyone, and/or specific members by user id. Absent when nobody is pinged. Client-only meaning. */
+  mentions?: { everyone?: boolean; userIds: string[] };
+  /**
+   * Spotify Jams behind short links in the text, resolved by the sender's app: `link` is the short link as written,
+   * `url` the Jam (https://open.spotify.com/socialsession/<id>). Readers check `url` before drawing it.
+   */
+  spotifyJams?: { link: string; url: string }[];
+  /** An "Invite to Listen Along" card. The host is always the message's author; the card shows their live activity. */
+  listenAlong?: true;
 }
+
+/**
+ * line: one of the sender's guests says CHATTER_LINES[line] (or CHATTER_REPLIES[line] for a reply).
+ * roster: the sender's guests right now. remove: asks `host` to send guest `guest` away.
+ * `session` is one run of the sender's app, so a restarted app can tell its old guests from its new ones.
+ */
+export type ChatterTag =
+  | { kind: 'line'; session: string; roster: number[]; guest: number; line: number; reply: boolean }
+  | { kind: 'roster'; session: string; roster: number[] }
+  | { kind: 'remove'; host: string; guest: number };
 
 export interface Attachment {
   uploadId: string;
@@ -161,12 +190,50 @@ export interface SoundboardSound {
   durationMs: number;
 }
 
+/** A GIF in a server's shared library. Plain GIF bytes on the server (not E2EE), like soundboard sounds. */
+export interface LibraryGif {
+  id: string;
+  serverId: string;
+  ownerId: string;
+  name: string;
+  tags: string[];
+  width: number;
+  height: number;
+  size: number;
+  /** How many times it has been picked, for the "Most used" sort. */
+  uses: number;
+  createdAt: number;
+}
+
+/** What someone is doing right now, shown under their name. Only sent while they have turned sharing on. */
+export interface Activity {
+  kind: 'spotify';
+  /** Track name. */
+  title: string;
+  /** Artist names, comma separated. */
+  artist: string;
+  /** The track on open.spotify.com, if known. */
+  url?: string;
+  /** Album cover image (https://i.scdn.co/image/<id>), if Spotify gave one. */
+  coverUrl?: string;
+  /** Length of the track in milliseconds. */
+  durationMs?: number;
+  /** Where the track was when the sender last checked, in milliseconds. Readers add the time since they received it. */
+  progressMs?: number;
+  /** Set while this person is listening along with someone: the host's user id. */
+  alongWith?: string;
+}
+/** Longest title or artist the server relays. */
+export const ACTIVITY_TEXT_MAX = 200;
+
 // ---------- WebSocket protocol ----------
 // Client -> server frames
 export type ClientFrame =
   | { t: 'subscribe'; serverId: string }
   | { t: 'typing'; channelId: string }
   | { t: 'presence'; status: 'online' | 'idle' | 'dnd' }
+  /** null clears it. */
+  | { t: 'activity'; activity: Activity | null }
   | { t: 'ping' };
 
 // Server -> client frames
@@ -177,6 +244,8 @@ export type ServerFrame =
   | { t: 'message.delete'; channelId: string; messageId: string }
   | { t: 'typing'; channelId: string; userId: string }
   | { t: 'presence'; userId: string; status: 'online' | 'idle' | 'dnd' | 'offline' }
+  /** Someone's activity changed. Also sent for everyone with one when a socket connects. null = none. */
+  | { t: 'activity'; userId: string; activity: Activity | null }
   | { t: 'member.join'; serverId: string; member: Member }
   | { t: 'member.leave'; serverId: string; userId: string }
   | { t: 'member.devices'; serverId: string; userId: string; devices: DeviceKeys[] }
@@ -185,10 +254,12 @@ export type ServerFrame =
   | { t: 'channel.update'; channel: Channel }
   | { t: 'channel.delete'; serverId: string; channelId: string }
   | { t: 'server.update'; server: Server }
-  | { t: 'server.delete'; serverId: string }
   | { t: 'member.role'; serverId: string; userId: string; role: Member['role'] }
   | { t: 'sound.new'; sound: SoundboardSound }
   | { t: 'sound.delete'; serverId: string; soundId: string }
+  | { t: 'gif.new'; gif: LibraryGif }
+  | { t: 'gif.update'; gif: LibraryGif }
+  | { t: 'gif.delete'; serverId: string; gifId: string }
   | { t: 'vault.new'; item: VaultItem }
   | { t: 'vault.delete'; serverId: string; itemId: string }
   | { t: 'sound.play'; serverId: string; channelId: string; soundId: string; userId: string }
@@ -203,6 +274,40 @@ export type ServerFrame =
   | { t: 'group.welcome'; channelId: string; epoch: number }
   | { t: 'keypackages.low'; deviceId: string; remaining: number }
   | { t: 'pong' };
+
+// ---------- Demo chatter ----------
+// The demo's chatter bots, shared by the offline demo and the guests in client state/guests.ts.
+// A guest message names a line by its index: the text shown always comes from the app's own copy.
+export const CHATTER_LINES = [
+  'anyone seen the patch notes?', 'lol that is so true', 'brb getting snacks', 'gg that was close',
+  'who wants to hop in the Lounge', 'this app feels snappy 👀', 'not gonna lie, that gif got me', 'ok I am back',
+];
+export const CHATTER_REPLIES = ['lol', 'ha yes', 'agreed 😂', 'nice one', 'wait say that again', 'ok fair'];
+/** Waits, in ms, as [min, max]. A wait is min + random * (max - min). */
+export const CHATTER_TIMING = {
+  firstLine: [8_000, 8_000],
+  nextLine: [20_000, 45_000],
+  lineTyping: [1_500, 3_000],
+  replyPause: [1_500, 3_000],
+  replyTyping: [1_200, 2_000],
+  firstClip: [600, 1_800],
+  nextClip: [1_500, 6_000],
+  firstChurn: [45_000, 45_000],
+  nextChurn: [40_000, 70_000],
+} as const;
+/** The guests a server can have at once. Guest n uses the demo's nth chatter profile. */
+export const GUESTS_MAX = 3;
+
+/** A random clip number out of count, never the same as last twice in a row. */
+export function chatterClip(count: number, last: number): number {
+  const pick = Math.floor(Math.random() * count);
+  if (count > 1 && pick === last) return (pick + 1 + Math.floor(Math.random() * (count - 1))) % count;
+  return pick;
+}
+
+export function chatterWait([min, max]: readonly [number, number]): number {
+  return min + Math.random() * (max - min);
+}
 
 // ---------- Auto-update ----------
 /** GET /api/version (public, no auth). Clients compare their own version against these. */

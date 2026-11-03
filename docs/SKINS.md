@@ -12,13 +12,23 @@ The full plan lives in the project's "Chatward skins plan" doc. This file is the
   `servers`, `channels`, `main`, `members`. A layout skin moves panels by redefining `grid-template-columns` and
   `grid-template-areas` on `.cw-shell`; the components stay as they are, so keyboard and screen reader order never change.
 - **Class names** already on components, for effects tokens can't express.
+- **Title bar.** Windows open without the system frame; the app draws its own bar (`components/titlebar`). Restyle it
+  with the `--titlebar-*` tokens in `styles/theme.css` (height, button width, background, rule under it, text, mark, font, button
+  hover, close hover) and the classes `cw-titlebar`, `cw-titlebar-mark`, `cw-titlebar-title`, `cw-titlebar-button`
+  (plus `min`, `max`, `close`). Skins that outline every `button` must reset that on `.cw-titlebar .cw-titlebar-button`;
+  the Lebserver skin shows how, including `[ ]` brackets drawn with `::before`/`::after`. Keep the buttons in the bar
+  and leave `-webkit-app-region` alone, or the window can no longer be dragged.
 
 ## Adding a skin
 
 - Add `packages/client/src/renderer/src/skins/<id>/skin.css`. Every rule starts with `:root[data-skin='<id>']`, so the
   pack does nothing until that skin is chosen.
-- Add one entry to `SKINS` in `skins/index.ts` (label and swatch colour). The Appearance tab shows a Skins section only
+- Add one entry to `SKINS` in `skins/index.ts` (label and swatch colour). The Appearance tab lists them in a Skin dropdown, after Original (no skin), only
   while `SKINS` has entries, so the empty list keeps the Visual check unchanged.
+- **Light and dark.** The Theme setting (Dark, Light, Match system) applies to every skin. A skin keeps its own
+  colours in skin-local variables (`--lb-*`, `--ra-*`, `--lcs-*`) and gives its light version in one block under
+  `:root[data-skin='<id>'][data-theme='light']` that swaps those and the shared tokens. The LCARS frame's own colours
+  (`--lc-*` on `.lcars-shell`) are swapped the same way from the LCARS skin.
 - The choice is the `skin` setting: one skin at a time, `''` for none, and an unknown id counts as none. It is saved
   locally and never sent to the server. The watch-party popout follows it too.
 
@@ -44,3 +54,31 @@ the look gets the `visual-change` label; the check then passes and the screensho
 - **Self-test.** `test/skins/broken/` holds a skin that must fail. The workflow runs parity with `--broken` and passes only if that skin is caught.
 
 Skins that must pass are listed in `SKINS` in `test/skins/parity.ts`. Once the skin registry exists, the check reads it instead.
+
+## LCARS (a skin with its own layout)
+
+The LCARS skin (`skins/lcars/skin.css`) comes with the LCARS layout (`components/lcars`). Picking the skin in Settings >
+Appearance also picks the layout, picking the LCARS layout also picks the skin, and picking another skin while the LCARS
+layout is on goes back to Tabs. A skin entry in `SKINS` names its layout with `layout`.
+
+- **Same features as Tabs.** The LCARS layout is the tabs layout drawn in a different frame: `TabsLayout` with
+  `frame="lcars"` hands its own tab bar, panes, member list, pop-out windows and dialogs to `LcarsLayout`, so a feature
+  added to the tabs layout shows up in LCARS too. The call controls are `VoiceDock` with `bar`.
+- **The frame** is built from interlocking blocks: two elbows (top left, bottom left) that turn the thick left rail into
+  the thin top and bottom bars, flat segments that are the buttons (4px black gaps, label bottom right), fillers, and
+  round caps on free ends only. The rail holds the tabs, Server settings and Settings; the top bar holds Split, the drag
+  area, the server name, your status, Test and the window's Min/Max/Close (the usual title bar is hidden while the frame
+  is up); the bottom bar holds the call controls or Join voice. The soundboard opens in a pop-up with a small frame.
+- **The window** (desktop app, not macOS) is see-through around the frame: picking the LCARS layout swaps the main
+  window for a transparent one with no system border, shadow or rounded corners (`main/index.ts`, saved in
+  `window-frame.json`; the page reloads, like a restart), and picking another layout swaps the usual window back. The
+  page clears everything behind the frame and clips itself to the frame's outline (`useShapedFrame`), and thin strips on
+  the frame's outer edges resize the window, since it has no system border to drag. Maximized, it is a plain rectangle.
+- **Rules:** four colours with fixed meanings (blue frame/ready, amber selected/live, red close/leave/alert, lilac text),
+  three text sizes (26, 17, 14), 12px between frame and content. The font is Antonio, bundled under the SIL Open Font
+  License (`skins/lcars/fonts/OFL.txt`).
+- **Check:** `npm run lcars:check -w @chatward/client -- <out dir>` (under `xvfb-run` on Linux) walks the same screens in
+  the Tabs and LCARS layouts, fails if LCARS is missing any control Tabs shows, uses the frame's own controls (split,
+  pop-out, tab reorder, Join voice, Leave, switching layouts) and saves screenshots of both. It keeps one window
+  (`--chatward-keep-window`). `npm run lcars:shaped -w @chatward/client -- <out dir>` checks the see-through window:
+  the swap, clear corners (also with a dialog open) and the usual window coming back.
