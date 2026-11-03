@@ -155,10 +155,14 @@ export function WatchPartyPanel({ callChannelId: channelId, keyChannelId }: { ca
     const prev = local.current;
     local.current = { position: e.currentTime, at: now, playing: e.playing, rate: e.rate };
     const cur = remoteRef.current;
-    if (!prev || !mediaKey(cur) || now < suppressUntil.current) return;
+    if (!prev || !mediaKey(cur)) return;
+    // Our own commands echo back as events for a moment after each sync. A file or Jellyfin play or pause that
+    // disagrees with the shared state is the viewer's own click, so it still goes out even inside that window.
+    const ownClick = e.playing !== cur!.playing && Boolean(cur!.url || cur!.jellyfinId);
+    if (now < suppressUntil.current && !ownClick) return;
 
     const seeked = Math.abs(e.currentTime - playhead(prev, now)) > SEEK_SECONDS;
-    if (seeked || e.playing !== prev.playing || e.rate !== prev.rate) {
+    if (seeked || ownClick || e.playing !== prev.playing || e.rate !== prev.rate) {
       void publish({ ...carry(cur!), playing: e.playing, position: e.currentTime, rate: e.rate });
     }
   };
