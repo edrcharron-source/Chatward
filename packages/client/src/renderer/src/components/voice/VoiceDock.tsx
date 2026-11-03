@@ -4,7 +4,7 @@ import { useVoice } from '../../state/voice';
 import PixelIcon, { type PixelIconName } from '../icons/PixelIcon';
 import SoundboardButton from '../soundboard/SoundboardButton';
 import ShareControls from './ShareControls';
-import SignalIcon, { signalLevel, useRoomPing } from './SignalIcon';
+import { SignalButton, signalLevel, useRoomPing } from './SignalIcon';
 
 /**
  * Your call's status and controls. `stacked` (the tabs layout's corner card) puts the controls in pairs down a narrow
@@ -132,14 +132,7 @@ export default function VoiceDock({ stacked = false, bar }: { stacked?: boolean;
   const short = status === 'connected' ? 'Connected' : status === 'error' ? 'Not connected' : 'Connecting…';
   const signal = demo ? { bars: 3 as const, color: '#3ba55d', text: 'Demo mode, no live ping' } : signalLevel(ms);
   const shownSignal = status === 'connected' ? signal : { bars: 0 as const, color: 'var(--text-muted, #888)', text: short };
-  const signalButton = (
-    <span className="cw-signal-wrap">
-      <button type="button" className="cw-signal-btn" aria-label={`Connection: ${shownSignal.text}`}>
-        <SignalIcon bars={shownSignal.bars} color={shownSignal.color} />
-      </button>
-      <span className="cw-signal-pop" role="tooltip">{shownSignal.text}</span>
-    </span>
-  );
+  const signalButton = <SignalButton bars={shownSignal.bars} color={shownSignal.color} text={shownSignal.text} />;
 
   if (bar) {
     return (

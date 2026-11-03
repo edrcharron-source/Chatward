@@ -28,3 +28,6 @@
 }
 .cw-signal-wrap:hover .cw-signal-pop,
 .cw-signal-wrap:focus-within .cw-signal-pop { display: block; }
+/* Near the bottom or right edge of the window the popup opens above, or hangs inward (see SignalButton). */
+.cw-signal-wrap.cw-signal-up .cw-signal-pop { top: auto; bottom: calc(100% + 6px); }
+.cw-signal-wrap.cw-signal-right .cw-signal-pop { left: auto; right: 0; }

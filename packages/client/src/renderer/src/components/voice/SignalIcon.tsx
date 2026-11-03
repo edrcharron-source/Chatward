@@ -1,7 +1,7 @@
 // The call's connection signal: a wifi-style icon with three bars and a dot. Each skin shows its own icon style (the same
 // three sets as the rest of the app: solid for Original, blueprint lines for Lebserver, chunky pixels for Retro ASCII).
 // The bars light up with the latency, and hovering or focusing the icon shows the latency in ms.
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type PointerEvent, type FocusEvent } from 'react';
 import type { Room } from 'livekit-client';
 import './SignalIcon.css';
 
@@ -102,5 +102,36 @@ export default function SignalIcon({ bars, color, size = 18 }: { bars: 0 | 1 | 2
         <path className="cw-sig-bar" d={CHUNKY_PATHS[0]} fill="currentColor" />
       </g>
     </svg>
+  );
+}
+
+/** Height of the latency popup plus its gap, used to decide whether it fits below the icon. */
+const POPUP_ROOM = 40;
+/** Width of the popup, used to decide whether it should hang inward from the right edge. */
+const POPUP_WIDTH = 96;
+
+/**
+ * The icon with its latency popup. The popup opens below the icon, unless there isn't room under it on screen
+ * (LCARS keeps its voice controls at the bottom of the window), in which case it opens above. Near the right edge it
+ * lines up to the icon's right side instead, so it never runs off screen.
+ */
+export function SignalButton({ bars, color, text }: { bars: 0 | 1 | 2 | 3; color: string; text: string }) {
+  const [place, setPlace] = useState({ up: false, right: false });
+  const measure = (el: HTMLElement) => {
+    const rect = el.getBoundingClientRect();
+    const up = window.innerHeight - rect.bottom < POPUP_ROOM;
+    const right = rect.left + POPUP_WIDTH > window.innerWidth;
+    setPlace((prev) => (prev.up === up && prev.right === right ? prev : { up, right }));
+  };
+  const onEnter = (e: PointerEvent<HTMLSpanElement>) => measure(e.currentTarget);
+  const onFocus = (e: FocusEvent<HTMLSpanElement>) => measure(e.currentTarget);
+  const cls = ['cw-signal-wrap', place.up ? 'cw-signal-up' : '', place.right ? 'cw-signal-right' : ''].filter(Boolean).join(' ');
+  return (
+    <span className={cls} onPointerEnter={onEnter} onFocus={onFocus}>
+      <button type="button" className="cw-signal-btn" aria-label={`Connection: ${text}`}>
+        <SignalIcon bars={bars} color={color} />
+      </button>
+      <span className="cw-signal-pop" role="tooltip">{text}</span>
+    </span>
   );
 }
