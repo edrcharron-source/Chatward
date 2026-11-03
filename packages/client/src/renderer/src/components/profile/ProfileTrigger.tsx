@@ -31,6 +31,8 @@ export default function ProfileTrigger({ user, className, children }: {
     if (!open) return;
     const onDown = (e: MouseEvent) => {
       const t = e.target as Node;
+      // Clicks in the picture viewer opened from the card must not close the card (and the viewer with it).
+      if ((t as Element).closest?.('.media-lightbox')) return;
       if (!card.current?.contains(t) && !btn.current?.contains(t)) setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
