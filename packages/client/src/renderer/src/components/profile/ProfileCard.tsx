@@ -47,8 +47,9 @@ export default function ProfileCard({ user, style }: { user: User; style: React.
   const [viewing, setViewing] = useState<{ url: string; name: string } | null>(null);
 
   const accent = user.profile.accentColor ?? 'var(--accent)';
+  // The card sits above everything else; hide it while the viewer is open so the picture is not covered, and bring it back after.
   return (
-    <div ref={cardRef} className="profile-card" style={{ ...style, '--profile-accent': accent } as React.CSSProperties} role="dialog" aria-label={`${user.displayName}'s profile`}>
+    <div ref={cardRef} className="profile-card" style={{ ...style, '--profile-accent': accent, visibility: viewing ? 'hidden' : undefined } as React.CSSProperties} role="dialog" aria-label={`${user.displayName}'s profile`}>
       <div className="profile-banner" style={{ background: banner ? undefined : bannerBackground(user) }}>
         {banner && (
           <button type="button" className="profile-image-open" onClick={() => setViewing({ url: banner, name: `${user.displayName}'s banner` })} aria-label={`View ${user.displayName}'s banner`}>
