@@ -4,6 +4,8 @@
 // layout shows is missing in LCARS. It also uses the LCARS frame's own controls: split, pop-out, tab reorder, Join voice,
 // Leave, and switching back to the Tabs layout. Screenshots land in the out dir.
 // Needs xvfb on Linux. Run with: npm run lcars:check -w @chatward/client -- <out dir> [app dir]
+// With --layout=orbit (npm run orbit:check) it checks the Orbit layout the same way instead, plus the Orbit frame's own
+// behaviour (title bar replaced by the top bar, window buttons in it, the line drawing, switching layouts).
 import fs from 'node:fs';
 import path from 'node:path';
 import type { Page } from 'playwright-core';
@@ -130,6 +132,7 @@ async function run(layout: string, skin: string, appDir: string, outDir: string)
     const screens = await walk(page, shoot);
     const problems: string[] = [];
     if (layout === 'lcars') problems.push(...await lcarsOnly(page, app, shoot));
+    if (layout === 'orbit') problems.push(...await orbitOnly(page, app, shoot));
     return { screens, problems };
   } finally {
     await app.close();
@@ -186,22 +189,81 @@ async function lcarsOnly(page: Page, app: Awaited<ReturnType<typeof launch>>['ap
   return problems;
 }
 
-const [outArg, appArg] = process.argv.slice(2);
-const outDir = path.resolve(outArg ?? 'out/lcars');
+// The Orbit frame's own behaviour.
+async function orbitOnly(page: Page, app: Awaited<ReturnType<typeof launch>>['app'], shoot: (name: string) => Promise<void>): Promise<string[]> {
+  const problems: string[] = [];
+  const check = async (what: string, step: () => Promise<unknown>) => {
+    try { await step(); } catch (err) { problems.push(`${what}: ${(err as Error).message.split('\n')[0]}`); }
+  };
+  await check('the app title bar is hidden behind the top bar', async () => {
+    if (await page.locator('.cw-titlebar').isVisible()) throw new Error('title bar still showing');
+  });
+  await check('window buttons sit in the top bar', async () => {
+    for (const name of ['Minimize', 'Maximize', 'Close']) await page.locator('.orbit-shell .cw-tabs-bar').getByRole('button', { name, exact: true }).waitFor({ timeout: 2000 });
+  });
+  await check('the line drawing is behind the layout', async () => {
+    await page.locator('.orbit-backdrop').waitFor({ state: 'attached', timeout: 2000 });
+  });
+  await check('the Glyph icons show', async () => {
+    const shown = await page.locator('.cw-tabs .cw-ic-glyph').first().evaluate((el) => getComputedStyle(el).display);
+    if (shown === 'none') throw new Error('glyph icons hidden');
+  });
+  await check('Alt+Right moves a tab along the bar', async () => {
+    await tab(page, 'Text').focus();
+    await page.keyboard.press('Alt+ArrowRight');
+    const order = await page.locator('.orbit-shell [data-tab]').evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.tab));
+    if (order[0] !== 'voice' || order[1] !== 'text') throw new Error(`order is ${order.join(',')}`);
+    await page.keyboard.press('Alt+ArrowLeft');
+  });
+  await check('a tab pops out into its own window and comes back', async () => {
+    const before = app.windows().length;
+    await page.getByRole('button', { name: 'Pop out Vault', exact: true }).click();
+    await page.getByRole('button', { name: 'Bring Vault back', exact: true }).first().waitFor();
+    if (app.windows().length <= before) throw new Error('no new window');
+    await page.getByRole('button', { name: 'Bring Vault back', exact: true }).first().click();
+    await page.getByRole('button', { name: 'Pop out Vault', exact: true }).waitFor();
+  });
+  await check('switching to the Tabs layout removes the frame and brings the title bar back', async () => {
+    await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Settings' });
+    await dialog.getByRole('tab', { name: 'Appearance', exact: true }).click();
+    await dialog.getByRole('radio', { name: 'Tabs', exact: true }).check();
+    await page.locator('[data-layout="tabs"]').waitFor();
+    if (await page.locator('[data-layout="orbit"]').count()) throw new Error('frame still there');
+    await dialog.getByRole('radio', { name: 'Orbit', exact: true }).check();
+    await page.locator('[data-layout="orbit"]').waitFor();
+    const skin = await page.evaluate(() => document.documentElement.dataset.skin);
+    if (skin !== 'orbit') throw new Error(`skin is ${skin}`);
+    await page.getByRole('button', { name: 'Close settings', exact: true }).click();
+  });
+  await check('light mode', async () => {
+    await page.evaluate(() => { document.documentElement.dataset.theme = 'light'; });
+    await settle(page);
+    await shoot('13-light');
+    await page.evaluate(() => { document.documentElement.dataset.theme = 'dark'; });
+  });
+  return problems;
+}
+
+const args = process.argv.slice(2);
+const layoutArg = args.find((a) => a.startsWith('--layout='))?.slice('--layout='.length) ?? 'lcars';
+const [outArg, appArg] = args.filter((a) => !a.startsWith('--'));
+const NAME = layoutArg === 'orbit' ? 'Orbit' : 'LCARS';
+const outDir = path.resolve(outArg ?? `out/${layoutArg}`);
 const appDir = path.resolve(appArg ?? DEFAULT_APP_DIR);
 fs.rmSync(outDir, { recursive: true, force: true });
 
 const tabs = await run('tabs', 'lebserver', appDir, outDir);
-const lcars = await run('lcars', 'lcars', appDir, outDir);
+const lcars = await run(layoutArg, layoutArg, appDir, outDir);
 const problems = [...tabs.problems.map((p) => `tabs: ${p}`), ...lcars.problems];
 for (const screen of Object.keys(tabs.screens)) {
-  for (const control of missingFrom(tabs.screens[screen], lcars.screens[screen] ?? [])) problems.push(`${screen}: missing in LCARS: ${control}`);
+  for (const control of missingFrom(tabs.screens[screen], lcars.screens[screen] ?? [])) problems.push(`${screen}: missing in ${NAME}: ${control}`);
 }
 const added = Object.keys(lcars.screens).flatMap((s) => missingFrom(lcars.screens[s], tabs.screens[s] ?? []).map((c) => `${s}: ${c}`));
 fs.writeFileSync(path.join(outDir, 'report.json'), JSON.stringify({ problems, addedInLcars: added, screens: { tabs: tabs.screens, lcars: lcars.screens } }, null, 2));
-console.log(`LCARS adds (fine): ${added.length ? `\n  ${added.join('\n  ')}` : 'nothing'}`);
+console.log(`${NAME} adds (fine): ${added.length ? `\n  ${added.join('\n  ')}` : 'nothing'}`);
 if (problems.length) {
-  console.error(`LCARS check failed:\n  ${problems.join('\n  ')}`);
+  console.error(`${NAME} check failed:\n  ${problems.join('\n  ')}`);
   process.exit(1);
 }
-console.log('LCARS keeps every control of the Tabs layout, and its frame works.');
+console.log(`${NAME} keeps every control of the Tabs layout, and its frame works.`);

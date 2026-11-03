@@ -16,6 +16,7 @@ import { isAdmin } from '../servers/util';
 import PixelIcon, { type PixelIconName } from '../icons/PixelIcon';
 import { PopoutWindow } from './PopoutWindow';
 import LcarsLayout from '../lcars/LcarsLayout';
+import { OrbitBackdrop, OrbitMark, OrbitWindowButtons } from '../orbit/OrbitFrame';
 import MysteryButton from '../mystery/MysteryButton';
 import './tabs.css';
 
@@ -49,6 +50,10 @@ const clampSplit = (r: number) => Math.min(MAX_SPLIT, Math.max(MIN_SPLIT, r));
  *
  * `frame="lcars"` draws the same tabs, panes and controls inside the LCARS frame (components/lcars) instead: the tabs
  * run down a left rail, the window buttons sit in the top bar and the call controls in the bottom bar.
+ *
+ * `frame="orbit"` keeps this layout's places for everything and dresses it as the Orbit frame (components/orbit): a line
+ * drawing behind the panes, an emblem before the server's name, and the window buttons at the end of the tab bar, which
+ * becomes the window's title bar.
  */
 export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTest, onOpenMovies, frame }: {
   bundle: ServerBundle | undefined;
@@ -56,7 +61,7 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTes
   onReload: () => Promise<void>;
   onOpenTest: () => void;
   onOpenMovies: (() => void) | null;
-  frame?: 'lcars';
+  frame?: 'lcars' | 'orbit';
 }) {
   const user = useSession((s) => s.user);
   const myStatus = useSession((s) => s.myStatus);
@@ -318,10 +323,14 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTes
     );
   }
 
+  const orbit = frame === 'orbit';
   return (
-    <div className="cw-tabs-shell" data-region="shell" data-layout="tabs">
+    <div className={`cw-tabs-shell${orbit ? ' orbit-shell' : ''}`} data-region="shell" data-layout={orbit ? 'orbit' : 'tabs'}>
+      {orbit && <OrbitBackdrop />}
       <header className="cw-tabs-bar" data-region="tabs" {...dropArea}>
-        <strong className="cw-tabs-server">{bundle?.server.name ?? 'Chatward'}</strong>
+        {orbit
+          ? <span className="orbit-brand"><OrbitMark /><strong className="cw-tabs-server">{bundle?.server.name ?? 'Chatward'}</strong></span>
+          : <strong className="cw-tabs-server">{bundle?.server.name ?? 'Chatward'}</strong>}
         {nav}
         <div className="cw-tabs-tools">
           <button type="button" className={`cw-tool${split ? ' active' : ''}`} aria-pressed={split}
@@ -348,6 +357,7 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTes
             <PixelIcon name="gear" size={16} />
           </button>
         </div>
+        {orbit && <OrbitWindowButtons />}
       </header>
 
       {main}
