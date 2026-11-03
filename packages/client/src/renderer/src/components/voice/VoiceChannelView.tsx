@@ -180,9 +180,9 @@ export default function VoiceChannelView({ channel, theaterOnly = false }: { cha
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
-      <header style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
-        <strong style={{ color: 'var(--text-strong)' }}>{channel.name}</strong>
-        <span className="muted" style={{ fontSize: 12 }}>{entries.length} in call</span>
+      <header className="cv-voice-head" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
+        <strong className="cv-voice-title" style={{ color: 'var(--text-strong)' }}>{channel.name}</strong>
+        <span className="muted cv-voice-count" style={{ fontSize: 12 }}>{entries.length} in call</span>
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
           {inCall && status === 'connecting' && <span className="muted">Connecting…</span>}
           {inCall
@@ -244,9 +244,10 @@ function Tile({ user, joined, local, micOff, speaking, screen, video, onMenu, th
   const grows = fill || cell;
 
   return (
-    <div className="card" data-speaking={speaking || undefined} onContextMenu={onMenu} style={{ padding: 8, display: 'flex', flexDirection: 'column', gap: 8, ...(grows ? { flex: 1, minHeight: 0, minWidth: 0 } : {}) }}>
+    <div className="card cv-tile" data-speaking={speaking || undefined} data-local={local || undefined} onContextMenu={onMenu} style={{ padding: 8, display: 'flex', flexDirection: 'column', gap: 8, ...(grows ? { flex: 1, minHeight: 0, minWidth: 0 } : {}) }}>
       <div
         ref={frame}
+        className="cv-tile-frame"
         onDoubleClick={screen ? () => void toggleFullscreen(frame.current) : undefined}
         style={{
           position: 'relative', aspectRatio: expanded || cell ? undefined : '16 / 9', borderRadius: full ? 0 : 8, overflow: 'hidden',
@@ -262,8 +263,10 @@ function Tile({ user, joined, local, micOff, speaking, screen, video, onMenu, th
           : user
             ? <ProfileTrigger user={user}><Avatar user={user} size={64} /></ProfileTrigger>
             : <Avatar user={user} size={64} />}
-        <div style={{ position: 'absolute', left: 8, bottom: 6, fontSize: 12, color: '#fff', textShadow: '0 1px 2px #000' }}>
-          {name}{local ? ' (you)' : ''}{screen ? ' · screen' : ''}{micOff && !screen ? ' · muted' : ''}
+        <div className="cv-tile-name" style={{ position: 'absolute', left: 8, bottom: 6, fontSize: 12, color: '#fff', textShadow: '0 1px 2px #000' }}>
+          <span className="cv-tile-who">{name}{local ? ' (you)' : ''}</span>
+          {screen && <span className="cv-tile-state"> · screen</span>}
+          {micOff && !screen && <span className="cv-tile-state"> · muted</span>}
         </div>
         {screen && (
           <button

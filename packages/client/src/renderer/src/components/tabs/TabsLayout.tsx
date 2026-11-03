@@ -376,7 +376,7 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTes
             <strong className="cw-me-name">{user?.displayName ?? ''}</strong>
             <StatusPicker />
           </div>
-          <VoiceDock stacked />
+          <VoiceDock stacked words={orbit} />
         </section>
       </div>
 
