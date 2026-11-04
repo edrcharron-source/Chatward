@@ -77,7 +77,7 @@ export async function openDescriptor(item: VaultItem): Promise<VaultDescriptor |
 }
 
 /** Downloads and decrypts the thumbnail or the file; returns an object URL the caller revokes. */
-export async function fetchVaultUrl(item: VaultItem, d: VaultDescriptor, thumb: boolean): Promise<string> {
+export async function fetchVaultUrl(item: Pick<VaultItem, 'id'>, d: VaultDescriptor, thumb: boolean): Promise<string> {
   const buf = await api.getBytes(`/api/vault/${item.id}/${thumb ? 'thumb' : 'file'}`);
   const plain = await decryptBlob(new Uint8Array(buf), thumb ? d.thumbKey : d.key, thumb ? d.thumbIv : d.iv);
   return URL.createObjectURL(new Blob([plain as Uint8Array<ArrayBuffer>], { type: thumb ? 'image/webp' : d.mime }));

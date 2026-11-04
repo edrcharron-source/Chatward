@@ -106,6 +106,8 @@ export interface MessagePayload {
   /** A library GIF carries `libraryId` and empty urls; the file is fetched from the server's GIF library. */
   gif?: { url: string; previewUrl: string; title: string; provider: 'klipy' | 'tenor' | 'library'; libraryId?: string };
   linkPreviews?: LinkPreview[];
+  /** Vault photos or videos shared into the chat. Each carries its own keys, so readers need no Vault access to the descriptor. */
+  vault?: VaultRef[];
   /** Set on demo chatter guest messages (client state/guests.ts). Absent on everything people write. */
   chatter?: ChatterTag;
   /** Who the message pings: @everyone, and/or specific members by user id. Absent when nobody is pinged. Client-only meaning. */
@@ -179,6 +181,9 @@ export interface VaultDescriptor {
   thumbKey: string;
   thumbIv: string;
 }
+
+/** A Vault item shared in a message: the item id plus its decrypted descriptor (which holds the file keys). */
+export type VaultRef = VaultDescriptor & { itemId: string };
 
 export interface SoundboardSound {
   id: string;
