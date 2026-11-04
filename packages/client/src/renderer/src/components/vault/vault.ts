@@ -57,7 +57,7 @@ export async function uploadToVault(serverId: string, channelId: string, authorI
   const small = await encryptBlob(await bytesOf(thumb));
   const descriptor: VaultDescriptor = {
     name: file.name.slice(0, 255), mime: file.type, kind: isVideo ? 'video' : 'image', size: file.size,
-    width, height, durationSec, key: full.key, iv: full.iv, thumbKey: small.key, thumbIv: small.iv,
+    width, height, durationSec, takenAt: file.lastModified || undefined, key: full.key, iv: full.iv, thumbKey: small.key, thumbIv: small.iv,
   };
   const { ciphertext, keyVersion } = await encryptPayload(channelId, authorId, { text: JSON.stringify(descriptor) });
 

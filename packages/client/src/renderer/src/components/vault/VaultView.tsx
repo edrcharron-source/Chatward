@@ -5,6 +5,7 @@ import { onFrame } from '../../api/ws';
 import { onKeysChanged } from '../../crypto';
 import { sendMessage } from '../../state/chat';
 import { useSession } from '../../state/session';
+import { buildAlbums } from './albums';
 import { fetchVaultUrl, mergedNotes, normalizeTag, openDescriptor, openNotes, saveNotes, uploadToVault, type NotesByItem, type VaultPage } from './vault';
 import './vault.css';
 
@@ -19,9 +20,19 @@ export default function VaultView({ serverId, keyChannelId, canModerate, chatCha
   const [status, setStatus] = useState<string | null>(null);
   const [open, setOpen] = useState<{ item: VaultItem; d: VaultDescriptor } | null>(null);
   const [notes, setNotes] = useState<NotesByItem>({});
-  const [filter, setFilter] = useState<{ kind: 'tag' | 'person'; value: string } | null>(null);
   const [keyTick, setKeyTick] = useState(0);
   useEffect(() => onKeysChanged(() => setKeyTick((n) => n + 1)), []);
+  const [filter, setFilter] = useState<{ kind: 'tag' | 'person' | 'album'; value: string } | null>(null);
+  const [descs, setDescs] = useState<Record<string, VaultDescriptor>>({});
+  useEffect(() => {
+    let alive = true;
+    for (const item of items) {
+      if (descs[item.id]) continue;
+      void openDescriptor(item).then((d) => { if (alive && d) setDescs((cur) => (cur[item.id] ? cur : { ...cur, [item.id]: d })); }).catch(() => {});
+    }
+    return () => { alive = false; };
+  }, [items, keyTick]); // eslint-disable-line react-hooks/exhaustive-deps
+  const albums = buildAlbums(items.map((item) => ({ item, d: descs[item.id] })), (id) => people.find((p) => p.id === id)?.name ?? 'someone');
   const putNotes = useCallback(async (a: VaultAnnotation) => {
     const n = await openNotes(a);
     setNotes((cur) => {
@@ -50,6 +61,7 @@ export default function VaultView({ serverId, keyChannelId, canModerate, chatCha
   const taggedPeople = [...new Set(Object.values(notes).flatMap((by) => mergedNotes(by).people))];
   const nameOf = (id: string) => people.find((p) => p.id === id)?.name ?? 'Someone';
   const shown = !filter ? items : items.filter((i) => {
+    if (filter.kind === 'album') return [...albums.events, ...albums.people, ...albums.kinds].find((a) => a.key === filter.value)?.ids.includes(i.id) ?? false;
     const m = mergedNotes(notes[i.id]);
     return filter.kind === 'tag' ? m.tags.includes(filter.value) : m.people.includes(filter.value);
   });
@@ -125,6 +137,14 @@ export default function VaultView({ serverId, keyChannelId, canModerate, chatCha
       {status && <p className="muted">{status}</p>}
       {error && <p className="media-error" role="alert">{error}</p>}
       {!items.length && !error && <p className="muted">Nothing here yet. Add photos or videos and everyone in the server can see them. Everything is encrypted before it leaves your computer.</p>}
+      {(albums.events.length + albums.people.length + albums.kinds.length > 0) && (
+        <div className="cw-vault-filters" role="group" aria-label="Albums">
+          <span className="muted">Albums:</span>
+          {[...albums.kinds, ...albums.events, ...albums.people].map((a) => (
+            <button key={a.key} type="button" className={filter?.kind === 'album' && filter.value === a.key ? 'on' : ''} onClick={() => setFilter(filter?.value === a.key ? null : { kind: 'album', value: a.key })}>{a.label} {a.ids.length}</button>
+          ))}
+        </div>
+      )}
       {(allTags.length > 0 || taggedPeople.length > 0) && (
         <div className="cw-vault-filters" role="group" aria-label="Filter by tag">
           <button type="button" className={!filter ? 'on' : ''} onClick={() => setFilter(null)}>All</button>
