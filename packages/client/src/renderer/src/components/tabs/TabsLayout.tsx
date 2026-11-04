@@ -364,7 +364,7 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTes
 
       {/* the right column: members on top, and your status and call controls in the bottom corner */}
       <div className="cw-tabs-side" data-region="side">
-        {showMembers && bundle && <MemberList serverId={bundle.server.id} members={members} />}
+        {showMembers && bundle && <MemberList serverId={bundle.server.id} members={members} showSpeaking={orbit} />}
         <section className="cw-me" aria-label="You">
           <div className="cw-me-head">
             {user && (

@@ -26,8 +26,13 @@ async function controls(page: Page): Promise<string[]> {
     .filter((el) => el.getClientRects().length > 0)
     // Messages are not controls of the layout, and the demo bots post on their own clock, so the chat history differs.
     .filter((el) => !el.closest('.cv-list'))
-    .map((el) => `${el.tagName.toLowerCase()}|${el.getAttribute('aria-label') ?? el.getAttribute('title')
-      ?? el.textContent?.replace(/[[\]]/g, '').trim() ?? el.getAttribute('placeholder') ?? ''}`), CONTROLS);
+    .map((el) => {
+      // Orbit's member list adds a live "Speaking" line under whoever is talking; it is a state, not a control.
+      const copy = el.cloneNode(true) as HTMLElement;
+      copy.querySelectorAll('.cw-member-speaking').forEach((n) => n.remove());
+      return `${el.tagName.toLowerCase()}|${el.getAttribute('aria-label') ?? el.getAttribute('title')
+        ?? copy.textContent?.replace(/[[\]]/g, '').trim() ?? el.getAttribute('placeholder') ?? ''}`;
+    }), CONTROLS);
 }
 
 // The harness pins the classic layout before every load; this runs after it and picks the layout under test instead.

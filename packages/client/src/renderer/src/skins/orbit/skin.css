@@ -221,3 +221,7 @@
 :root[data-skin='orbit'] .cw-call-stack button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 9px 8px; }
 :root[data-skin='orbit'] .cw-call-word { font-family: var(--orb-display); font-weight: 600; font-size: 13px; letter-spacing: .16em; text-transform: uppercase; white-space: nowrap; }
 :root[data-skin='orbit'] .cw-call-status { font-family: var(--orb-display); font-size: 13px; letter-spacing: .16em; text-transform: uppercase; color: var(--orb-live) !important; }
+
+/* Whoever is talking in your call: cyan name with "Speaking" under it (the member list shows this only in the Orbit layout). */
+:root[data-skin='orbit'] .cw-member[data-speaking] .cw-member-name { color: var(--orb-live); }
+:root[data-skin='orbit'] .cw-member-speaking { font-size: 12px; color: var(--text-muted); line-height: 1.3; }
