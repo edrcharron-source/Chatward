@@ -82,3 +82,25 @@ layout is on goes back to Tabs. A skin entry in `SKINS` names its layout with `l
   pop-out, tab reorder, Join voice, Leave, switching layouts) and saves screenshots of both. It keeps one window
   (`--chatward-keep-window`). `npm run lcars:shaped -w @chatward/client -- <out dir>` checks the see-through window:
   the swap, clear corners (also with a dialog open) and the usual window coming back.
+
+## Orbit (a skin with its own layout)
+
+The Orbit skin (`skins/orbit/skin.css`) comes with the Orbit layout (`components/orbit`), paired the same way as LCARS:
+picking either picks both, and picking another skin while the Orbit layout is on goes back to Tabs.
+
+- **Same features as Tabs.** The Orbit layout is the tabs layout itself with `frame="orbit"`: every tab, tool, pane,
+  member list and call control stays where Tabs puts it. The frame adds a line drawing behind the panes
+  (`OrbitBackdrop`: circles, an eight-point and a six-point star, a ring of ticks, a soft glow and a stone grain, all
+  drawn in code), an emblem before the server's name, and minimize, maximize and close at the end of the tab bar. The
+  tab bar is the window's title bar (drag it to move the window), so the usual title bar is hidden while it is up. The
+  window stays the usual rectangle.
+- **Look:** square corners, 1px lines instead of filled boxes, spaced-out capitals in Barlow Condensed over Barlow
+  body text. The open tab is underlined with a gold diamond above it. White is text, gold is you and anything picked,
+  cyan is live (speaking, in the call, online), red is close, leave and alerts. The light version is the same drawing
+  in dark lines on pale grey stone. Both fonts are bundled under the SIL Open Font License (`skins/orbit/fonts/OFL.txt`).
+- **Icons:** the skin has its own set, Glyph (`components/icons/glyphIcons.ts`): thin 1.5px lines, square ends and
+  diamonds or hexagons where other sets use circles.
+- **Check:** `npm run orbit:check -w @chatward/client -- <out dir>` (under `xvfb-run` on Linux) walks the same screens
+  as the LCARS check in the Tabs and Orbit layouts, fails if Orbit is missing any control Tabs shows, checks the frame
+  (title bar hidden, window buttons in the bar, the drawing, Glyph icons, tab reorder, pop-out, switching layouts) and
+  saves screenshots, including one in light mode.

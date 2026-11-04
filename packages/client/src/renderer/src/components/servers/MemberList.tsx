@@ -3,7 +3,7 @@ import type { Member } from '@chatward/shared';
 import { api } from '../../api/http';
 import { useSession } from '../../state/session';
 import { useVoice } from '../../state/voice';
-import { isGuest, useGuestMembers, useGuestVoice } from '../../state/guests';
+import { isGuest, useGuestMembers, useGuestVoice, useGuests } from '../../state/guests';
 import PixelIcon from '../icons/PixelIcon';
 import Avatar from './Avatar';
 import './servers.css';
@@ -13,7 +13,8 @@ import ListeningLine from '../spotify/ListeningLine';
 
 type Presence = 'online' | 'idle' | 'dnd' | 'offline';
 
-export default function MemberList({ serverId, members: accounts }: { serverId: string; members: Member[] }) {
+/** `showSpeaking` (the Orbit layout) marks whoever is talking in your call: their name lights up and "Speaking" shows under it. */
+export default function MemberList({ serverId, members: accounts, showSpeaking = false }: { serverId: string; members: Member[]; showSpeaking?: boolean }) {
   const guests = useGuestMembers(serverId);
   const guestVoice = useGuestVoice(serverId);
   const members = guests.length ? [...accounts, ...guests] : accounts;
@@ -23,6 +24,9 @@ export default function MemberList({ serverId, members: accounts }: { serverId: 
   const channels = useSession((s) => s.servers.find((b) => b.server.id === serverId)?.channels);
   const occupants = useSession((s) => s.voiceOccupants);
   const myCallId = useVoice((s) => s.channelId);
+  const voiceSpeaking = useVoice((s) => s.speaking);
+  const guestSpeaking = useGuests((s) => s.speaking);
+  const speakingOf = (m: Member) => showSpeaking && (voiceSpeaking.includes(m.user.id) || guestSpeaking.includes(m.user.id));
   // Our own socket can miss its own presence frame, so count yourself as online by default.
   const statusOf = (m: Member): Presence => (isGuest(m.user.id) ? 'online' : presence[m.user.id] ?? (m.user.id === meId ? 'online' : 'offline'));
 
@@ -62,18 +66,19 @@ export default function MemberList({ serverId, members: accounts }: { serverId: 
 
   return (
     <aside className="cw-members" data-region="members" aria-label="Members">
-      {online.length > 0 && <Group title="Online" list={online} statusOf={statusOf} voiceOf={voiceOf} actions={actions} />}
-      {offline.length > 0 && <Group title="Offline" list={offline} statusOf={statusOf} voiceOf={voiceOf} actions={actions} />}
+      {online.length > 0 && <Group title="Online" list={online} statusOf={statusOf} voiceOf={voiceOf} speakingOf={speakingOf} actions={actions} />}
+      {offline.length > 0 && <Group title="Offline" list={offline} statusOf={statusOf} voiceOf={voiceOf} speakingOf={speakingOf} actions={actions} />}
       {error && <p className="cw-error" role="alert">{error}</p>}
     </aside>
   );
 }
 
-function Group({ title, list, statusOf, voiceOf, actions }: {
+function Group({ title, list, statusOf, voiceOf, speakingOf, actions }: {
   title: string;
   list: Member[];
   statusOf: (m: Member) => Presence;
   voiceOf: Map<string, string>;
+  speakingOf: (m: Member) => boolean;
   actions: (m: Member) => ReactNode;
 }) {
   return (
@@ -83,8 +88,9 @@ function Group({ title, list, statusOf, voiceOf, actions }: {
         {list.map((m) => {
           const status = statusOf(m);
           const call = voiceOf.get(m.user.id);
+          const speaking = speakingOf(m);
           return (
-            <li key={m.user.id} className={`cw-member${status === 'offline' ? ' offline' : ''}`}>
+            <li key={m.user.id} className={`cw-member${status === 'offline' ? ' offline' : ''}`} data-speaking={speaking || undefined}>
               <ProfileTrigger user={m.user} className="cw-member-profile">
                 <span className="cw-avatar-wrap">
                   <Avatar user={m.user} size={32} />
@@ -92,6 +98,7 @@ function Group({ title, list, statusOf, voiceOf, actions }: {
                 </span>
                 <span className="cw-member-who">
                   <span className="cw-member-name">{m.user.displayName}</span>
+                  {speaking && <span className="cw-member-speaking">Speaking</span>}
                   <ListeningLine userId={m.user.id} link={false} />
                 </span>
               </ProfileTrigger>

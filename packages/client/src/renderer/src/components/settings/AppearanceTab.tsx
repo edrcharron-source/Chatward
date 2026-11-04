@@ -12,9 +12,16 @@ const LAYOUTS = [
   { id: 'tabs', label: 'Tabs', hint: 'One text chat and one voice chat, picked from tabs along the top' },
   { id: 'classic', label: 'Classic', hint: 'Channel list on the left' },
   { id: 'lcars', label: 'LCARS', hint: 'The LCARS frame: tabs down a rail on the left, call controls along the bottom. Comes with the LCARS skin' },
+  { id: 'orbit', label: 'Orbit', hint: 'Clean sci-fi menus: tabs in a thin top bar over a line drawing. Comes with the Orbit skin' },
 ] as const;
 
-const LCARS_SKIN = SKINS.find((s) => s.layout === 'lcars')?.id ?? '';
+type Layout = (typeof LAYOUTS)[number]['id'];
+
+/** A layout that comes with a skin brings that skin along. */
+const layoutChoice = (id: Layout): { layout: Layout; skin?: string } => {
+  const skin = SKINS.find((s) => s.layout === id);
+  return skin ? { layout: id, skin: skin.id } : { layout: id };
+};
 
 export default function AppearanceTab() {
   const theme = useSettings((s) => s.theme);
@@ -44,7 +51,7 @@ export default function AppearanceTab() {
           {LAYOUTS.map((l) => (
             <label key={l.id} className="choice" title={l.hint}>
               <input type="radio" name="layout" value={l.id} checked={layout === l.id}
-                onChange={() => set(l.id === 'lcars' ? { layout: l.id, skin: LCARS_SKIN } : { layout: l.id })} />
+                onChange={() => set(layoutChoice(l.id))} />
               <span>{l.label}</span>
             </label>
           ))}
@@ -76,7 +83,7 @@ export default function AppearanceTab() {
  * A skin that comes with its own layout brings it along, and leaving that skin goes back to the Tabs layout, so a skin's
  * frame is never left on without its look. Any other pick leaves the layout as it is.
  */
-function skinChoice(id: string, layout: string): { skin: string; layout?: 'tabs' | 'classic' | 'lcars' } {
+function skinChoice(id: string, layout: string): { skin: string; layout?: Layout } {
   const next = SKINS.find((s) => s.id === id);
   if (next?.layout) return { skin: id, layout: next.layout };
   if (SKINS.some((s) => s.layout === layout)) return { skin: id, layout: 'tabs' };
