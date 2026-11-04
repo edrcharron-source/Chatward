@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import express, { type Express, type NextFunction, type Request, type Response } from 'express';
-import type { VaultItem } from '@chatward/shared';
+import type { VaultAnnotation, VaultItem } from '@chatward/shared';
 import type { AuthedRequest, Ctx } from '../ctx.js';
 import { newId } from '../db.js';
 
@@ -117,6 +117,49 @@ export function register(app: Express, ctx: Ctx): void {
   };
   app.get('/api/vault/:id/thumb', ctx.requireAuth, send(true));
   app.get('/api/vault/:id/file', ctx.requireAuth, send(false));
+
+  type NoteRow = { item_id: string; author_id: string; server_id: string; channel_id: string; key_version: number; ciphertext: string; updated_at: number };
+  const toNote = (n: NoteRow): VaultAnnotation => ({
+    itemId: n.item_id, authorId: n.author_id, serverId: n.server_id, channelId: n.channel_id,
+    keyVersion: n.key_version, ciphertext: n.ciphertext, updatedAt: n.updated_at,
+  });
+
+  // Everyone's sealed tags for the server in one go; the client merges and decrypts them.
+  app.get('/api/servers/:id/vault/annotations', ctx.requireAuth, requireMember, (req, res) => {
+    const rows = db.prepare('SELECT a.*, i.channel_id FROM vault_annotations a JOIN vault_items i ON i.id=a.item_id WHERE a.server_id=?').all(req.params.id) as NoteRow[];
+    res.json({ annotations: rows.map(toNote) });
+  });
+
+  // Each person has one sealed set of tags per item, so people never overwrite each other.
+  app.post('/api/vault/:id/annotation', ctx.requireAuth, express.json({ limit: '32kb' }), (req, res) => {
+    const userId = (req as AuthedRequest).userId;
+    const row = byId(req.params.id);
+    if (!row || !ctx.roleIn(row.server_id, userId)) { res.status(404).json({ error: 'not found' }); return; }
+    const { keyVersion, ciphertext } = (req.body ?? {}) as { keyVersion?: unknown; ciphertext?: unknown };
+    if (!Number.isInteger(keyVersion) || (keyVersion as number) < 1 || typeof ciphertext !== 'string' || !ciphertext || ciphertext.length > 16000) {
+      res.status(400).json({ error: 'bad details' }); return;
+    }
+    const at = Date.now();
+    db.prepare(`INSERT INTO vault_annotations (item_id, author_id, server_id, key_version, ciphertext, updated_at) VALUES (?,?,?,?,?,?)
+      ON CONFLICT(item_id, author_id) DO UPDATE SET key_version=excluded.key_version, ciphertext=excluded.ciphertext, updated_at=excluded.updated_at`)
+      .run(row.id, userId, row.server_id, keyVersion, ciphertext, at);
+    const annotation = toNote({ item_id: row.id, author_id: userId, server_id: row.server_id, channel_id: row.channel_id, key_version: keyVersion as number, ciphertext, updated_at: at });
+    ctx.broadcastToServer(row.server_id, { t: 'vault.annotation', annotation });
+    res.json({ annotation });
+  });
+
+  // Removes your own tags; owners and admins can clear anyone's with ?author=<id>.
+  app.delete('/api/vault/:id/annotation', ctx.requireAuth, (req, res) => {
+    const userId = (req as AuthedRequest).userId;
+    const row = byId(req.params.id);
+    const role = row ? ctx.roleIn(row.server_id, userId) : null;
+    if (!row || !role) { res.status(404).json({ error: 'not found' }); return; }
+    const author = typeof req.query.author === 'string' && req.query.author ? req.query.author : userId;
+    if (author !== userId && role !== 'owner' && role !== 'admin') { res.status(403).json({ error: 'forbidden' }); return; }
+    db.prepare('DELETE FROM vault_annotations WHERE item_id=? AND author_id=?').run(row.id, author);
+    ctx.broadcastToServer(row.server_id, { t: 'vault.annotation.delete', serverId: row.server_id, itemId: row.id, authorId: author });
+    res.json({ ok: true });
+  });
 
   app.delete('/api/vault/:id', ctx.requireAuth, async (req, res, next) => {
     try {

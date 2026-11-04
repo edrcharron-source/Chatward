@@ -110,6 +110,16 @@ export function openDb(): DB {
     created_at INTEGER NOT NULL
   );
   CREATE INDEX IF NOT EXISTS idx_vault_server ON vault_items(server_id, created_at DESC);
+  CREATE TABLE IF NOT EXISTS vault_annotations (
+    item_id TEXT NOT NULL REFERENCES vault_items(id) ON DELETE CASCADE,
+    author_id TEXT NOT NULL REFERENCES users(id),
+    server_id TEXT NOT NULL,
+    key_version INTEGER NOT NULL,
+    ciphertext TEXT NOT NULL,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (item_id, author_id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_vault_notes_server ON vault_annotations(server_id);
   CREATE TABLE IF NOT EXISTS sounds (
     id TEXT PRIMARY KEY,
     server_id TEXT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,

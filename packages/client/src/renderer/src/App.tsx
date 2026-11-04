@@ -402,6 +402,7 @@ function Shell() {
           : <div className="cw-main-note muted">Join a voice channel to start a watch party.</div>)}
         {vaultOpen && bundle
           ? <VaultView key={bundle.server.id} serverId={bundle.server.id} keyChannelId={textChannels[0]?.id} chatChannelId={chatChannel?.id}
+              people={(bundle.members as Member[]).map((m) => ({ id: m.user.id, name: m.user.displayName }))}
               canModerate={['owner', 'admin'].includes((bundle.members as Member[]).find((m) => m.user.id === useSession.getState().user?.id)?.role ?? '')} />
           : theaterWithChat && callChannel && chatChannel
           ? (

@@ -185,6 +185,24 @@ export interface VaultDescriptor {
 /** A Vault item shared in a message: the item id plus its decrypted descriptor (which holds the file keys). */
 export type VaultRef = VaultDescriptor & { itemId: string };
 
+/** One person's sealed tags for a Vault item. `ciphertext` seals VaultNotes with the item's anchor channel key; the author is part of the seal. */
+export interface VaultAnnotation {
+  itemId: string;
+  serverId: string;
+  authorId: string;
+  channelId: string;
+  keyVersion: number;
+  ciphertext: string;
+  updatedAt: number;
+}
+
+/** Decrypted tags (only ever exists on clients). `people` are user ids. */
+export interface VaultNotes {
+  tags: string[];
+  people: string[];
+  caption?: string;
+}
+
 export interface SoundboardSound {
   id: string;
   serverId: string;
@@ -267,6 +285,8 @@ export type ServerFrame =
   | { t: 'gif.delete'; serverId: string; gifId: string }
   | { t: 'vault.new'; item: VaultItem }
   | { t: 'vault.delete'; serverId: string; itemId: string }
+  | { t: 'vault.annotation'; annotation: VaultAnnotation }
+  | { t: 'vault.annotation.delete'; serverId: string; itemId: string; authorId: string }
   | { t: 'sound.play'; serverId: string; channelId: string; soundId: string; userId: string }
   | { t: 'voice.state'; serverId: string; channelId: string; userIds: string[] }
   | { t: 'voice.kicked'; channelId: string }

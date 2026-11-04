@@ -1,4 +1,4 @@
-import type { VaultDescriptor, VaultItem } from '@chatward/shared';
+import type { VaultAnnotation, VaultDescriptor, VaultItem, VaultNotes } from '@chatward/shared';
 import { api } from '../../api/http';
 import { decryptBlob, decryptMessage, encryptBlob, encryptPayload } from '../../crypto';
 
@@ -81,4 +81,31 @@ export async function fetchVaultUrl(item: Pick<VaultItem, 'id'>, d: VaultDescrip
   const buf = await api.getBytes(`/api/vault/${item.id}/${thumb ? 'thumb' : 'file'}`);
   const plain = await decryptBlob(new Uint8Array(buf), thumb ? d.thumbKey : d.key, thumb ? d.thumbIv : d.iv);
   return URL.createObjectURL(new Blob([plain as Uint8Array<ArrayBuffer>], { type: thumb ? 'image/webp' : d.mime }));
+}
+
+/** Opens one person's sealed tags; null when the channel key is missing or the data is not tags. */
+export async function openNotes(a: VaultAnnotation): Promise<VaultNotes | null> {
+  const msg = await decryptMessage({ id: a.itemId, channelId: a.channelId, authorId: a.authorId, createdAt: a.updatedAt, editedAt: null, keyVersion: a.keyVersion, ciphertext: a.ciphertext });
+  if (!msg) return null;
+  try {
+    const n = JSON.parse(msg.text) as Partial<VaultNotes>;
+    return { tags: Array.isArray(n.tags) ? n.tags.filter((t) => typeof t === 'string') : [], people: Array.isArray(n.people) ? n.people.filter((p) => typeof p === 'string') : [], ...(n.caption ? { caption: n.caption } : {}) };
+  } catch { return null; }
+}
+
+/** Saves my tags for an item, or removes them when there are none. */
+export async function saveNotes(item: VaultItem, me: string, notes: VaultNotes): Promise<void> {
+  if (!notes.tags.length && !notes.people.length && !notes.caption) { await api.del(`/api/vault/${item.id}/annotation`); return; }
+  const { ciphertext, keyVersion } = await encryptPayload(item.channelId, me, { text: JSON.stringify(notes) });
+  await api.post(`/api/vault/${item.id}/annotation`, { keyVersion, ciphertext });
+}
+
+export const normalizeTag = (t: string) => t.trim().toLowerCase().replace(/^#+/, '').replace(/\s+/g, '-').slice(0, 32);
+
+export type NotesByItem = Record<string, Record<string, VaultNotes>>;
+/** Everyone's tags for one item, merged. */
+export function mergedNotes(by: Record<string, VaultNotes> | undefined): { tags: string[]; people: string[] } {
+  const tags = new Set<string>(); const people = new Set<string>();
+  for (const n of Object.values(by ?? {})) { n.tags.forEach((t) => tags.add(t)); n.people.forEach((p) => people.add(p)); }
+  return { tags: [...tags].sort(), people: [...people] };
 }
