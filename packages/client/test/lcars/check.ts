@@ -209,6 +209,17 @@ async function orbitOnly(page: Page, app: Awaited<ReturnType<typeof launch>>['ap
   await check('the line drawing is behind the layout', async () => {
     await page.locator('.orbit-backdrop').waitFor({ state: 'attached', timeout: 2000 });
   });
+  await check('clicks reach the buttons on a voice tile (fullscreen, theater mode)', async () => {
+    await tab(page, 'Voice').click();
+    await page.locator('.cv-tile-frame').first().waitFor({ timeout: 5000 });
+    // A stream's buttons sit in the tile's top corner, under the drawn corner brackets: a click there must land in the tile.
+    const blocked = await page.locator('.cv-tile-frame').evaluateAll((frames) => frames.filter((f) => {
+      const r = f.getBoundingClientRect();
+      const hit = document.elementFromPoint(r.right - 12, r.top + 12);
+      return !hit || !f.contains(hit);
+    }).length);
+    if (blocked) throw new Error(`${blocked} tile(s) have their top corner covered`);
+  });
   await check('the Glyph icons show', async () => {
     const shown = await page.locator('.cw-tabs .cw-ic-glyph').first().evaluate((el) => getComputedStyle(el).display);
     if (shown === 'none') throw new Error('glyph icons hidden');
