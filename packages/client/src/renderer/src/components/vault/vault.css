@@ -12,3 +12,6 @@
 .cw-vault-bar { display: flex; align-items: center; gap: 12px; color: #fff; }
 .cw-vault-bar span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cw-vault-bar a { color: #fff; }
+
+.cw-vault-card { position: relative; display: block; padding: 0; border: 0; background: none; cursor: pointer; margin-top: 4px; }
+.cw-vault-card img { display: block; max-width: 320px; max-height: 240px; border-radius: 8px; }

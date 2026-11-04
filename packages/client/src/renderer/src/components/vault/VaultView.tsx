@@ -3,13 +3,14 @@ import type { ServerFrame, VaultDescriptor, VaultItem } from '@chatward/shared';
 import { api } from '../../api/http';
 import { onFrame } from '../../api/ws';
 import { onKeysChanged } from '../../crypto';
+import { sendMessage } from '../../state/chat';
 import { useSession } from '../../state/session';
 import { fetchVaultUrl, openDescriptor, uploadToVault, type VaultPage } from './vault';
 import './vault.css';
 
 const mb = (n: number) => `${(n / (1024 * 1024)).toFixed(n < 10 * 1024 * 1024 ? 1 : 0)} MB`;
 
-export default function VaultView({ serverId, keyChannelId, canModerate }: { serverId: string; keyChannelId: string | undefined; canModerate: boolean }) {
+export default function VaultView({ serverId, keyChannelId, canModerate, chatChannelId }: { serverId: string; keyChannelId: string | undefined; canModerate: boolean; chatChannelId?: string }) {
   const me = useSession((s) => s.user?.id ?? '');
   const [items, setItems] = useState<VaultItem[]>([]);
   const [hasMore, setHasMore] = useState(false);
@@ -58,6 +59,15 @@ export default function VaultView({ serverId, keyChannelId, canModerate }: { ser
     if (fileInput.current) fileInput.current.value = '';
   }
 
+  const [sending, setSending] = useState(false);
+  async function sendToChat(item: VaultItem, d: VaultDescriptor) {
+    if (!chatChannelId) return;
+    setSending(true); setError(null);
+    try { await sendMessage(chatChannelId, { text: '', files: [], vault: [{ ...d, itemId: item.id }] }); setOpen(null); setStatus('Sent to chat.'); }
+    catch (e) { setError((e as Error).message); }
+    finally { setSending(false); }
+  }
+
   async function remove(item: VaultItem) {
     if (!window.confirm('Delete this from the Vault for everyone?')) return;
     try {
@@ -84,7 +94,8 @@ export default function VaultView({ serverId, keyChannelId, canModerate }: { ser
         {items.map((item) => <Tile key={item.id} item={item} onOpen={(d) => setOpen({ item, d })} />)}
       </div>
       {hasMore && <button type="button" className="cw-vault-more" onClick={() => void loadMore()}>Load older</button>}
-      {open && <Viewer item={open.item} d={open.d} canDelete={open.item.ownerId === me || canModerate} onDelete={() => void remove(open.item)} onClose={() => setOpen(null)} />}
+      {open && <Viewer item={open.item} d={open.d} canDelete={open.item.ownerId === me || canModerate} onDelete={() => void remove(open.item)} onClose={() => setOpen(null)}
+        extra={chatChannelId && <button type="button" disabled={sending} onClick={() => void sendToChat(open.item, open.d)}>{sending ? 'Sending…' : 'Send to chat'}</button>} />}
     </section>
   );
 }
@@ -116,7 +127,7 @@ function Tile({ item, onOpen }: { item: VaultItem; onOpen: (d: VaultDescriptor) 
   );
 }
 
-function Viewer({ item, d, canDelete, onDelete, onClose }: { item: VaultItem; d: VaultDescriptor; canDelete: boolean; onDelete: () => void; onClose: () => void }) {
+export function Viewer({ item, d, canDelete, onDelete, onClose, extra }: { item: Pick<VaultItem, 'id'>; d: VaultDescriptor; canDelete: boolean; onDelete: () => void; onClose: () => void; extra?: React.ReactNode }) {
   const [url, setUrl] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
   useEffect(() => {
@@ -135,6 +146,7 @@ function Viewer({ item, d, canDelete, onDelete, onClose }: { item: VaultItem; d:
           : <img src={url} alt={d.name} />}
         <div className="cw-vault-bar">
           <span title={d.name}>{d.name} · {mb(d.size)}</span>
+          {extra}
           {url && <a href={url} download={d.name}>Save</a>}
           {canDelete && <button type="button" onClick={onDelete}>Delete</button>}
           <button type="button" onClick={onClose}>Close</button>

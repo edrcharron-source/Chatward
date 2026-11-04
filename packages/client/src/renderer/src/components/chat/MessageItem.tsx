@@ -1,4 +1,5 @@
 import { useState, type KeyboardEvent } from 'react';
+import VaultCard from '../vault/VaultCard';
 import type { Message, MessagePayload, User } from '@chatward/shared';
 import { AttachmentView, GifView, LinkPreviewCard } from '../media';
 import { deleteMessage, editMessage } from '../../state/chat';
@@ -112,6 +113,7 @@ export default function MessageItem({ message, payload, author, grouped, canEdit
         <JamCards payload={payload} />
         {payload.listenAlong && author && <ListenAlongCard host={author} serverId={serverId} />}
         {payload.attachments?.map((a) => <AttachmentView key={a.uploadId} attachment={a} serverId={serverId} />)}
+        {payload.vault?.map((v) => <VaultCard key={v.itemId} v={v} />)}
         {payload.gif && <GifView gif={payload.gif} serverId={serverId} openable />}
         {payload.linkPreviews?.filter((p) => !jamLinkSet.has(p.url)).map((p) => <LinkPreviewCard key={p.url} preview={p} />)}
       </>
