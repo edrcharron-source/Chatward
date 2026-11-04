@@ -1,16 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { ServerFrame, VaultDescriptor, VaultItem } from '@chatward/shared';
+import type { ServerFrame, VaultAnnotation, VaultDescriptor, VaultItem, VaultNotes } from '@chatward/shared';
 import { api } from '../../api/http';
 import { onFrame } from '../../api/ws';
 import { onKeysChanged } from '../../crypto';
 import { sendMessage } from '../../state/chat';
 import { useSession } from '../../state/session';
-import { fetchVaultUrl, openDescriptor, uploadToVault, type VaultPage } from './vault';
+import { fetchVaultUrl, mergedNotes, normalizeTag, openDescriptor, openNotes, saveNotes, uploadToVault, type NotesByItem, type VaultPage } from './vault';
 import './vault.css';
 
 const mb = (n: number) => `${(n / (1024 * 1024)).toFixed(n < 10 * 1024 * 1024 ? 1 : 0)} MB`;
 
-export default function VaultView({ serverId, keyChannelId, canModerate, chatChannelId }: { serverId: string; keyChannelId: string | undefined; canModerate: boolean; chatChannelId?: string }) {
+export default function VaultView({ serverId, keyChannelId, canModerate, chatChannelId, people = [] }: { serverId: string; keyChannelId: string | undefined; canModerate: boolean; chatChannelId?: string; people?: { id: string; name: string }[] }) {
   const me = useSession((s) => s.user?.id ?? '');
   const [items, setItems] = useState<VaultItem[]>([]);
   const [hasMore, setHasMore] = useState(false);
@@ -18,6 +18,41 @@ export default function VaultView({ serverId, keyChannelId, canModerate, chatCha
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [open, setOpen] = useState<{ item: VaultItem; d: VaultDescriptor } | null>(null);
+  const [notes, setNotes] = useState<NotesByItem>({});
+  const [filter, setFilter] = useState<{ kind: 'tag' | 'person'; value: string } | null>(null);
+  const [keyTick, setKeyTick] = useState(0);
+  useEffect(() => onKeysChanged(() => setKeyTick((n) => n + 1)), []);
+  const putNotes = useCallback(async (a: VaultAnnotation) => {
+    const n = await openNotes(a);
+    setNotes((cur) => {
+      const by = { ...(cur[a.itemId] ?? {}) };
+      if (n) by[a.authorId] = n; else delete by[a.authorId];
+      return { ...cur, [a.itemId]: by };
+    });
+  }, []);
+  useEffect(() => {
+    let alive = true;
+    api.get<{ annotations: VaultAnnotation[] }>(`/api/servers/${serverId}/vault/annotations`)
+      .then((r) => { if (alive) r.annotations.forEach((a) => void putNotes(a)); }).catch(() => {});
+    return () => { alive = false; };
+  }, [serverId, keyTick, putNotes]);
+  useEffect(() => onFrame((f: ServerFrame) => {
+    if (f.t === 'vault.annotation' && f.annotation.serverId === serverId) void putNotes(f.annotation);
+    else if (f.t === 'vault.annotation.delete' && f.serverId === serverId) {
+      setNotes((cur) => { const by = { ...(cur[f.itemId] ?? {}) }; delete by[f.authorId]; return { ...cur, [f.itemId]: by }; });
+    }
+  }), [serverId, putNotes]);
+  const allTags = (() => {
+    const counts = new Map<string, number>();
+    for (const by of Object.values(notes)) for (const t of mergedNotes(by).tags) counts.set(t, (counts.get(t) ?? 0) + 1);
+    return [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  })();
+  const taggedPeople = [...new Set(Object.values(notes).flatMap((by) => mergedNotes(by).people))];
+  const nameOf = (id: string) => people.find((p) => p.id === id)?.name ?? 'Someone';
+  const shown = !filter ? items : items.filter((i) => {
+    const m = mergedNotes(notes[i.id]);
+    return filter.kind === 'tag' ? m.tags.includes(filter.value) : m.people.includes(filter.value);
+  });
   const fileInput = useRef<HTMLInputElement>(null);
 
   const apply = (r: VaultPage, append: boolean) => {
@@ -90,11 +125,23 @@ export default function VaultView({ serverId, keyChannelId, canModerate, chatCha
       {status && <p className="muted">{status}</p>}
       {error && <p className="media-error" role="alert">{error}</p>}
       {!items.length && !error && <p className="muted">Nothing here yet. Add photos or videos and everyone in the server can see them. Everything is encrypted before it leaves your computer.</p>}
+      {(allTags.length > 0 || taggedPeople.length > 0) && (
+        <div className="cw-vault-filters" role="group" aria-label="Filter by tag">
+          <button type="button" className={!filter ? 'on' : ''} onClick={() => setFilter(null)}>All</button>
+          {allTags.map(([t, n]) => (
+            <button key={t} type="button" className={filter?.kind === 'tag' && filter.value === t ? 'on' : ''} onClick={() => setFilter({ kind: 'tag', value: t })}>#{t} {n}</button>
+          ))}
+          {taggedPeople.map((p) => (
+            <button key={p} type="button" className={filter?.kind === 'person' && filter.value === p ? 'on' : ''} onClick={() => setFilter({ kind: 'person', value: p })}>@{nameOf(p)}</button>
+          ))}
+        </div>
+      )}
       <div className="cw-vault-grid">
-        {items.map((item) => <Tile key={item.id} item={item} onOpen={(d) => setOpen({ item, d })} />)}
+        {shown.map((item) => <Tile key={item.id} item={item} onOpen={(d) => setOpen({ item, d })} />)}
       </div>
       {hasMore && <button type="button" className="cw-vault-more" onClick={() => void loadMore()}>Load older</button>}
       {open && <Viewer item={open.item} d={open.d} canDelete={open.item.ownerId === me || canModerate} onDelete={() => void remove(open.item)} onClose={() => setOpen(null)}
+        panel={<NotesEditor item={open.item} me={me} mine={notes[open.item.id]?.[me]} merged={mergedNotes(notes[open.item.id])} people={people} onError={setError} />}
         extra={chatChannelId && <button type="button" disabled={sending} onClick={() => void sendToChat(open.item, open.d)}>{sending ? 'Sending…' : 'Send to chat'}</button>} />}
     </section>
   );
@@ -127,7 +174,7 @@ function Tile({ item, onOpen }: { item: VaultItem; onOpen: (d: VaultDescriptor) 
   );
 }
 
-export function Viewer({ item, d, canDelete, onDelete, onClose, extra }: { item: Pick<VaultItem, 'id'>; d: VaultDescriptor; canDelete: boolean; onDelete: () => void; onClose: () => void; extra?: React.ReactNode }) {
+export function Viewer({ item, d, canDelete, onDelete, onClose, extra, panel }: { item: Pick<VaultItem, 'id'>; d: VaultDescriptor; canDelete: boolean; onDelete: () => void; onClose: () => void; extra?: React.ReactNode; panel?: React.ReactNode }) {
   const [url, setUrl] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
   useEffect(() => {
@@ -151,7 +198,43 @@ export function Viewer({ item, d, canDelete, onDelete, onClose, extra }: { item:
           {canDelete && <button type="button" onClick={onDelete}>Delete</button>}
           <button type="button" onClick={onClose}>Close</button>
         </div>
+        {panel}
       </div>
+    </div>
+  );
+}
+
+function NotesEditor({ item, me, mine, merged, people, onError }: {
+  item: VaultItem; me: string; mine: VaultNotes | undefined; merged: { tags: string[]; people: string[] };
+  people: { id: string; name: string }[]; onError: (m: string) => void;
+}) {
+  const [draft, setDraft] = useState('');
+  const save = (next: VaultNotes) => saveNotes(item, me, next).catch((e: Error) => onError(e.message));
+  const cur: VaultNotes = mine ?? { tags: [], people: [] };
+  const addTags = () => {
+    const add = draft.split(',').map(normalizeTag).filter(Boolean);
+    setDraft('');
+    if (add.length) void save({ ...cur, tags: [...new Set([...cur.tags, ...add])].slice(0, 20) });
+  };
+  const togglePerson = (id: string) =>
+    void save({ ...cur, people: cur.people.includes(id) ? cur.people.filter((p) => p !== id) : [...cur.people, id] });
+  const others = merged.tags.filter((t) => !cur.tags.includes(t));
+  return (
+    <div className="cw-vault-notes" onClick={(e) => e.stopPropagation()}>
+      <div className="cw-vault-chips">
+        {cur.tags.map((t) => <button key={t} type="button" title="Remove your tag" onClick={() => void save({ ...cur, tags: cur.tags.filter((x) => x !== t) })}>#{t} ×</button>)}
+        {others.map((t) => <span key={t} className="muted">#{t}</span>)}
+        <input value={draft} placeholder="Add tags, comma separated" onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addTags(); } }} onBlur={addTags} />
+      </div>
+      {people.length > 0 && (
+        <div className="cw-vault-chips" role="group" aria-label="Who is in this">
+          <span className="muted">Who's in it:</span>
+          {people.map((p) => (
+            <button key={p.id} type="button" className={merged.people.includes(p.id) ? 'on' : ''} aria-pressed={cur.people.includes(p.id)} onClick={() => togglePerson(p.id)}>{p.name}</button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

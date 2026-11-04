@@ -74,10 +74,28 @@ try {
   assert.equal((await up('u2', framed(10, 3 * 1024 * 1024))).status, 413, 'over the per-file limit');
   log('quota and file size limits hold');
 
+  const note = (user: string, ct = 'sealed') => fetch(`${base}/api/vault/${item.id}/annotation`, { method: 'POST', headers: { 'x-user': user, 'content-type': 'application/json' }, body: JSON.stringify({ keyVersion: 1, ciphertext: ct }) });
+  assert.equal((await note('u3')).status, 404, 'outsiders cannot tag');
+  assert.equal((await note('u1', '')).status, 400, 'empty tags are refused');
+  assert.equal((await note('u1', 'one')).status, 200);
+  assert.equal((await note('u2', 'two')).status, 200);
+  assert.equal((await note('u2', 'two-b')).status, 200, 'retagging replaces your own row');
+  const notes = await (await call('u1', 'GET', '/api/servers/s1/vault/annotations')).json() as { annotations: { authorId: string; ciphertext: string; channelId: string }[] };
+  assert.equal(notes.annotations.length, 2);
+  assert.equal(notes.annotations.find((n) => n.authorId === 'u2')?.ciphertext, 'two-b');
+  assert.equal(notes.annotations[0].channelId, 'c1');
+  assert.equal((await call('u2', 'DELETE', `/api/vault/${item.id}/annotation?author=u1`)).status, 403, 'members cannot clear others');
+  assert.equal((await call('u2', 'DELETE', `/api/vault/${item.id}/annotation`)).status, 200);
+  assert.equal((await call('u1', 'DELETE', `/api/vault/${item.id}/annotation?author=u1`)).status, 200);
+  assert.equal((db.prepare('SELECT COUNT(*) AS n FROM vault_annotations').get() as { n: number }).n, 0);
+  await note('u1', 'again');
+  log('members tag with their own sealed row; only owners clear other people\'s');
+
   assert.equal((await call('u2', 'DELETE', `/api/vault/${item.id}`)).status, 403, 'other members cannot delete');
   assert.equal((await call('u1', 'DELETE', `/api/vault/${item.id}`)).status, 200);
   assert.ok(!fs.existsSync(path.join(config.vaultDir, item.id)));
   assert.equal((db.prepare('SELECT COUNT(*) AS n FROM vault_items').get() as { n: number }).n, 0);
+  assert.equal((db.prepare('SELECT COUNT(*) AS n FROM vault_annotations').get() as { n: number }).n, 0, 'tags go with the item');
   log('only the uploader or an admin deletes, and the files go');
   console.log('\nVault: all checks passed');
 } catch (err) {

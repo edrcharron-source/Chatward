@@ -15,3 +15,9 @@
 
 .cw-vault-card { position: relative; display: block; padding: 0; border: 0; background: none; cursor: pointer; margin-top: 4px; }
 .cw-vault-card img { display: block; max-width: 320px; max-height: 240px; border-radius: 8px; }
+
+.cw-vault-filters, .cw-vault-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 8px 0; }
+.cw-vault-filters button, .cw-vault-chips button { padding: 2px 10px; border-radius: 999px; }
+.cw-vault-filters .on, .cw-vault-chips .on { font-weight: 600; outline: 2px solid currentColor; }
+.cw-vault-notes { color: #fff; }
+.cw-vault-notes input { min-width: 12em; }
