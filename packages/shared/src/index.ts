@@ -176,6 +176,8 @@ export interface VaultDescriptor {
   width?: number;
   height?: number;
   durationSec?: number;
+  /** When the photo or video was taken (file's last-modified time, ms epoch). Absent on older uploads. */
+  takenAt?: number;
   key: string;
   iv: string;
   thumbKey: string;
