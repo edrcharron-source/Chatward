@@ -28,10 +28,11 @@ import './phone.css';
 
 export type TabId = 'text' | 'voice' | 'watch' | 'vault' | 'workouts';
 
-const TABS: Array<{ id: TabId; label: string; icon: PixelIconName }> = [
+// `short` is the name under the icon on the phone's bottom bar, where five tabs share the width.
+const TABS: Array<{ id: TabId; label: string; short?: string; icon: PixelIconName }> = [
   { id: 'text', label: 'Text', icon: 'text' },
   { id: 'voice', label: 'Voice', icon: 'voice' },
-  { id: 'watch', label: 'Watch together', icon: 'watch' },
+  { id: 'watch', label: 'Watch together', short: 'Watch', icon: 'watch' },
   { id: 'vault', label: 'Vault', icon: 'vault' },
   { id: 'workouts', label: 'Workouts', icon: 'crown' },
 ];
@@ -290,7 +291,7 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTes
             }}>
             <span aria-hidden="true">[</span>
             <PixelIcon name={t.icon} size={14} />
-            <span>{t.label}</span>
+            <span>{phone ? (t.short ?? t.label) : t.label}</span>
             {t.id === 'text' && textUnread > 0 && !textOnScreen && (
               <span className="cw-badge" aria-label={`${textUnread} unread`}>{textUnread > 99 ? '99+' : textUnread}</span>
             )}
@@ -403,8 +404,8 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTes
         <header className="cw-phone-top" data-region="tabs">
           <strong className="cw-tabs-server">{bundle?.server.name ?? 'Chatward'}</strong>
           {canOpenServerSettings && (
-            <button type="button" className="icon cw-tool-icon" aria-label="Server settings" onClick={() => setServerSettingsOpen(true)}>
-              <PixelIcon name="gear" size={14} />
+            <button type="button" className="cw-tool" aria-label="Server settings" onClick={() => setServerSettingsOpen(true)}>
+              <span>Server</span>
             </button>
           )}
           <button type="button" className="icon cw-tool-icon" aria-label="Settings" onClick={onOpenSettings}>

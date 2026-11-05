@@ -5,6 +5,8 @@ import { accountKey, adoptLegacyDevice, getDevice, initDevice, legacyDevice } fr
 import { buildLabel } from '../../buildInfo';
 import { enterDemo } from '../../demo';
 import { useSession } from '../../state/session';
+import { useSettings } from '../../state/settings';
+import { LebaiBlackHole, LebaiLogo } from '../lebai/LebaiBlackHole';
 import './auth.css';
 
 /** 'register' needs a one-time sign-up code from `chatward invite`; 'reset' sets a new password with a code from the owner. */
@@ -13,6 +15,8 @@ const WEB = !!__CHATWARD_BUILD__.web;
 
 export default function AuthScreen() {
   const savedUrl = useSession((s) => s.serverUrl);
+  // The Lebserver skin shows lebai's wordmark and black hole beside the form; other skins keep the plain card.
+  const lebai = useSettings((s) => s.skin === 'lebserver' && s.animatedBackgrounds);
   const [mode, setMode] = useState<Mode>('login');
   const [serverUrl, setServerUrlField] = useState(savedUrl);
   // The address is filled in for most people, so it hides behind "Change" until someone needs it.
@@ -88,7 +92,13 @@ export default function AuthScreen() {
   }
 
   return (
-    <div className="cw-auth">
+    <div className={`cw-auth${lebai ? ' cw-auth-lebai' : ''}`}>
+      {lebai && (
+        <div className="cw-auth-hero" aria-hidden="true">
+          <LebaiLogo />
+          <LebaiBlackHole maxHeight={0.42} />
+        </div>
+      )}
       <form className="cw-auth-card card" onSubmit={submit}>
         <h1 className="cw-auth-title">Chatward</h1>
 
