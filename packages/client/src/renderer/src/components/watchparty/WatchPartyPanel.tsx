@@ -61,7 +61,7 @@ const errorText = (e: unknown) => (e instanceof Error ? e.message : 'Something w
  * in that call change it. Voice channels have no message key of their own, so the state is encrypted with the key of
  * `keyChannelId`, the call's server's first text channel, the same channel the call's media key comes from.
  */
-export function WatchPartyPanel({ callChannelId: channelId, keyChannelId }: { callChannelId: string; keyChannelId: string }): ReactElement {
+export function WatchPartyPanel({ callChannelId: channelId, keyChannelId, onActiveChange }: { callChannelId: string; keyChannelId: string; onActiveChange?: (active: boolean) => void }): ReactElement {
   const me = useSession((s) => s.user?.id ?? null);
   const [remote, setRemote] = useState<StampedState | null>(null);
   const [draft, setDraft] = useState('');
@@ -222,6 +222,9 @@ export function WatchPartyPanel({ callChannelId: channelId, keyChannelId }: { ca
   /** files and Jellyfin both play in a <video>; only YouTube uses the iframe */
   const useVideo = Boolean(fileUrl || jellyfinId);
   const active = mediaKey(remote);
+  // Tells the tabs layout whether something is playing, so it can keep a corner preview while the tab is left.
+  useEffect(() => { onActiveChange?.(Boolean(active)); }, [active]);
+  useEffect(() => () => onActiveChange?.(false), []);
 
   // Re-bind whenever the embed is (re)mounted: a new video, or it moving between the panel and the pop-out window.
   useEffect(() => {
