@@ -22,7 +22,15 @@ async function start() {
   } catch (err) {
     console.warn('[server]', err);
   }
-  if (!isPopoutWindow()) syncShapedWindow();
-  createRoot(document.getElementById('root')!).render(isPopoutWindow() ? <PopoutPlayer /> : <ConfirmProvider><App /></ConfirmProvider>);
+  syncShapedWindow();
+  createRoot(document.getElementById('root')!).render(<ConfirmProvider><App /></ConfirmProvider>);
 }
-void start();
+
+// The pop-out window (watch party, and picture in picture) is opened by the page with no preload, so window.chatward
+// does not exist there. It only needs the player, so it renders straight away and skips the session and server setup,
+// which would throw and leave the window blank.
+if (isPopoutWindow()) {
+  createRoot(document.getElementById('root')!).render(<PopoutPlayer />);
+} else {
+  void start();
+}

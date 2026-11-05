@@ -436,7 +436,6 @@ export function WatchPartyPanel({ callChannelId: channelId, keyChannelId, onActi
         <span>Watch party</span>
         {active && (
           <span className="watch-party-head-actions">
-            {!useVideo && !popped && <button type="button" onClick={() => popOut()}>Pop out</button>}
             {!useVideo && !popped && <button type="button" onClick={() => popOut(true)}>Picture in picture</button>}
             <button type="button" className="watch-party-stop" onClick={stop}>Stop</button>
           </span>
