@@ -277,14 +277,22 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTes
     </nav>
   );
 
+  // The watch party stays mounted once it has been opened, in its own place in TabStage, and is only hidden while another
+  // tab is shown. So its player keeps playing when the tab changes or the split view is turned on or off, instead of
+  // reloading. Popping the tab out moves the panel into the pop-out window, so it is unmounted here.
+  const [watchOpened, setWatchOpened] = useState(false);
+  const watchOn = !isPopped('watch') && (split ? leftTab === 'watch' || rightTab === 'watch' : tab === 'watch');
+  useEffect(() => { if (watchOn) setWatchOpened(true); }, [watchOn]);
+  const watchPlace: WatchPane['place'] = !watchOn ? null : split ? (leftTab === 'watch' ? 'left' : 'right') : 'only';
+  const sidePane = (t: TabId, shown: boolean): SidePane => ({ id: t, label: label(t), shown, node: shown ? slot(t) : null });
   const main = (
     <main className="cw-tabs-main" data-region="main">
-      {split
-        ? <SideBySide
-            left={{ id: leftTab, label: label(leftTab), node: slot(leftTab) }}
-            right={{ id: rightTab, label: label(rightTab), node: slot(rightTab) }}
-          />
-        : <div className="cw-tab-pane">{slot(tab)}</div>}
+      <TabStage
+        split={split}
+        left={sidePane(split ? leftTab : tab, (split ? leftTab : tab) !== 'watch' || isPopped('watch'))}
+        right={sidePane(rightTab, split && (rightTab !== 'watch' || isPopped('watch')))}
+        watch={{ place: watchPlace, node: watchOpened && !isPopped('watch') ? pane('watch') : null }}
+      />
     </main>
   );
 
@@ -389,10 +397,17 @@ function Empty({ children }: { children: ReactNode }) {
   return <div className="cw-tab-empty muted">{children}</div>;
 }
 
-/** Text on the left, voice on the right, with a divider to drag (or arrow keys) to share the width. */
-interface SidePane { id: TabId; label: string; node: ReactNode }
+/** One pane of the main area. `shown` is false when its tab is hidden here (the watch party, or the right side when not split). */
+interface SidePane { id: TabId; label: string; shown: boolean; node: ReactNode }
+/** The watch party's panel: where it is shown (null = hidden), and its content. */
+interface WatchPane { place: 'left' | 'right' | 'only' | null; node: ReactNode }
 
-function SideBySide({ left, right }: { left: SidePane; right: SidePane }) {
+/**
+ * The main area: one pane, or two side by side (text on the left, voice on the right, with a divider to drag or use the
+ * arrow keys). All panes are always in the same grid at fixed positions, so switching tabs or turning the split view on
+ * or off only changes what is shown, and never unmounts the watch party. The watch party is hidden, not unmounted.
+ */
+function TabStage({ split, left, right, watch }: { split: boolean; left: SidePane; right: SidePane; watch: WatchPane }) {
   // the saved ratio is the left side's share of the width
   const saved = useSettings((s) => s.splitRatio);
   const set = useSettings((s) => s.set);
@@ -419,25 +434,33 @@ function SideBySide({ left, right }: { left: SidePane; right: SidePane }) {
 
   // Both shares are at least 1fr, so when one side is held at its minimum width the other still fills the rest.
   const col = (p: SidePane, share: number) => `minmax(${p.id === 'text' ? TEXT_MIN : '0px'}, ${Math.max(1, share)}fr)`;
+  // Hidden panes are display:none, so they take no cell. Every pane has an explicit column and row, so the grid never reflows.
+  const show = (on: boolean) => (on ? undefined : 'none');
   return (
-    <div className="cw-split" ref={box} style={{ gridTemplateColumns: `${col(left, ratio / (1 - ratio))} 8px ${col(right, (1 - ratio) / ratio)}` }}>
-      <section key={left.id} className="cw-split-pane" aria-label={left.label}>{left.node}</section>
-      <div
-        className="cw-split-divider"
-        role="separator"
-        aria-orientation="vertical"
-        aria-label={`Resize ${left.label} and ${right.label}`}
-        aria-valuemin={MIN_SPLIT * 100}
-        aria-valuemax={MAX_SPLIT * 100}
-        aria-valuenow={Math.round(ratio * 100)}
-        tabIndex={0}
-        onPointerDown={(e) => e.currentTarget.setPointerCapture(e.pointerId)}
-        onPointerMove={onMove}
-        onPointerUp={save}
-        onLostPointerCapture={save}
-        onKeyDown={onKey}
-      />
-      <section key={right.id} className="cw-split-pane" aria-label={right.label}>{right.node}</section>
+    <div className="cw-split" ref={box} style={{ gridTemplateColumns: split ? `${col(left, ratio / (1 - ratio))} 8px ${col(right, (1 - ratio) / ratio)}` : 'minmax(0, 1fr)' }}>
+      <section className="cw-split-pane" aria-label={left.label} style={{ gridColumn: 1, gridRow: 1, display: show(left.shown) }}>{left.node}</section>
+      {split && (
+        <div
+          className="cw-split-divider"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label={`Resize ${left.label} and ${right.label}`}
+          aria-valuemin={MIN_SPLIT * 100}
+          aria-valuemax={MAX_SPLIT * 100}
+          aria-valuenow={Math.round(ratio * 100)}
+          tabIndex={0}
+          style={{ gridColumn: 2, gridRow: 1 }}
+          onPointerDown={(e) => e.currentTarget.setPointerCapture(e.pointerId)}
+          onPointerMove={onMove}
+          onPointerUp={save}
+          onLostPointerCapture={save}
+          onKeyDown={onKey}
+        />
+      )}
+      <section className="cw-split-pane" aria-label={right.label} style={{ gridColumn: 3, gridRow: 1, display: show(split && right.shown) }}>{right.node}</section>
+      <section className="cw-split-pane" aria-label="Watch together" style={{ gridColumn: watch.place === 'right' ? 3 : 1, gridRow: 1, display: show(watch.place !== null) }}>
+        {watch.node}
+      </section>
     </div>
   );
 }
