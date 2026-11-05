@@ -68,8 +68,10 @@
 .orbit-shell .orbit-win.close:hover { background: var(--danger); color: #fff; }
 
 /* The content floats on the drawing; the right column is a quiet strip with your card boxed at the bottom. */
+/* .cv-root is the chat view; it is not always inside .cw-tabs-main (a popped-out chat sits directly in the pop-out window),
+   so it is named on its own to let the backdrop show through in both places. */
 .orbit-shell .cw-tabs-main,
-.orbit-shell .cw-tabs-main .cv-root { background: transparent; }
+.orbit-shell .cv-root { background: transparent; }
 .orbit-shell .cw-tabs-side {
   width: 300px; background: var(--orb-side, rgba(232, 236, 242, .02)); border-left: 1px solid var(--orb-line);
 }
