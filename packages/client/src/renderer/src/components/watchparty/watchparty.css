@@ -126,6 +126,9 @@
   min-height: 0;
   border: 0;
 }
+/* Picture in picture: the bar's hint goes, so the video and its Fullscreen button fit a small window. */
+.watch-popout.pip .watch-party-hint { display: none; }
+.watch-popout.pip .watch-popout-bar { padding: 4px 8px; justify-content: flex-end; }
 .watch-popout-empty {
   margin: auto;
   color: var(--text-muted);
