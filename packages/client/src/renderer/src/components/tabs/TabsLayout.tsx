@@ -1,10 +1,13 @@
+import '../float/float.css';
 import { useEffect, useRef, useState, type DragEvent, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react';
 import type { Member } from '@chatward/shared';
 import { useSession, type ServerBundle } from '../../state/session';
 import { useSettings } from '../../state/settings';
 import { useVoice } from '../../state/voice';
 import ChatView from '../chat/ChatView';
-import VoiceChannelView from '../voice/VoiceChannelView';
+import VoiceChannelView, { VideoView, type Feed } from '../voice/VoiceChannelView';
+import { useScreenShare } from '../voice/useScreenShare';
+import { useFloatingBox } from '../float/useFloatingBox';
 import VoiceDock from '../voice/VoiceDock';
 import VaultView from '../vault/VaultView';
 import { WatchPartyPanel } from '../watchparty';
@@ -288,6 +291,9 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTes
   // Playing while its tab is left: the panel shows as a small corner preview, and clicking it goes back to the tab.
   const watchPlace: WatchPane['place'] = watchOn ? (split ? (leftTab === 'watch' ? 'left' : 'right') : 'only') : null;
   const watchMini = watchOpened && !watchOn && !isPopped('watch') && watchPlaying;
+  // A voice screen share shows as a corner preview while the Voice tab is not on screen (and not popped out).
+  const share = useScreenShare(voice?.serverId, voice?.id);
+  const streamMini = !!share && !shownTabs.has('voice') && !isPopped('voice');
   const sidePane = (t: TabId, shown: boolean): SidePane => ({ id: t, label: label(t), shown, node: shown ? slot(t) : null });
   const main = (
     <main className="cw-tabs-main" data-region="main">
@@ -296,6 +302,7 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTes
         left={sidePane(split ? leftTab : tab, (split ? leftTab : tab) !== 'watch' || isPopped('watch'))}
         right={sidePane(rightTab, split && (rightTab !== 'watch' || isPopped('watch')))}
         watch={{ place: watchPlace ?? (watchMini ? 'mini' : null), node: watchOpened && !isPopped('watch') ? pane('watch') : null, onExpand: () => selectTab('watch', false) }}
+        stream={{ shown: streamMini, feed: share?.feed ?? null, name: share?.name ?? '', onExpand: () => selectTab('voice', false) }}
       />
     </main>
   );
@@ -405,14 +412,20 @@ function Empty({ children }: { children: ReactNode }) {
 interface SidePane { id: TabId; label: string; shown: boolean; node: ReactNode }
 /** The watch party's panel: where it is shown (null = hidden), and its content. */
 interface WatchPane { place: 'left' | 'right' | 'only' | 'mini' | null; node: ReactNode; onExpand: () => void }
+/** A voice screen share shown as a corner preview: whether it is shown, its picture, and whose it is. */
+interface StreamPane { shown: boolean; feed: Feed | null; name: string; onExpand: () => void }
 
 /**
  * The main area: one pane, or two side by side (text on the left, voice on the right, with a divider to drag or use the
  * arrow keys). All panes are always in the same grid at fixed positions, so switching tabs or turning the split view on
  * or off only changes what is shown, and never unmounts the watch party. The watch party is hidden, not unmounted.
  */
-function TabStage({ split, left, right, watch }: { split: boolean; left: SidePane; right: SidePane; watch: WatchPane }) {
+function TabStage({ split, left, right, watch, stream }: { split: boolean; left: SidePane; right: SidePane; watch: WatchPane; stream: StreamPane }) {
   const mini = watch.place === 'mini';
+  // Both corner previews can be moved and resized. The watch party starts bottom-right and a screen share bottom-left,
+  // so both can show at once without covering each other.
+  const watchFloat = useFloatingBox('watch', 'br');
+  const streamFloat = useFloatingBox('stream', 'bl');
   // the saved ratio is the left side's share of the width
   const saved = useSettings((s) => s.splitRatio);
   const set = useSettings((s) => s.set);
@@ -463,10 +476,29 @@ function TabStage({ split, left, right, watch }: { split: boolean; left: SidePan
         />
       )}
       <section className="cw-split-pane" aria-label={right.label} style={{ gridColumn: 3, gridRow: 1, display: show(split && right.shown) }}>{right.node}</section>
-      <section className={`cw-split-pane${mini ? ' cw-watch-mini' : ''}`} aria-label="Watch together" style={{ gridColumn: watch.place === 'right' ? 3 : 1, gridRow: 1, display: show(watch.place !== null) }}>
-        {mini && <button type="button" className="cw-watch-mini-open" onClick={watch.onExpand}>Watch together</button>}
+      <section
+        className={`cw-split-pane${mini ? ' cw-watch-mini cw-float-mini' : ''}`}
+        aria-label="Watch together"
+        style={{ gridColumn: watch.place === 'right' ? 3 : 1, gridRow: 1, display: show(watch.place !== null), ...(mini ? watchFloat.style : {}) }}
+      >
+        {mini && (
+          <div className="cw-float-grip" {...watchFloat.move}>
+            <button type="button" className="cw-float-open" onPointerDown={(e) => e.stopPropagation()} onClick={watch.onExpand}>Watch together</button>
+          </div>
+        )}
+        {mini && <div className="cw-float-resize" {...watchFloat.resize} aria-hidden="true" />}
         {watch.node}
       </section>
+      {stream.shown && stream.feed && (
+        <section className="cw-split-pane cw-float-mini cw-stream-mini" aria-label="Screen share" style={{ ...streamFloat.style, gridColumn: 1, gridRow: 1 }}>
+          <div className="cw-float-grip" {...streamFloat.move}>
+            <span className="cw-float-title">{stream.name} · screen</span>
+            <button type="button" className="cw-float-open" onPointerDown={(e) => e.stopPropagation()} onClick={stream.onExpand}>Voice</button>
+          </div>
+          <VideoView feed={stream.feed} mirror={false} />
+          <div className="cw-float-resize" {...streamFloat.resize} aria-hidden="true" />
+        </section>
+      )}
     </div>
   );
 }
