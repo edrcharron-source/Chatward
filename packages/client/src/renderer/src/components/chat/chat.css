@@ -153,3 +153,7 @@
   .cv-composer { margin: 0 8px 8px; }
 }
 .cv-retry { margin-left: 8px; padding: 2px 10px; font-size: 13px; }
+
+/* Pictures never touch: one under another in the same message, or back-to-back picture messages, get a small gap. */
+.cv-msg-main > * + :is(.media-open, .media-image-placeholder, .media-gif-wrap, .media-file) { margin-top: 6px; }
+.cv-msg.cv-grouped:has(> .cv-msg-main > :is(.media-open, .media-image-placeholder, .media-gif-wrap)) { padding-top: 6px; }

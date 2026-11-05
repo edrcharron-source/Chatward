@@ -28,10 +28,11 @@ import './phone.css';
 
 export type TabId = 'text' | 'voice' | 'watch' | 'vault' | 'workouts';
 
-const TABS: Array<{ id: TabId; label: string; icon: PixelIconName }> = [
+const TABS: Array<{ id: TabId; label: string; icon: PixelIconName; short?: string }> = [
   { id: 'text', label: 'Text', icon: 'text' },
   { id: 'voice', label: 'Voice', icon: 'voice' },
-  { id: 'watch', label: 'Watch together', icon: 'watch' },
+  // the phone's bottom bar has room for one short word per tab
+  { id: 'watch', label: 'Watch together', icon: 'watch', short: 'Watch' },
   { id: 'vault', label: 'Vault', icon: 'vault' },
   { id: 'workouts', label: 'Workouts', icon: 'crown' },
 ];
@@ -290,7 +291,7 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTes
             }}>
             <span aria-hidden="true">[</span>
             <PixelIcon name={t.icon} size={14} />
-            <span>{t.label}</span>
+            <span>{phone && t.short ? t.short : t.label}</span>
             {t.id === 'text' && textUnread > 0 && !textOnScreen && (
               <span className="cw-badge" aria-label={`${textUnread} unread`}>{textUnread > 99 ? '99+' : textUnread}</span>
             )}
@@ -391,6 +392,12 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTes
           <StatusPicker />
         </div>
         <VoiceDock stacked words={orbit} />
+        {phone && canOpenServerSettings && (
+          <button type="button" className="cw-tool cw-phone-server" onClick={() => { setDrawerOpen(false); setServerSettingsOpen(true); }}>
+            <PixelIcon name="gear" size={14} />
+            <span>Server settings</span>
+          </button>
+        )}
       </section>
     </div>
   );
@@ -402,11 +409,7 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTes
       <div className="cw-tabs-shell cw-phone" data-region="shell" data-layout="phone">
         <header className="cw-phone-top" data-region="tabs">
           <strong className="cw-tabs-server">{bundle?.server.name ?? 'Chatward'}</strong>
-          {canOpenServerSettings && (
-            <button type="button" className="icon cw-tool-icon" aria-label="Server settings" onClick={() => setServerSettingsOpen(true)}>
-              <PixelIcon name="gear" size={14} />
-            </button>
-          )}
+          {/* One gear on phones: server settings sit in the People drawer, so two look-alike gears don't share the bar. */}
           <button type="button" className="icon cw-tool-icon" aria-label="Settings" onClick={onOpenSettings}>
             <PixelIcon name="gear" size={18} />
           </button>

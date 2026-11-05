@@ -45,3 +45,33 @@
   input, textarea, select { font-size: 16px; }
   html, body { overscroll-behavior: none; }
 }
+
+/* Server settings, in the People drawer on phones (the top bar keeps one gear, for your own settings). */
+.cw-phone-server { justify-content: center; width: 100%; }
+
+/* Chat on a phone: less side padding so messages get the width, a narrower follow-up gutter, and pictures that
+   leave room on screen for the conversation around them. */
+.cw-phone .cv-header { padding: 0 12px; height: 44px; }
+.cw-phone .cv-msg { gap: 10px; padding: 4px 6px; margin: 10px 4px 0; }
+.cw-phone .cv-msg.cv-grouped { margin-top: 0; }
+.cw-phone .cv-msg-head { gap: 6px; }
+.cw-phone .cv-time { font-size: 11px; }
+/* A tap counts as a hover on iPhone and the time would stick, so follow-ups show no time; the gutter only keeps
+   their text lined up under the avatar. */
+.cw-phone .cv-time-gutter, .cw-phone .cv-msg:hover .cv-time-gutter { width: 36px; color: transparent; }
+.cw-phone .media-image { max-height: min(360px, 50vh); }
+.cw-phone .media-open-sized { width: min(calc(var(--media-w) * 1px), 100%, calc(min(360px, 50vh) * var(--media-r))); }
+.cw-phone .media-image-placeholder { max-height: min(360px, 50vh); }
+/* Edit and delete: beside the message instead of floating over its top edge, so they never cover a picture. */
+.cw-phone .cv-actions {
+  position: static; align-self: flex-start; flex: none; gap: 4px; padding: 2px; margin-left: -4px;
+  box-shadow: none; background: var(--bg-1); border: 1px solid var(--border);
+}
+.cw-phone .cv-actions button { min-width: 36px; min-height: 36px; }
+
+/* The message box: a full-width box (two lines tall to start) with roomier buttons under it. */
+.cw-phone .cv-composer { margin: 0 8px 8px; padding: 8px; }
+.cw-phone .cv-row { flex-wrap: wrap; gap: 8px; }
+.cw-phone .cv-input { flex: 1 0 100%; order: -1; min-height: calc(2lh + 16px); padding: 8px 6px; }
+.cw-phone .cv-row > :not(.cv-input):not([hidden]) { min-width: 40px; }
+.cw-phone .cv-send { margin-left: auto; padding: 8px 18px; }
