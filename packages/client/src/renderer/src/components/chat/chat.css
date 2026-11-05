@@ -83,8 +83,7 @@
 .cv-msg.cv-is-reply { flex-wrap: wrap; row-gap: 2px; }
 .cv-reply-quote {
   position: relative; flex: 0 0 100%; min-width: 0; display: flex; align-items: center; gap: 6px;
-  padding: 0 0 0 50px; margin: 0; height: 20px; min-height: 0; background: transparent; border: 0; box-shadow: none;
-  color: var(--text-muted); font-size: 13px; text-align: left; cursor: pointer; border-radius: 0;
+  padding: 0 0 0 50px; height: 20px; color: var(--text-muted); font-size: 13px; cursor: pointer; user-select: none;
 }
 .cv-reply-spine {
   position: absolute; left: 17px; top: 9px; width: 26px; height: 12px;

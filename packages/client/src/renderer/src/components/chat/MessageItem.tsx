@@ -277,18 +277,22 @@ function ReplyQuote({ reply, channelId, serverId }: { reply: ReplyRef; channelId
     ?? guestMember(reply.authorId)?.user;
   const snippet = loaded && original && !original.chatter ? snippetOf(original) : reply.snippet;
   const name = person?.displayName ?? 'Someone';
+  const go = () => jumpTo({ channelId, id: reply.messageId, createdAt: reply.createdAt });
+  // A plain element rather than a <button>, so skins that restyle every button (outlines, capitals) leave it alone.
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       className={`cv-reply-quote${reply.authorId === meId ? ' cv-reply-me' : ''}`}
       title="Jump to the original message"
       aria-label={`Reply to ${name}: ${snippet}. Jump to the original message`}
-      onClick={() => jumpTo({ channelId, id: reply.messageId, createdAt: reply.createdAt })}
+      onClick={go}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } }}
     >
       <span className="cv-reply-spine" aria-hidden="true" />
       {person && <Avatar user={person} size={16} />}
       <span className="cv-reply-name">{reply.authorId === meId ? `@${name}` : name}</span>
       <span className="cv-reply-snippet">{snippet}</span>
-    </button>
+    </div>
   );
 }
