@@ -46,7 +46,8 @@ export async function installUpdate(): Promise<void> {
  */
 export async function checkServerVersion(serverUrl: string): Promise<void> {
   await initUpdates();
-  if (serverUrl === DEMO_URL) { useUpdates.setState({ server: { kind: 'ok' } }); return; }
+  // The web app is served by the server it talks to, so the two always match and there is no installer to fetch.
+  if (serverUrl === DEMO_URL || (typeof __CHATWARD_BUILD__ !== 'undefined' && __CHATWARD_BUILD__.web)) { useUpdates.setState({ server: { kind: 'ok' } }); return; }
   let info: VersionInfo;
   try {
     const res = await fetch(serverUrl.replace(/\/$/, '') + '/api/version');

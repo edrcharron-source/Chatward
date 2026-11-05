@@ -21,7 +21,9 @@ import { PopoutWindow } from './PopoutWindow';
 import LcarsLayout from '../lcars/LcarsLayout';
 import { OrbitBackdrop, OrbitMark, OrbitWindowButtons } from '../orbit/OrbitFrame';
 import MysteryButton from '../mystery/MysteryButton';
+import { usePhone } from '../../web/usePhone';
 import './tabs.css';
+import './phone.css';
 
 export type TabId = 'text' | 'voice' | 'watch' | 'vault';
 
@@ -81,6 +83,10 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTes
   const [popped, setPopped] = useState<TabId[]>([]);
   const [membersHidden, setMembersHidden] = useState(false);
   const [serverSettingsOpen, setServerSettingsOpen] = useState(false);
+  // Phones: one tab at a time with the tab bar along the bottom, and the member list in a drawer.
+  const phone = usePhone();
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  useEffect(() => { if (phone) setSplit(false); }, [phone]);
   const savedOrder = useSettings((s) => s.tabOrder);
   const setSettings = useSettings((s) => s.set);
   const tabs = orderTabs(savedOrder);
@@ -243,7 +249,7 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTes
           key={t.id}
           data-tab={t.id}
           className={`cw-tab${shownTabs.has(t.id) ? ' active' : ''}${dragging === t.id ? ' dragging' : ''}${dropBefore === t.id ? ' drop-before' : ''}${dropBefore === null && t.id === tabs[tabs.length - 1].id ? ' drop-after' : ''}`}
-          draggable
+          draggable={!phone}
           title={`Shift+click to show beside the open tab. Drag to reorder (or Alt + ${vertical ? 'up/down' : 'arrow'} keys)`}
           onDragStart={(e) => { setDragging(t.id); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', t.id); }}
           onDragEnd={endDrag}
@@ -344,6 +350,52 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTes
   }
 
   const orbit = frame === 'orbit';
+  const side = (className: string) => (
+    <div className={className} data-region="side">
+      {showMembers && bundle && <MemberList serverId={bundle.server.id} members={members} showSpeaking={orbit} />}
+      <section className="cw-me" aria-label="You">
+        <div className="cw-me-head">
+          {user && (
+            <span className="cw-avatar-wrap">
+              <Avatar user={user} size={32} />
+              <span className={`cw-dot ${myStatus}`} aria-hidden="true" />
+            </span>
+          )}
+          <strong className="cw-me-name">{user?.displayName ?? ''}</strong>
+          <StatusPicker />
+        </div>
+        <VoiceDock stacked words={orbit} />
+      </section>
+    </div>
+  );
+
+  if (phone) {
+    // In a call, the people button shows a dot, because the call controls are in the drawer.
+    const inCall = !!callChannelId;
+    return (
+      <div className="cw-tabs-shell cw-phone" data-region="shell" data-layout="phone">
+        <header className="cw-phone-top" data-region="tabs">
+          <strong className="cw-tabs-server">{bundle?.server.name ?? 'Chatward'}</strong>
+          {canOpenServerSettings && (
+            <button type="button" className="icon cw-tool-icon" aria-label="Server settings" onClick={() => setServerSettingsOpen(true)}>
+              <PixelIcon name="gear" size={14} />
+            </button>
+          )}
+          <button type="button" className="icon cw-tool-icon" aria-label="Settings" onClick={onOpenSettings}>
+            <PixelIcon name="gear" size={18} />
+          </button>
+          <button type="button" className={`cw-tool${drawerOpen ? ' active' : ''}`} aria-expanded={drawerOpen} onClick={() => setDrawerOpen((o) => !o)}>
+            People{inCall && <span className="cw-tab-live" aria-label="You are in the call" />}
+          </button>
+        </header>
+        {main}
+        <footer className="cw-phone-bottom">{nav}</footer>
+        {drawerOpen && <div className="cw-phone-scrim" onClick={() => setDrawerOpen(false)} aria-hidden="true" />}
+        {side(`cw-tabs-side cw-phone-drawer${drawerOpen ? ' open' : ''}`)}
+        {windows}
+      </div>
+    );
+  }
   return (
     <div className={`cw-tabs-shell${orbit ? ' orbit-shell' : ''}`} data-region="shell" data-layout={orbit ? 'orbit' : 'tabs'}>
       {orbit && <OrbitBackdrop />}
@@ -383,22 +435,7 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTes
       {main}
 
       {/* the right column: members on top, and your status and call controls in the bottom corner */}
-      <div className="cw-tabs-side" data-region="side">
-        {showMembers && bundle && <MemberList serverId={bundle.server.id} members={members} showSpeaking={orbit} />}
-        <section className="cw-me" aria-label="You">
-          <div className="cw-me-head">
-            {user && (
-              <span className="cw-avatar-wrap">
-                <Avatar user={user} size={32} />
-                <span className={`cw-dot ${myStatus}`} aria-hidden="true" />
-              </span>
-            )}
-            <strong className="cw-me-name">{user?.displayName ?? ''}</strong>
-            <StatusPicker />
-          </div>
-          <VoiceDock stacked words={orbit} />
-        </section>
-      </div>
+      {side('cw-tabs-side')}
 
       {windows}
     </div>

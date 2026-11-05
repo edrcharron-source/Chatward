@@ -4,7 +4,12 @@ import { api } from '../api/http';
 
 /** The address a fresh install starts with. Test runs outside the app have no build info, so they get none. */
 function defaultServer(): string {
-  return typeof __CHATWARD_BUILD__ === 'undefined' ? '' : __CHATWARD_BUILD__.defaultServer;
+  if (typeof __CHATWARD_BUILD__ === 'undefined') return '';
+  return __CHATWARD_BUILD__.web ? location.origin : __CHATWARD_BUILD__.defaultServer;
+}
+
+function isWeb(): boolean {
+  return typeof __CHATWARD_BUILD__ !== 'undefined' && !!__CHATWARD_BUILD__.web;
 }
 
 export interface ServerBundle { server: Server; channels: Channel[]; members: Member[] }
@@ -74,7 +79,8 @@ const saved = (() => { try { return JSON.parse(localStorage.getItem(LS) ?? '{}')
 let legacyToken: string | null = typeof saved.token === 'string' ? saved.token : null;
 
 export const useSession = create<SessionState>((set, get) => ({
-  serverUrl: saved.serverUrl ?? (defaultServer() || 'http://localhost:3000'),
+  // The web app only talks to the server that served it, whatever was saved.
+  serverUrl: (isWeb() ? defaultServer() : saved.serverUrl) ?? (defaultServer() || 'http://localhost:3000'),
   token: null,
   user: saved.user ?? null,
   servers: [], activeServerId: null, activeChannelId: null,

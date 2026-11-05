@@ -9,6 +9,7 @@ import './auth.css';
 
 /** 'register' needs a one-time sign-up code from `chatward invite`; 'reset' sets a new password with a code from the owner. */
 type Mode = 'login' | 'register' | 'reset';
+const WEB = !!__CHATWARD_BUILD__.web;
 
 export default function AuthScreen() {
   const savedUrl = useSession((s) => s.serverUrl);
@@ -137,7 +138,8 @@ export default function AuthScreen() {
           {mode !== 'login' && <small className="cw-field-hint">At least {LIMITS.PASSWORD_MIN} characters. A few random words work well.</small>}
         </label>
 
-        {editServer ? (
+        {/* The web app always uses the server it was opened from, so there is no address to change. */}
+        {WEB ? null : editServer ? (
           <label className="cw-field">
             <span>Server address</span>
             <input value={serverUrl} onChange={(e) => setServerUrlField(e.target.value)} placeholder="https://chat.example.com" autoComplete="url" spellCheck={false} required />
@@ -164,9 +166,11 @@ export default function AuthScreen() {
             Back to log in
           </button>
         )}
-        <button type="button" className="cw-auth-demo" disabled={busy} onClick={() => void enterDemo()}>
-          Try demo (offline, no server)
-        </button>
+        {!WEB && (
+          <button type="button" className="cw-auth-demo" disabled={busy} onClick={() => void enterDemo()}>
+            Try demo (offline, no server)
+          </button>
+        )}
         {buildLabel() && <p className="cw-auth-build">{buildLabel()}</p>}
       </form>
     </div>
