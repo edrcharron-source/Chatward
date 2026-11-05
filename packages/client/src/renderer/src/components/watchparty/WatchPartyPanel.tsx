@@ -362,12 +362,15 @@ export function WatchPartyPanel({ callChannelId: channelId, keyChannelId, onActi
     setPopped(false);
   };
 
-  const popOut = () => {
+  /** Opens the embed in a separate window. Picture in picture is the same window, small and always on top (see main/index.ts). */
+  const popOut = (pip = false) => {
     if (popupRef.current && !popupRef.current.closed) {
       popupRef.current.focus();
       return;
     }
-    const win = window.open(popoutUrl(), 'chatward-watch-popout', 'width=960,height=540,resizable=yes');
+    const win = pip
+      ? window.open(popoutUrl(), 'chatward-watch-pip', 'width=480,height=300,resizable=yes')
+      : window.open(popoutUrl(), 'chatward-watch-popout', 'width=960,height=540,resizable=yes');
     if (!win) {
       setError('The pop-out window was blocked.');
       return;
@@ -433,7 +436,8 @@ export function WatchPartyPanel({ callChannelId: channelId, keyChannelId, onActi
         <span>Watch party</span>
         {active && (
           <span className="watch-party-head-actions">
-            {!useVideo && !popped && <button type="button" onClick={popOut}>Pop out</button>}
+            {!useVideo && !popped && <button type="button" onClick={() => popOut()}>Pop out</button>}
+            {!useVideo && !popped && <button type="button" onClick={() => popOut(true)}>Picture in picture</button>}
             <button type="button" className="watch-party-stop" onClick={stop}>Stop</button>
           </span>
         )}

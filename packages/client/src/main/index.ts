@@ -97,7 +97,9 @@ function guardWebContents(wc: Electron.WebContents) {
     }
     // Watch party pop-out: our own page with ?watch-popout=1. Everything else stays denied.
     if (url.includes('watch-popout=1') && (url.startsWith(APP_ORIGIN + '/') || url.startsWith('http://localhost:5173'))) {
-      return { action: 'allow', overrideBrowserWindowOptions: { width: 960, height: 540, resizable: true, autoHideMenuBar: true, titleBarStyle: 'hidden', webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true } } };
+      // Picture in picture: a small window that stays on top of other windows (the page names it chatward-watch-pip).
+      const pip = frameName === 'chatward-watch-pip';
+      return { action: 'allow', overrideBrowserWindowOptions: { width: pip ? 480 : 960, height: pip ? 300 : 540, minWidth: pip ? 320 : undefined, minHeight: pip ? 200 : undefined, alwaysOnTop: pip, resizable: true, autoHideMenuBar: true, titleBarStyle: 'hidden', webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true } } };
     }
     if (/^https?:/.test(url)) shell.openExternal(url);
     return { action: 'deny' };
