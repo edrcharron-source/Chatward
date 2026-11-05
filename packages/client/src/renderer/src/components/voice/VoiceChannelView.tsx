@@ -52,7 +52,7 @@ function useContentSize<T extends HTMLElement>(): [RefObject<T>, { width: number
 }
 
 /** What a tile can show: a LiveKit track, or a local MediaStream in demo mode. */
-type Feed = Track | MediaStream;
+export type Feed = Track | MediaStream;
 
 /** One tile's worth of call state, built from either a LiveKit participant or the demo call. */
 interface Entry {
@@ -323,7 +323,7 @@ async function toggleFullscreen(el: HTMLElement | null): Promise<void> {
   else await el.requestFullscreen().catch(() => {});
 }
 
-function VideoView({ feed, mirror }: { feed: Feed; mirror: boolean }) {
+export function VideoView({ feed, mirror }: { feed: Feed; mirror: boolean }) {
   const ref = useRef<HTMLVideoElement>(null);
   useEffect(() => {
     const el = ref.current;
