@@ -8,6 +8,7 @@ import { useSession } from '../../state/session';
 import { useVoice } from '../../state/voice';
 import { GUEST_USERS, isGuest, useGuests, useGuestsInVoice } from '../../state/guests';
 import ProfileTrigger from '../profile/ProfileTrigger';
+import './voice.css';
 import { useMemberMenu } from './MemberMenu';
 
 const NOBODY: string[] = [];
@@ -185,9 +186,7 @@ export default function VoiceChannelView({ channel, theaterOnly = false }: { cha
         <span className="muted cv-voice-count" style={{ fontSize: 12 }}>{entries.length} in call</span>
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
           {inCall && status === 'connecting' && <span className="muted">Connecting…</span>}
-          {inCall
-            ? <button className="danger" onClick={() => void leave()}>Leave voice</button>
-            : <button className="primary" onClick={() => void join(channel.serverId, channel.id)}>Join voice</button>}
+          {inCall && <button className="danger" onClick={() => void leave()}>Leave voice</button>}
         </div>
       </header>
 
@@ -197,7 +196,10 @@ export default function VoiceChannelView({ channel, theaterOnly = false }: { cha
 
       <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
         <div ref={stageRef} style={{ flex: 1, minWidth: 0, overflow: 'auto', padding: 16 }}>
-          {entries.length === 0
+          {!inCall
+            ? <JoinPanel channelName={channel.name} people={entries.map((e) => users.get(e.id)).filter((u): u is User => !!u)}
+                onJoin={() => void join(channel.serverId, channel.id)} />
+            : entries.length === 0
             ? <div className="muted" style={{ margin: 'auto', textAlign: 'center', paddingTop: 40 }}>Nobody is in this voice channel yet.</div>
             : theaterLayout || (() => {
               // the tiles share the whole stage: the grid picks the column count that gives the biggest pictures
@@ -212,6 +214,27 @@ export default function VoiceChannelView({ channel, theaterOnly = false }: { cha
         </div>
       </div>
       {menu.element}
+    </div>
+  );
+}
+
+/** Before you join: who is already talking, and one big way in. */
+function JoinPanel({ channelName, people, onJoin }: { channelName: string; people: User[]; onJoin: () => void }) {
+  const names = people.map((u) => u.displayName || u.username);
+  const who = names.length === 0 ? `Nobody is in ${channelName} yet.`
+    : names.length === 1 ? `${names[0]} is in ${channelName}.`
+    : names.length <= 3 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]} are in ${channelName}.`
+    : `${names.slice(0, 2).join(', ')} and ${names.length - 2} others are in ${channelName}.`;
+  return (
+    <div className="cv-join">
+      {people.length > 0 && (
+        <div className="cv-join-faces" aria-hidden="true">
+          {people.slice(0, 6).map((u) => <Avatar key={u.id} user={u} size={56} />)}
+        </div>
+      )}
+      <p className="cv-join-who">{who}</p>
+      <p className="muted cv-join-note">Calls are end-to-end encrypted. You can mute, share your screen or leave from the call controls once you're in.</p>
+      <button type="button" className="primary cv-join-button" onClick={onJoin}>Join voice</button>
     </div>
   );
 }
