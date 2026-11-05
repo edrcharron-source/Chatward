@@ -73,6 +73,8 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTes
   const [recent, setRecent] = useState<[TabId, TabId]>(['text', 'voice']);
   const tab = recent[0];
   const [split, setSplit] = useState(false);
+  // true while the watch party has something playing, so it can be shown as a corner preview when its tab is left
+  const [watchPlaying, setWatchPlaying] = useState(false);
   const [popped, setPopped] = useState<TabId[]>([]);
   const [membersHidden, setMembersHidden] = useState(false);
   const [serverSettingsOpen, setServerSettingsOpen] = useState(false);
@@ -168,7 +170,7 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTes
       case 'watch':
         // Voice channels have no message key of their own, so the watch party rides the text chat's key.
         return callChannelId && text
-          ? <div className="cw-tab-scroll"><WatchPartyPanel key={`watch-${callChannelId}`} callChannelId={callChannelId} keyChannelId={text.id} /></div>
+          ? <div className="cw-tab-scroll"><WatchPartyPanel key={`watch-${callChannelId}`} callChannelId={callChannelId} keyChannelId={text.id} onActiveChange={setWatchPlaying} /></div>
           : (
             <Empty>
               <p>Join the voice chat to start or join a watch party.</p>
@@ -283,7 +285,9 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTes
   const [watchOpened, setWatchOpened] = useState(false);
   const watchOn = !isPopped('watch') && (split ? leftTab === 'watch' || rightTab === 'watch' : tab === 'watch');
   useEffect(() => { if (watchOn) setWatchOpened(true); }, [watchOn]);
-  const watchPlace: WatchPane['place'] = !watchOn ? null : split ? (leftTab === 'watch' ? 'left' : 'right') : 'only';
+  // Playing while its tab is left: the panel shows as a small corner preview, and clicking it goes back to the tab.
+  const watchPlace: WatchPane['place'] = watchOn ? (split ? (leftTab === 'watch' ? 'left' : 'right') : 'only') : null;
+  const watchMini = watchOpened && !watchOn && !isPopped('watch') && watchPlaying;
   const sidePane = (t: TabId, shown: boolean): SidePane => ({ id: t, label: label(t), shown, node: shown ? slot(t) : null });
   const main = (
     <main className="cw-tabs-main" data-region="main">
@@ -291,7 +295,7 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTes
         split={split}
         left={sidePane(split ? leftTab : tab, (split ? leftTab : tab) !== 'watch' || isPopped('watch'))}
         right={sidePane(rightTab, split && (rightTab !== 'watch' || isPopped('watch')))}
-        watch={{ place: watchPlace, node: watchOpened && !isPopped('watch') ? pane('watch') : null }}
+        watch={{ place: watchPlace ?? (watchMini ? 'mini' : null), node: watchOpened && !isPopped('watch') ? pane('watch') : null, onExpand: () => selectTab('watch', false) }}
       />
     </main>
   );
@@ -400,7 +404,7 @@ function Empty({ children }: { children: ReactNode }) {
 /** One pane of the main area. `shown` is false when its tab is hidden here (the watch party, or the right side when not split). */
 interface SidePane { id: TabId; label: string; shown: boolean; node: ReactNode }
 /** The watch party's panel: where it is shown (null = hidden), and its content. */
-interface WatchPane { place: 'left' | 'right' | 'only' | null; node: ReactNode }
+interface WatchPane { place: 'left' | 'right' | 'only' | 'mini' | null; node: ReactNode; onExpand: () => void }
 
 /**
  * The main area: one pane, or two side by side (text on the left, voice on the right, with a divider to drag or use the
@@ -408,6 +412,7 @@ interface WatchPane { place: 'left' | 'right' | 'only' | null; node: ReactNode }
  * or off only changes what is shown, and never unmounts the watch party. The watch party is hidden, not unmounted.
  */
 function TabStage({ split, left, right, watch }: { split: boolean; left: SidePane; right: SidePane; watch: WatchPane }) {
+  const mini = watch.place === 'mini';
   // the saved ratio is the left side's share of the width
   const saved = useSettings((s) => s.splitRatio);
   const set = useSettings((s) => s.set);
@@ -458,7 +463,8 @@ function TabStage({ split, left, right, watch }: { split: boolean; left: SidePan
         />
       )}
       <section className="cw-split-pane" aria-label={right.label} style={{ gridColumn: 3, gridRow: 1, display: show(split && right.shown) }}>{right.node}</section>
-      <section className="cw-split-pane" aria-label="Watch together" style={{ gridColumn: watch.place === 'right' ? 3 : 1, gridRow: 1, display: show(watch.place !== null) }}>
+      <section className={`cw-split-pane${mini ? ' cw-watch-mini' : ''}`} aria-label="Watch together" style={{ gridColumn: watch.place === 'right' ? 3 : 1, gridRow: 1, display: show(watch.place !== null) }}>
+        {mini && <button type="button" className="cw-watch-mini-open" onClick={watch.onExpand}>Watch together</button>}
         {watch.node}
       </section>
     </div>

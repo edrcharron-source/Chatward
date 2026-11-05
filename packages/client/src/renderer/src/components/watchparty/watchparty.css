@@ -151,3 +151,27 @@
 .watch-party-queue { list-style: decimal inside; margin: 6px 0 0; padding: 0; font-size: 13px; display: flex; flex-direction: column; gap: 4px; }
 .watch-party-queue li { display: flex; align-items: center; gap: 8px; }
 .watch-party-queue li span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Corner preview: the watch party keeps playing here while another tab is open (TabsLayout's TabStage). Only the video
+   and a button back to the tab show. Fixed to the window's bottom-right corner, above the tabs. */
+.cw-watch-mini {
+  position: fixed; right: 16px; bottom: 16px; width: min(320px, calc(100vw - 32px)); z-index: 60;
+  border-radius: 8px; overflow: hidden; background: #000; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+.cw-watch-mini .watch-party { padding: 0; }
+.cw-watch-mini .watch-party-head,
+.cw-watch-mini .watch-party-bar,
+.cw-watch-mini .watch-party-empty,
+.cw-watch-mini .watch-party-now,
+.cw-watch-mini .watch-party-queue,
+.cw-watch-mini .watch-party-form,
+.cw-watch-mini .watch-party-error,
+.cw-watch-mini .watch-party-popped { display: none; }
+.cw-watch-mini .watch-party-frame { aspect-ratio: 16 / 9; }
+.cw-watch-mini .watch-party-frame iframe,
+.cw-watch-mini .watch-party-frame video { width: 100%; height: 100%; }
+.cw-watch-mini-open {
+  position: absolute; top: 6px; left: 6px; z-index: 1; font-size: 12px; padding: 3px 8px; cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.4); border-radius: 4px; background: rgba(0, 0, 0, 0.7); color: #fff;
+}
+.cw-watch-mini-open:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
