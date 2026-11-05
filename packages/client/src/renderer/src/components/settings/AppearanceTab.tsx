@@ -28,6 +28,7 @@ export default function AppearanceTab() {
   const skin = useSettings((s) => s.skin);
   const layout = useSettings((s) => s.layout);
   const confirmDeleteMessages = useSettings((s) => s.confirmDeleteMessages);
+  const animatedBackgrounds = useSettings((s) => s.animatedBackgrounds);
   const set = useSettings((s) => s.set);
   const choices = [PLAIN_SKIN, ...SKINS];
   // An unknown id counts as no skin, so it shows as Plain.
@@ -73,6 +74,9 @@ export default function AppearanceTab() {
               {choices.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
             </select>
           </label>
+          <Toggle label="Animated backgrounds"
+            hint="The Lebserver skin's black hole on the sign-in screen. It holds still when your system is set to reduce motion."
+            checked={animatedBackgrounds} onChange={(on) => set({ animatedBackgrounds: on })} />
         </Section>
       )}
     </>

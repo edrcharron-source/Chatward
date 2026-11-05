@@ -32,6 +32,14 @@ The full plan lives in the project's "Chatward skins plan" doc. This file is the
 - The choice is the `skin` setting: one skin at a time, `''` for none, and an unknown id counts as none. It is saved
   locally and never sent to the server. The watch-party popout follows it too.
 
+## Lebserver skin and lebai
+
+The Lebserver skin matches lebai on lebserver: its palette, hard offset shadows and JetBrains Mono for names, labels and
+buttons, with message text and hints in a plain sans (`--lb-read`) so long text stays easy to read. The sign-in screen
+shows lebai's LEBSERVER wordmark and its ASCII black hole (`components/lebai/LebaiBlackHole.tsx`, lebai's own photon
+tracer). It is decoration only (aria-hidden, no controls), shows only under this skin in the dark theme, stops while the
+window is hidden, holds still under reduced motion, and can be turned off with Settings > Appearance > Animated backgrounds.
+
 ## Proving a change is visual-only
 
 `npm run visual:capture -w @chatward/client -- <out dir> [app dir]` drives the built app in demo mode (under
