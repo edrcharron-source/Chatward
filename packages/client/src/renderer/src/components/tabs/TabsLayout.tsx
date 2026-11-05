@@ -312,7 +312,8 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTes
   const windows = (
     <>
       {popped.map((t) => (
-        <PopoutWindow key={t} id={t} title={`Chatward · ${label(t)}`} onClose={() => bringBack(t)}>
+        <PopoutWindow key={t} id={t} title={`Chatward · ${label(t)}`} onClose={() => bringBack(t)}
+          shellClass={frame === 'orbit' ? 'orbit-shell' : undefined} backdrop={frame === 'orbit' ? <OrbitBackdrop /> : null}>
           {pane(t)}
         </PopoutWindow>
       ))}

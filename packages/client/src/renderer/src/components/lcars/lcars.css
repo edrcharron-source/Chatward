@@ -12,12 +12,17 @@
 .cw-app:has(> .cw-app-body [data-layout='lcars']) > .cw-titlebar,
 .cw-app:has(> .cw-app-body [data-layout='lcars']) > .cw-powered { display: none; }
 
-.lcars-shell {
+/* The frame's colour and size tokens sit on :root, not on .lcars-shell, so a popped-out tab (drawn in its own window,
+   outside the shell) gets the same colours. The light values are in skins/lcars/skin.css. */
+:root {
   --lc-frame: #4a9ee8; --lc-live: #f5a54a; --lc-alert: #e5484d; --lc-text: #cdd6ff;
   --lc-ground: #000; --lc-ink: #000; --lc-chip: #000; --lc-off: #2a4a6b;
   --lc-font: 'Antonio', 'Bahnschrift SemiCondensed', 'Bahnschrift', 'Arial Narrow', sans-serif;
   --lc-rail: 150px; --lc-top: 30px; --lc-bottom: 40px; --lc-gap: 4px; --lc-pad: 12px;
   --lc-outer: 60px; --lc-inner: 22px; --lc-arm: 96px;
+}
+
+.lcars-shell {
   flex: 1; min-height: 0; display: grid; background: var(--lc-ground);
   grid-template-columns: var(--lc-rail) minmax(0, 1fr);
   grid-template-rows: var(--lc-top) minmax(0, 1fr) var(--lc-bottom);

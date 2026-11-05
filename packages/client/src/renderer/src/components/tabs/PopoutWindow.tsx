@@ -36,11 +36,17 @@ function copyRootAttributes(from: Document, to: Document) {
   }
 }
 
-/** Draws `children` in their own window while mounted. `onClose` runs when the user closes that window. */
-export function PopoutWindow({ id, title, onClose, children }: {
+/**
+ * Draws `children` in their own window while mounted. `onClose` runs when the user closes that window.
+ * `shellClass` and `backdrop` come from the layout the tab was popped out of, so layout-specific skin styling
+ * (for example Orbit's background) reaches the pop-out too.
+ */
+export function PopoutWindow({ id, title, onClose, shellClass, backdrop, children }: {
   id: string;
   title: string;
   onClose: () => void;
+  shellClass?: string;
+  backdrop?: ReactNode;
   children: ReactNode;
 }) {
   const [container, setContainer] = useState<HTMLElement | null>(null);
@@ -97,7 +103,8 @@ export function PopoutWindow({ id, title, onClose, children }: {
 
   // Its own confirm provider, so a question asked from this window appears inside it rather than in the main window.
   return container ? createPortal(
-    <div className="cw-popout">
+    <div className={shellClass ? `cw-popout ${shellClass}` : 'cw-popout'}>
+      {backdrop}
       <TitleBar title={title} />
       <MediaContextMenu />
       <ConfirmProvider container={container}>{children}</ConfirmProvider>
