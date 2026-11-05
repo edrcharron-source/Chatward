@@ -13,7 +13,7 @@ The server can also serve Chatward as a web app. It's the desktop app's page bui
 - **Keys** (device keys and the message vault) live in the browser's IndexedDB. Each value is encrypted with an AES-GCM key that the browser created as non-extractable, which stands in for Windows safeStorage. Each browser or home-screen app is its own device. If Safari's website data is cleared, that device is gone and the app signs in as a new device.
 - **Server address:** always the address the page was opened from, so the sign-in screen has no server field and no demo mode.
 - **Not available:** screen sharing on iPhone (Safari can't share a screen), Spotify, and installer updates (the page updates with the server).
-- **Phone layout:** at 700px wide or narrower, the tabs layout shows one tab at a time with the tab bar along the bottom, and the member list, your status and the call controls in a "People" drawer.
+- **Phone layout:** at 700px wide or narrower, the tabs layout shows one tab at a time with the tab bar along the bottom, and the member list, your status and the call controls in a "People" drawer. The message box is one rounded bar (+ to attach, GIF, emoji and a send arrow), and GIF and emoji open as one full-width panel under it, where the keyboard was, with Emoji / GIFs / Klipy tabs. `npm run phone:shots -w @chatward/client -- <out dir>` (under xvfb-run on Linux) takes phone-size screenshots of it in each skin.
 
 ## Installing on an iPhone
 

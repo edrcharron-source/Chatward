@@ -205,3 +205,22 @@
   .cv-composer { margin: 0 8px 8px; }
 }
 .cv-retry { margin-left: 8px; padding: 2px 10px; font-size: 13px; }
+
+/* Phone (web app): the message box is one rounded bar, like a phone messaging app: + to attach, the box, then GIF,
+   emoji and a round send arrow, all on the one line. Rounding follows the skin (square skins stay square). */
+.cv-composer.cv-composer-phone {
+  margin: 0 8px 8px; padding: 3px 4px 3px 6px; border-radius: min(calc(var(--radius) * 2), 26px);
+}
+.cv-composer-phone .cv-row { --cv-h: 40px; gap: 2px; align-items: flex-end; }
+.cv-composer-phone .cv-row > button.icon { width: 38px; padding: 0; color: var(--text-muted); }
+.cv-composer-phone .cv-input { padding: 9px 4px; line-height: 1.35; max-height: 132px; }
+.cv-composer-phone .media-gif-btn { width: auto; min-width: 38px; }
+.cv-composer-phone .media-gif-btn:not(:has(svg)) { font-size: 10px; padding: 1px 4px; height: 22px; min-height: 0; align-self: center; margin: 0 4px; width: auto; min-width: 0; }
+.cv-composer-phone .cv-send-icon {
+  width: 34px; height: 34px; min-height: 0; padding: 0; margin: 3px 0 3px 2px; flex: none;
+  border-radius: min(var(--radius), 17px);
+}
+.cv-composer-phone .cv-send-icon:disabled { opacity: .35; }
+/* The bar itself is the field on a phone, so the box inside it drops any well or rule a skin gives text fields. */
+:root .cv-composer.cv-composer-phone textarea.cv-input,
+:root .cv-composer.cv-composer-phone textarea.cv-input:focus { background: transparent; border-color: transparent; box-shadow: none; outline: none; }

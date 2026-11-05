@@ -14,7 +14,7 @@ function getEmojiDataUrl(): Promise<string> {
   return emojiDataUrl;
 }
 
-function EmojiPanel({ onPick }: { onPick: (emoji: string) => void }) {
+export function EmojiPanel({ onPick }: { onPick: (emoji: string) => void }) {
   const host = useRef<HTMLDivElement>(null);
   const pickRef = useRef(onPick);
   pickRef.current = onPick;

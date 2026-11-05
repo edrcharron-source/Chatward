@@ -45,3 +45,8 @@
   input, textarea, select { font-size: 16px; }
   html, body { overscroll-behavior: none; }
 }
+
+/* While the emoji and GIF panel is open under the message box, it takes the bottom of the screen like the keyboard
+   does, so the tab bar and the "powered by" strip step aside. */
+.cw-phone:has(.media-sheet) > .cw-phone-bottom { display: none; }
+.cw-app:has(.media-sheet) > .cw-powered { display: none; }
