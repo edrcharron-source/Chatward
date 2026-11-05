@@ -11,6 +11,8 @@ export interface Settings {
   layout: 'tabs' | 'classic' | 'lcars' | 'orbit';
   /** tabs layout split view: share of the width the left tab takes, 0.2..0.8 */
   splitRatio: number;
+  /** tabs layout: where the Watch together corner player was left (x, y, width in window pixels); null = the corner */
+  watchMiniBox: { x: number; y: number; w: number } | null;
   /** tabs layout: the tab bar's order, by tab id; unknown ids are dropped and missing ones go at the end */
   tabOrder: string[];
   inputDeviceId: string;   // '' = default
@@ -41,7 +43,7 @@ export interface Settings {
 
 const LS = 'chatward.settings';
 const defaults = {
-  theme: 'dark' as const, skin: 'lebserver', layout: 'tabs' as Settings['layout'], splitRatio: 0.5, tabOrder: [] as string[], inputDeviceId: '', outputDeviceId: '', cameraDeviceId: '',
+  theme: 'dark' as const, skin: 'lebserver', layout: 'tabs' as Settings['layout'], splitRatio: 0.5, watchMiniBox: null as Settings['watchMiniBox'], tabOrder: [] as string[], inputDeviceId: '', outputDeviceId: '', cameraDeviceId: '',
   masterVolume: 1, micGain: 1, noiseSuppression: true, echoCancellation: true,
   messageSounds: true, mutedChannels: [] as string[], voiceJoinLeaveSounds: true, silenceAll: false, soundVolume: 0.6,
   autoLoadEmbeds: false, linkPreviews: true, confirmDeleteMessages: true, userVolumes: {} as Record<string, number>, mutedUsers: {} as Record<string, boolean>,

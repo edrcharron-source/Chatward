@@ -18,6 +18,7 @@ import { PopoutWindow } from './PopoutWindow';
 import LcarsLayout from '../lcars/LcarsLayout';
 import { OrbitBackdrop, OrbitMark, OrbitWindowButtons } from '../orbit/OrbitFrame';
 import MysteryButton from '../mystery/MysteryButton';
+import { useFloatingBox } from '../floating/useFloatingBox';
 import './tabs.css';
 
 export type TabId = 'text' | 'voice' | 'watch' | 'vault';
@@ -416,6 +417,8 @@ function TabStage({ split, left, right, watch }: { split: boolean; left: SidePan
   // the saved ratio is the left side's share of the width
   const saved = useSettings((s) => s.splitRatio);
   const set = useSettings((s) => s.set);
+  // the corner player's place and size, kept while it is shown as a preview
+  const miniBox = useFloatingBox(useSettings((s) => s.watchMiniBox), (b) => set({ watchMiniBox: b }));
   const [ratio, setRatio] = useState(() => clampSplit(saved));
   const box = useRef<HTMLDivElement>(null);
   const latest = useRef(ratio);
@@ -463,9 +466,20 @@ function TabStage({ split, left, right, watch }: { split: boolean; left: SidePan
         />
       )}
       <section className="cw-split-pane" aria-label={right.label} style={{ gridColumn: 3, gridRow: 1, display: show(split && right.shown) }}>{right.node}</section>
-      <section className={`cw-split-pane${mini ? ' cw-watch-mini' : ''}`} aria-label="Watch together" style={{ gridColumn: watch.place === 'right' ? 3 : 1, gridRow: 1, display: show(watch.place !== null) }}>
-        {mini && <button type="button" className="cw-watch-mini-open" onClick={watch.onExpand}>Watch together</button>}
+      <section className={`cw-split-pane${mini ? ' cw-watch-mini' : ''}`} aria-label="Watch together"
+        style={mini
+          ? { left: miniBox.box.x, top: miniBox.box.y, width: miniBox.box.w, display: show(true) }
+          : { gridColumn: watch.place === 'right' ? 3 : 1, gridRow: 1, display: show(watch.place !== null) }}>
+        {mini && (
+          <div className="cw-watch-mini-bar" role="button" tabIndex={0} aria-label="Watch together. Drag to move, click to open"
+            title="Drag to move. Click to open Watch together." {...miniBox.bar}
+            onClick={() => { if (!miniBox.consumeDrag()) watch.onExpand(); }}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); watch.onExpand(); } }}>
+            Watch together
+          </div>
+        )}
         {watch.node}
+        {mini && <div className="cw-watch-mini-grip" title="Drag to resize" aria-hidden="true" {...miniBox.grip} />}
       </section>
     </div>
   );
