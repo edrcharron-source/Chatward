@@ -147,13 +147,54 @@ export function clearLeftoverVoiceSlot(): void {
   leftoverClear = api.post('/api/voice/clear').then(() => {}, (e) => console.warn('could not clear leftover voice slot', e));
 }
 
+/** localStorage key for a call carried over to a new window (see handOffCallForWindowSwap). */
+const CARRY_KEY = 'chatward.carry-call';
+/** The new window must pick the call up this soon after the old one hands it over. */
+const CARRY_MAX_AGE_MS = 10_000;
+/** True while this window hands its call to a new one, so closing it does not end the call on the server. */
+let handingOff = false;
+
+/**
+ * The layout change may swap the desktop window for a new one (LCARS needs a see-through window, see lcars/shapedWindow).
+ * Remember the call so the new window joins it again, and keep this window from ending the call as it closes.
+ * When no swap follows, the marker just goes stale and is ignored.
+ */
+export function handOffCallForWindowSwap(): void {
+  const { channelId, serverId, muted, deafened } = useVoice.getState();
+  if (!channelId || !serverId || isDemo()) return;
+  try { localStorage.setItem(CARRY_KEY, JSON.stringify({ serverId, channelId, muted, deafened, at: Date.now() })); } catch { /* the call just ends with the window */ }
+  handingOff = true;
+  // The swap happens well inside this time; after it, a normal close should end the call again.
+  setTimeout(() => { handingOff = false; }, 5000);
+}
+
+/**
+ * First connection of a freshly swapped window: join the call the old window handed over. Returns false when there was
+ * nothing to carry, so the caller clears any leftover slot the usual way.
+ */
+export function resumeCarriedCall(): boolean {
+  let carried: { serverId: string; channelId: string; muted: boolean; deafened: boolean; at: number } | null = null;
+  try {
+    const raw = localStorage.getItem(CARRY_KEY);
+    localStorage.removeItem(CARRY_KEY);
+    carried = raw ? JSON.parse(raw) : null;
+  } catch { carried = null; }
+  if (!carried || Date.now() - carried.at > CARRY_MAX_AGE_MS || useVoice.getState().channelId || isDemo()) return false;
+  useVoice.setState({ muted: !!carried.muted, deafened: !!carried.deafened });
+  // The old window's slot is still on the server, so clear it first, then join as a fresh connection (join waits for the clear).
+  clearLeftoverVoiceSlot();
+  void useVoice.getState().join(carried.serverId, carried.channelId).catch((e) => console.error('could not rejoin the call after a window swap', e));
+  return true;
+}
+
 /**
  * The window is closing, or the app is about to restart to update: end the call now so the server does not keep the slot.
  * Best effort. If the page unloads first, the server's grace timer and the startup clear still cover it.
+ * Not when the window is being swapped for a new one that carries the call (handOffCallForWindowSwap).
  */
 export function leaveCallOnExit(): void {
   const { channelId } = useVoice.getState();
-  if (!channelId || isDemo()) return;
+  if (!channelId || isDemo() || handingOff) return;
   postOnUnload('/api/voice/leave', { channelId });
   void useVoice.getState().leave();
 }
