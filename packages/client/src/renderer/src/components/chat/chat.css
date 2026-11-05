@@ -142,7 +142,14 @@
 .cv-input:focus { border-color: transparent; }
 .cv-send { padding: 8px 14px; }
 /* In a narrow chat (split view, small window) the message box takes a full row of its own above the buttons. */
+/* In a narrow chat (phone, split view) everything stays on one row: the box takes what the buttons leave. Only a very
+   narrow chat gives the box a row of its own above the buttons. */
 @container cv-composer (max-width: 460px) {
+  .cv-row { gap: 2px; }
+  .cv-input { min-width: 0; }
+  .cv-send { padding: 8px 10px; }
+}
+@container cv-composer (max-width: 260px) {
   .cv-row { flex-wrap: wrap; }
   .cv-input { flex: 1 0 100%; order: -1; min-height: calc(3lh + 16px); }
   .cv-send { margin-left: auto; }
