@@ -75,7 +75,7 @@ export default function AppearanceTab() {
             </select>
           </label>
           <Toggle label="Animated backgrounds"
-            hint="The Lebserver skin's black hole on the sign-in screen. It holds still when your system is set to reduce motion."
+            hint="The Lebserver skin's ASCII art: the sign-in black hole, the Workouts ring and the voice meters. It holds still when your system is set to reduce motion."
             checked={animatedBackgrounds} onChange={(on) => set({ animatedBackgrounds: on })} />
         </Section>
       )}
