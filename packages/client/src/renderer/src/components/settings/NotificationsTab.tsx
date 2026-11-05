@@ -8,11 +8,14 @@ const PREVIEWS: { kind: SoundKind; label: string }[] = [
   { kind: 'mention', label: 'Ping' },
   { kind: 'join', label: 'Join' },
   { kind: 'leave', label: 'Leave' },
+  { kind: 'mute', label: 'Mute' },
+  { kind: 'unmute', label: 'Unmute' },
 ];
 
 export default function NotificationsTab() {
   const messageSounds = useSettings((s) => s.messageSounds);
   const voiceJoinLeaveSounds = useSettings((s) => s.voiceJoinLeaveSounds);
+  const muteSounds = useSettings((s) => s.muteSounds);
   const soundVolume = useSettings((s) => s.soundVolume);
   const silenceAll = useSettings((s) => s.silenceAll);
   const mutedChannels = useSettings((s) => s.mutedChannels);
@@ -35,6 +38,8 @@ export default function NotificationsTab() {
           checked={messageSounds} onChange={(on) => set({ messageSounds: on })} />
         <Toggle label="Voice join and leave sounds" hint="A tone when someone joins or leaves the call you are in."
           checked={voiceJoinLeaveSounds} onChange={(on) => set({ voiceJoinLeaveSounds: on })} />
+        <Toggle label="Mute and unmute sounds" hint="A short blip when you mute or unmute your mic in a call."
+          checked={muteSounds} onChange={(on) => set({ muteSounds: on })} />
         <Slider label="Sound volume" value={soundVolume} min={0} max={1} step={0.01}
           format={(v) => `${Math.round(v * 100)}%`} onChange={(v) => set({ soundVolume: v })} />
         <div className="row-actions">

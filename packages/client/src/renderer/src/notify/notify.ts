@@ -9,7 +9,7 @@ import { useSettings } from '../state/settings';
 import { useVoice } from '../state/voice';
 import { popoutHasFocus } from '../components/tabs/PopoutWindow';
 
-export type SoundKind = 'message' | 'mention' | 'join' | 'leave';
+export type SoundKind = 'message' | 'mention' | 'join' | 'leave' | 'mute' | 'unmute';
 
 interface Note { freq: number; start: number; dur: number }
 
@@ -19,6 +19,9 @@ const TONES: Record<SoundKind, Note[]> = {
   mention: [{ freq: 659.25, start: 0, dur: 0.1 }, { freq: 987.77, start: 0.09, dur: 0.1 }, { freq: 1318.51, start: 0.18, dur: 0.2 }],
   join: [{ freq: 523.25, start: 0, dur: 0.12 }, { freq: 783.99, start: 0.1, dur: 0.18 }],
   leave: [{ freq: 783.99, start: 0, dur: 0.12 }, { freq: 523.25, start: 0.1, dur: 0.18 }],
+  // Mute: a short soft falling blip. Unmute: the same blip rising.
+  mute: [{ freq: 600, start: 0, dur: 0.07 }, { freq: 400, start: 0.06, dur: 0.1 }],
+  unmute: [{ freq: 400, start: 0, dur: 0.07 }, { freq: 600, start: 0.06, dur: 0.1 }],
 };
 
 let ctx: AudioContext | null = null;
@@ -95,12 +98,25 @@ function onVoiceState(channelId: string, userIds: string[]) {
 }
 
 export function installNotifications(): () => void {
+  // Mute and unmute blips follow the call's mute state, however it changed (button, deafen, shortcut).
+  let wasMuted = useVoice.getState().muted;
+  let wasIn = useVoice.getState().channelId;
+  const unsubVoice = useVoice.subscribe((v) => {
+    const joinedOrLeft = v.channelId !== wasIn;
+    const changed = v.muted !== wasMuted;
+    wasIn = v.channelId;
+    wasMuted = v.muted;
+    if (joinedOrLeft || !changed || !v.channelId) return;
+    const { muteSounds, silenceAll } = useSettings.getState();
+    if (muteSounds && !silenceAll) playSound(v.muted ? 'mute' : 'unmute');
+  });
   for (const b of useSession.getState().servers) {
     for (const c of b.channels) occupants[c.id] = useSession.getState().voiceOccupants[c.id] ?? [];
   }
-  return onFrame((f) => {
+  const unsubFrames = onFrame((f) => {
     // demo chatter guests (state/guests.ts) talk often, so their messages make no sound or flash
     if (f.t === 'message.new') void decryptMessage(f.message).catch(() => null).then((p) => { if (!p?.chatter) onNewMessage(f.message, p); });
     else if (f.t === 'voice.state') onVoiceState(f.channelId, f.userIds);
   });
+  return () => { unsubVoice(); unsubFrames(); };
 }
