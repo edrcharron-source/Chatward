@@ -25,6 +25,7 @@ import { JellyfinBrowser, useJellyfinEnabled } from './components/jellyfin/Jelly
 import TestConsole from './components/testconsole/TestConsole';
 import MysteryButton from './components/mystery/MysteryButton';
 import TabsLayout from './components/tabs/TabsLayout';
+import { usePhone } from './web/usePhone';
 import DemoBanner from './demo/DemoBanner';
 import UpdateBanner from './components/updates/UpdateBanner';
 import DeviceAlertBanner from './components/devices/DeviceAlertBanner';
@@ -87,7 +88,10 @@ function Shell() {
   const [moviesOpen, setMoviesOpen] = useState(false);
   const jellyfinEnabled = useJellyfinEnabled();
   const [vaultOpen, setVaultOpen] = useState(false);
-  const layout = useSettings((s) => s.layout);
+  // Phones always get the tabs layout, which has a phone form (components/tabs/phone.css); the other layouts need a wide window.
+  const phone = usePhone();
+  const chosenLayout = useSettings((s) => s.layout);
+  const layout = phone ? 'tabs' : chosenLayout;
   const { servers, activeServerId, activeChannelId } = useSession();
   const bundle = servers.find((s) => s.server.id === activeServerId);
   const channel = bundle?.channels.find((c) => c.id === activeChannelId);

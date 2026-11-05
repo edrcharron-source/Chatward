@@ -70,6 +70,9 @@ async function walk(page: Page, run: Run, shoot: (name: string) => Promise<void>
   // The first skin starts the app cold, and on a loaded CI runner the sign-in screen can still be moving (fonts
   // loading) when the first probe's 3s budget runs out. Wait for it to settle first, as every screenshot does.
   await settle(page);
+  // A cold start can still be laying out after fonts load (the window is new and the runner busy), so give the first
+  // button up to 15s to be shown and still before its probe gets the usual 3s. A button that never settles still fails.
+  await byId('auth.try-demo').find(page).click({ trial: true, timeout: 15_000 }).catch(() => {});
   await probe(page, 'auth.try-demo', run);
   await controls(page, 'auth', run);
   await shoot('auth');

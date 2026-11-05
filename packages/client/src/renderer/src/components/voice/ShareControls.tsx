@@ -3,6 +3,9 @@ import { isDemo } from '../../demo';
 import { useVoice } from '../../state/voice';
 import PixelIcon from '../icons/PixelIcon';
 import ScreenPicker from './ScreenPicker';
+import { canShareScreen } from '../../web/bridge';
+
+const canShare = !__CHATWARD_BUILD__.web || canShareScreen();
 import { setScreenShareOptions, type ScreenShareOptions } from './media';
 
 type Pending = 'camera' | 'screen' | null;
@@ -65,6 +68,8 @@ export default function ShareControls({ labelled = false, words = false }: { lab
           type="button"
           aria-pressed={screenOn}
           aria-label={screenOn ? 'Stop sharing' : 'Share screen'}
+          // iPhone Safari cannot share a screen, so the web app hides the button there.
+          style={canShare ? undefined : { display: 'none' }}
           title={screenOn ? 'Stop sharing' : 'Share screen'}
           disabled={disabled}
           className={[labelled ? 'lcars-seg' : '', screenOn ? 'danger' : ''].filter(Boolean).join(' ') || undefined}

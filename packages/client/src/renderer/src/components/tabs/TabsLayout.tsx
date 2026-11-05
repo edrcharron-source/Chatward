@@ -10,6 +10,7 @@ import { useScreenShare } from '../voice/useScreenShare';
 import { useFloatingBox } from '../float/useFloatingBox';
 import VoiceDock from '../voice/VoiceDock';
 import VaultView from '../vault/VaultView';
+import WorkoutsView from '../workouts/WorkoutsView';
 import { WatchPartyPanel } from '../watchparty';
 import MemberList from '../servers/MemberList';
 import StatusPicker from '../servers/StatusPicker';
@@ -21,16 +22,27 @@ import { PopoutWindow } from './PopoutWindow';
 import LcarsLayout from '../lcars/LcarsLayout';
 import { OrbitBackdrop, OrbitMark, OrbitWindowButtons } from '../orbit/OrbitFrame';
 import MysteryButton from '../mystery/MysteryButton';
+import { usePhone } from '../../web/usePhone';
 import './tabs.css';
+import './phone.css';
 
-export type TabId = 'text' | 'voice' | 'watch' | 'vault';
+export type TabId = 'text' | 'voice' | 'watch' | 'vault' | 'workouts';
 
 const TABS: Array<{ id: TabId; label: string; icon: PixelIconName }> = [
   { id: 'text', label: 'Text', icon: 'text' },
   { id: 'voice', label: 'Voice', icon: 'voice' },
   { id: 'watch', label: 'Watch together', icon: 'watch' },
   { id: 'vault', label: 'Vault', icon: 'vault' },
+  { id: 'workouts', label: 'Workouts', icon: 'crown' },
 ];
+
+/** A tab named in the address (?tab=workouts), which notifications open the app with. */
+function tabFromUrl(url: string): TabId | null {
+  try {
+    const t = new URL(url, location.href).searchParams.get('tab');
+    return TABS.some((x) => x.id === t) ? (t as TabId) : null;
+  } catch { return null; }
+}
 
 /** The tabs in the order the user dragged them into. */
 function orderTabs(saved: unknown): typeof TABS {
@@ -73,7 +85,21 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTes
   const theaterKey = useVoice((s) => s.theaterKey);
   const join = useVoice((s) => s.join);
   // the last two tabs picked, newest first: the open tab is the first, and the split view shows both
-  const [recent, setRecent] = useState<[TabId, TabId]>(['text', 'voice']);
+  const [recent, setRecent] = useState<[TabId, TabId]>(() => {
+    const first = tabFromUrl(location.href);
+    return first && first !== 'text' ? [first, 'text'] : ['text', 'voice'];
+  });
+  // A tapped notification opens its tab (the service worker posts the address when the app is already open).
+  useEffect(() => {
+    const sw = 'serviceWorker' in navigator ? navigator.serviceWorker : null;
+    if (!sw) return;
+    const onMessage = (e: MessageEvent) => {
+      const t = e.data?.type === 'open' ? tabFromUrl(String(e.data.url)) : null;
+      if (t) setRecent((r) => (r[0] === t ? r : [t, r[0]]));
+    };
+    sw.addEventListener('message', onMessage);
+    return () => sw.removeEventListener('message', onMessage);
+  }, []);
   const tab = recent[0];
   const [split, setSplit] = useState(false);
   // true while the watch party has something playing, so it can be shown as a corner preview when its tab is left
@@ -81,6 +107,10 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTes
   const [popped, setPopped] = useState<TabId[]>([]);
   const [membersHidden, setMembersHidden] = useState(false);
   const [serverSettingsOpen, setServerSettingsOpen] = useState(false);
+  // Phones: one tab at a time with the tab bar along the bottom, and the member list in a drawer.
+  const phone = usePhone();
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  useEffect(() => { if (phone) setSplit(false); }, [phone]);
   const savedOrder = useSettings((s) => s.tabOrder);
   const setSettings = useSettings((s) => s.set);
   const tabs = orderTabs(savedOrder);
@@ -180,6 +210,8 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTes
               {joinVoice && <button type="button" className="primary" onClick={joinVoice}>Join voice</button>}
             </Empty>
           );
+      case 'workouts':
+        return <WorkoutsView />;
       case 'vault':
         return <VaultView key={bundle.server.id} serverId={bundle.server.id} keyChannelId={text?.id} canModerate={isAdmin(me)} />;
     }
@@ -243,7 +275,7 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTes
           key={t.id}
           data-tab={t.id}
           className={`cw-tab${shownTabs.has(t.id) ? ' active' : ''}${dragging === t.id ? ' dragging' : ''}${dropBefore === t.id ? ' drop-before' : ''}${dropBefore === null && t.id === tabs[tabs.length - 1].id ? ' drop-after' : ''}`}
-          draggable
+          draggable={!phone}
           title={`Shift+click to show beside the open tab. Drag to reorder (or Alt + ${vertical ? 'up/down' : 'arrow'} keys)`}
           onDragStart={(e) => { setDragging(t.id); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', t.id); }}
           onDragEnd={endDrag}
@@ -344,6 +376,52 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTes
   }
 
   const orbit = frame === 'orbit';
+  const side = (className: string) => (
+    <div className={className} data-region="side">
+      {showMembers && bundle && <MemberList serverId={bundle.server.id} members={members} showSpeaking={orbit} />}
+      <section className="cw-me" aria-label="You">
+        <div className="cw-me-head">
+          {user && (
+            <span className="cw-avatar-wrap">
+              <Avatar user={user} size={32} />
+              <span className={`cw-dot ${myStatus}`} aria-hidden="true" />
+            </span>
+          )}
+          <strong className="cw-me-name">{user?.displayName ?? ''}</strong>
+          <StatusPicker />
+        </div>
+        <VoiceDock stacked words={orbit} />
+      </section>
+    </div>
+  );
+
+  if (phone) {
+    // In a call, the people button shows a dot, because the call controls are in the drawer.
+    const inCall = !!callChannelId;
+    return (
+      <div className="cw-tabs-shell cw-phone" data-region="shell" data-layout="phone">
+        <header className="cw-phone-top" data-region="tabs">
+          <strong className="cw-tabs-server">{bundle?.server.name ?? 'Chatward'}</strong>
+          {canOpenServerSettings && (
+            <button type="button" className="icon cw-tool-icon" aria-label="Server settings" onClick={() => setServerSettingsOpen(true)}>
+              <PixelIcon name="gear" size={14} />
+            </button>
+          )}
+          <button type="button" className="icon cw-tool-icon" aria-label="Settings" onClick={onOpenSettings}>
+            <PixelIcon name="gear" size={18} />
+          </button>
+          <button type="button" className={`cw-tool${drawerOpen ? ' active' : ''}`} aria-expanded={drawerOpen} onClick={() => setDrawerOpen((o) => !o)}>
+            People{inCall && <span className="cw-tab-live" aria-label="You are in the call" />}
+          </button>
+        </header>
+        {main}
+        <footer className="cw-phone-bottom">{nav}</footer>
+        {drawerOpen && <div className="cw-phone-scrim" onClick={() => setDrawerOpen(false)} aria-hidden="true" />}
+        {side(`cw-tabs-side cw-phone-drawer${drawerOpen ? ' open' : ''}`)}
+        {windows}
+      </div>
+    );
+  }
   return (
     <div className={`cw-tabs-shell${orbit ? ' orbit-shell' : ''}`} data-region="shell" data-layout={orbit ? 'orbit' : 'tabs'}>
       {orbit && <OrbitBackdrop />}
@@ -383,22 +461,7 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTes
       {main}
 
       {/* the right column: members on top, and your status and call controls in the bottom corner */}
-      <div className="cw-tabs-side" data-region="side">
-        {showMembers && bundle && <MemberList serverId={bundle.server.id} members={members} showSpeaking={orbit} />}
-        <section className="cw-me" aria-label="You">
-          <div className="cw-me-head">
-            {user && (
-              <span className="cw-avatar-wrap">
-                <Avatar user={user} size={32} />
-                <span className={`cw-dot ${myStatus}`} aria-hidden="true" />
-              </span>
-            )}
-            <strong className="cw-me-name">{user?.displayName ?? ''}</strong>
-            <StatusPicker />
-          </div>
-          <VoiceDock stacked words={orbit} />
-        </section>
-      </div>
+      {side('cw-tabs-side')}
 
       {windows}
     </div>
