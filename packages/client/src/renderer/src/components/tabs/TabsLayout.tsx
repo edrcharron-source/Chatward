@@ -10,6 +10,7 @@ import { useScreenShare } from '../voice/useScreenShare';
 import { useFloatingBox } from '../float/useFloatingBox';
 import VoiceDock from '../voice/VoiceDock';
 import VaultView from '../vault/VaultView';
+import WorkoutsView from '../workouts/WorkoutsView';
 import { WatchPartyPanel } from '../watchparty';
 import MemberList from '../servers/MemberList';
 import StatusPicker from '../servers/StatusPicker';
@@ -25,14 +26,23 @@ import { usePhone } from '../../web/usePhone';
 import './tabs.css';
 import './phone.css';
 
-export type TabId = 'text' | 'voice' | 'watch' | 'vault';
+export type TabId = 'text' | 'voice' | 'watch' | 'vault' | 'workouts';
 
 const TABS: Array<{ id: TabId; label: string; icon: PixelIconName }> = [
   { id: 'text', label: 'Text', icon: 'text' },
   { id: 'voice', label: 'Voice', icon: 'voice' },
   { id: 'watch', label: 'Watch together', icon: 'watch' },
   { id: 'vault', label: 'Vault', icon: 'vault' },
+  { id: 'workouts', label: 'Workouts', icon: 'crown' },
 ];
+
+/** A tab named in the address (?tab=workouts), which notifications open the app with. */
+function tabFromUrl(url: string): TabId | null {
+  try {
+    const t = new URL(url, location.href).searchParams.get('tab');
+    return TABS.some((x) => x.id === t) ? (t as TabId) : null;
+  } catch { return null; }
+}
 
 /** The tabs in the order the user dragged them into. */
 function orderTabs(saved: unknown): typeof TABS {
@@ -75,7 +85,21 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTes
   const theaterKey = useVoice((s) => s.theaterKey);
   const join = useVoice((s) => s.join);
   // the last two tabs picked, newest first: the open tab is the first, and the split view shows both
-  const [recent, setRecent] = useState<[TabId, TabId]>(['text', 'voice']);
+  const [recent, setRecent] = useState<[TabId, TabId]>(() => {
+    const first = tabFromUrl(location.href);
+    return first && first !== 'text' ? [first, 'text'] : ['text', 'voice'];
+  });
+  // A tapped notification opens its tab (the service worker posts the address when the app is already open).
+  useEffect(() => {
+    const sw = 'serviceWorker' in navigator ? navigator.serviceWorker : null;
+    if (!sw) return;
+    const onMessage = (e: MessageEvent) => {
+      const t = e.data?.type === 'open' ? tabFromUrl(String(e.data.url)) : null;
+      if (t) setRecent((r) => (r[0] === t ? r : [t, r[0]]));
+    };
+    sw.addEventListener('message', onMessage);
+    return () => sw.removeEventListener('message', onMessage);
+  }, []);
   const tab = recent[0];
   const [split, setSplit] = useState(false);
   // true while the watch party has something playing, so it can be shown as a corner preview when its tab is left
@@ -186,6 +210,8 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTes
               {joinVoice && <button type="button" className="primary" onClick={joinVoice}>Join voice</button>}
             </Empty>
           );
+      case 'workouts':
+        return <WorkoutsView />;
       case 'vault':
         return <VaultView key={bundle.server.id} serverId={bundle.server.id} keyChannelId={text?.id} canModerate={isAdmin(me)} />;
     }
