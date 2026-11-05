@@ -1,4 +1,5 @@
 import { useSettings } from '../../state/settings';
+import { handOffCallForWindowSwap } from '../../state/voice';
 
 /**
  * Keeps the desktop window in step with the layout setting: the LCARS layout gets the shaped window (transparent, no
@@ -12,6 +13,8 @@ export function syncShapedWindow(): void {
   const sync = (layout: string) => {
     const want = layout === 'lcars';
     if (want === last) return;
+    // After startup, a change may swap the window: carry an ongoing call over to the new one.
+    if (last !== undefined) handOffCallForWindowSwap();
     last = want;
     controls.setShaped(want);
   };
