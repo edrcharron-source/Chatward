@@ -120,7 +120,9 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTes
   const [dropBefore, setDropBefore] = useState<TabId | null | undefined>(undefined);
   const tabNav = useRef<HTMLElement>(null);
   // the LCARS rail stacks the tabs top to bottom, so a drop lands above or below a tab rather than left or right of it
-  const vertical = frame === 'lcars';
+  // The plain desktop tabs layout puts the bar down the left side as a rail, with room to name every button.
+  const rail = !frame && !phone;
+  const vertical = frame === 'lcars' || rail;
   // the split view's two tabs sit in the tab bar's order
   const at = (t: TabId) => tabs.findIndex((x) => x.id === t);
   const [leftTab, rightTab] = at(recent[0]) < at(recent[1]) ? recent : [recent[1], recent[0]];
@@ -291,7 +293,7 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTes
             }}>
             <span aria-hidden="true">[</span>
             <PixelIcon name={t.icon} size={14} />
-            <span>{phone ? (t.short ?? t.label) : t.label}</span>
+            <span>{phone || rail ? (t.short ?? t.label) : t.label}</span>
             {t.id === 'text' && textUnread > 0 && !textOnScreen && (
               <span className="cw-badge" aria-label={`${textUnread} unread`}>{textUnread > 99 ? '99+' : textUnread}</span>
             )}
@@ -391,7 +393,7 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTes
           <strong className="cw-me-name">{user?.displayName ?? ''}</strong>
           <StatusPicker />
         </div>
-        <VoiceDock stacked words={orbit} />
+        <VoiceDock stacked words={orbit || rail} />
       </section>
     </div>
   );
@@ -442,9 +444,12 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTes
               {membersHidden ? 'Show members' : 'Hide members'}
             </button>
           )}
-          <MysteryButton className="icon cw-tool-icon" />
-          <button type="button" className="icon cw-tool-icon" title="Feature test console (Ctrl+Shift+T)" aria-label="Feature test console" onClick={onOpenTest}>
-            <PixelIcon name="test" size={16} />
+          {rail
+            ? <MysteryButton className="cw-tool"><span aria-hidden="true">🔪</span><span>Mystery</span></MysteryButton>
+            : <MysteryButton className="icon cw-tool-icon" />}
+          <button type="button" className={rail ? 'cw-tool' : 'icon cw-tool-icon'} title="Feature test console (Ctrl+Shift+T)" aria-label="Feature test console" onClick={onOpenTest}>
+            <PixelIcon name="test" size={rail ? 14 : 16} />
+            {rail && <span>Test console</span>}
           </button>
           {canOpenServerSettings && (
             <button type="button" className="cw-tool" title="Server settings" aria-label="Server settings" onClick={() => setServerSettingsOpen(true)}>
@@ -452,8 +457,9 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTes
               <span>Server</span>
             </button>
           )}
-          <button type="button" className="icon cw-tool-icon" title="Settings" aria-label="Settings" onClick={onOpenSettings}>
-            <PixelIcon name="gear" size={16} />
+          <button type="button" className={rail ? 'cw-tool' : 'icon cw-tool-icon'} title="Settings" aria-label="Settings" onClick={onOpenSettings}>
+            <PixelIcon name="gear" size={rail ? 14 : 16} />
+            {rail && <span>Settings</span>}
           </button>
         </div>
         {orbit && <OrbitWindowButtons />}

@@ -1,0 +1,11 @@
+/* The voice tab before you join: who is in the call and one big Join button, centred on the stage. */
+.cv-join {
+  min-height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 12px; text-align: center; padding: 24px;
+}
+.cv-join-faces { display: flex; }
+.cv-join-faces > * { margin-left: -10px; box-shadow: 0 0 0 3px var(--bg-2); border-radius: 50%; }
+.cv-join-faces > :first-child { margin-left: 0; }
+.cv-join-who { margin: 4px 0 0; font-size: 18px; font-weight: 600; color: var(--text-strong); }
+.cv-join-note { margin: 0; max-width: 46ch; font-size: 13px; }
+.cv-join-button { margin-top: 8px; padding: 12px 28px; font-size: 15px; }
