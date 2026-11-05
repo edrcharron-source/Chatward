@@ -119,6 +119,20 @@ export interface MessagePayload {
   spotifyJams?: { link: string; url: string }[];
   /** An "Invite to Listen Along" card. The host is always the message's author; the card shows their live activity. */
   listenAlong?: true;
+  /** The message this one replies to. The original's author is also in `mentions`, so the reply pings them. */
+  replyTo?: ReplyRef;
+}
+
+/**
+ * A reply's link back to the message it answers. It travels inside the encrypted payload, so the server never learns
+ * who replied to whom. `snippet` is a short copy of the original, shown when the original isn't loaded (or is gone).
+ */
+export interface ReplyRef {
+  messageId: string;
+  authorId: string;
+  /** The original's time, so the app knows how far back to load when jumping to it. */
+  createdAt: number;
+  snippet: string;
 }
 
 /**
