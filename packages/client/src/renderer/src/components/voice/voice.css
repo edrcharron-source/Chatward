@@ -9,3 +9,6 @@
 .cv-join-who { margin: 4px 0 0; font-size: 18px; font-weight: 600; color: var(--text-strong); }
 .cv-join-note { margin: 0; max-width: 46ch; font-size: 13px; }
 .cv-join-button { margin-top: 8px; padding: 12px 28px; font-size: 15px; }
+
+/* Lebserver skin: an ASCII sound meter under the picture that moves while the person talks (lebai/AsciiArt.tsx). */
+.cv-tile-meter { position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%); }

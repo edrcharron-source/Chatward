@@ -8,6 +8,7 @@ import { useSession } from '../../state/session';
 import { useVoice } from '../../state/voice';
 import { GUEST_USERS, isGuest, useGuests, useGuestsInVoice } from '../../state/guests';
 import ProfileTrigger from '../profile/ProfileTrigger';
+import { AsciiMeter, useLebaiArt } from '../lebai/AsciiArt';
 import './voice.css';
 import { useMemberMenu } from './MemberMenu';
 
@@ -265,6 +266,7 @@ function Tile({ user, joined, local, micOff, speaking, screen, video, onMenu, th
   const full = useFullscreen(frame);
   const expanded = full || fill;
   const grows = fill || cell;
+  const art = useLebaiArt();
 
   return (
     <div className="card cv-tile" data-speaking={speaking || undefined} data-local={local || undefined} onContextMenu={onMenu} style={{ padding: 8, display: 'flex', flexDirection: 'column', gap: 8, ...(grows ? { flex: 1, minHeight: 0, minWidth: 0 } : {}) }}>
@@ -286,6 +288,7 @@ function Tile({ user, joined, local, micOff, speaking, screen, video, onMenu, th
           : user
             ? <ProfileTrigger user={user}><Avatar user={user} size={64} /></ProfileTrigger>
             : <Avatar user={user} size={64} />}
+        {!video && art && joined && <div className="cv-tile-meter"><AsciiMeter active={speaking} /></div>}
         <div className="cv-tile-name" style={{ position: 'absolute', left: 8, bottom: 6, fontSize: 12, color: '#fff', textShadow: '0 1px 2px #000' }}>
           <span className="cv-tile-who">{name}{local ? ' (you)' : ''}</span>
           {screen && <span className="cv-tile-state"> · screen</span>}

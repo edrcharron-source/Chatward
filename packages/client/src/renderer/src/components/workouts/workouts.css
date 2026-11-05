@@ -94,3 +94,8 @@
   .wk-milestone-row { flex-wrap: wrap; }
   .wk-milestone-row input:not([type]) { flex-basis: calc(100% - 40px); }
 }
+
+/* Lebserver skin: an ASCII ring beside the streak that fills as this week's plan is logged (lebai/AsciiArt.tsx). */
+.wk-today-side { display: flex; align-items: center; gap: 12px; }
+.wk-ring { position: relative; display: grid; place-items: center; }
+.wk-ring-label { position: absolute; font-weight: 700; color: var(--text-strong); font-size: 13px; }

@@ -7,6 +7,7 @@ import {
 import { api, ApiError } from '../../api/http';
 import Avatar from '../servers/Avatar';
 import { disablePush, enablePush, pushState, testPush, type PushState } from '../../web/push';
+import { AsciiRing, useLebaiArt } from '../lebai/AsciiArt';
 import './workouts.css';
 
 /**
@@ -54,6 +55,7 @@ function CrewPage({ onOpen, onPlan }: { onOpen: (userId: string) => void; onPlan
     return () => clearInterval(t);
   }, [load]);
 
+  const art = useLebaiArt();
   if (!crew) return <p className="muted wk-pad">{error ?? 'Loading…'}</p>;
   const mine = crew.members.find((m) => m.userId === crew.meId);
   const noPlan = mine && mine.week.planned === 0 && mine.week.days.every((d) => d.kind === 'Rest');
@@ -66,7 +68,15 @@ function CrewPage({ onOpen, onPlan }: { onOpen: (userId: string) => void; onPlan
               <div className="wk-eyebrow">Today</div>
               <div className="wk-today-name">{mine.week.todayWorkout}</div>
             </div>
-            <Streak n={mine.week.streak} />
+            <div className="wk-today-side">
+              {art && (
+                <div className="wk-ring" title={`${mine.week.done} of ${mine.week.planned} this week`}>
+                  <AsciiRing done={mine.week.done} planned={mine.week.planned} size={5} />
+                  <span className="wk-ring-label" aria-hidden="true">{mine.week.done}/{mine.week.planned}</span>
+                </div>
+              )}
+              <Streak n={mine.week.streak} />
+            </div>
           </div>
           {noPlan
             ? <p className="muted">Set your weekly plan to start tracking. <button type="button" className="wk-link" onClick={onPlan}>Set my plan</button></p>
