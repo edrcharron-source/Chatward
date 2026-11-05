@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent } from 'react';
-import { EmojiPickerButton, GifPickerButton, GifView } from '../media';
+import { useCallback, useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent } from 'react';
+import { EmojiPickerButton, GifPickerButton, GifView, MediaSheet, type SheetTab } from '../media';
 import ListenAlongButton from '../spotify/ListenAlongButton';
 import type { Member } from '@chatward/shared';
 import { sendMessage, sendTyping, useChat, type Gif } from '../../state/chat';
 import { activeMention, mentionOptions, type MentionOption } from '../../state/mentions';
 import { useSession } from '../../state/session';
+import { usePhone } from '../../web/usePhone';
 
 const MAX_FILES = 10;
 const NO_MEMBERS: Member[] = [];
@@ -31,6 +32,34 @@ export default function Composer({ channelId, channelName, serverId, onSent }: P
   const members = useSession((s) => s.servers.find((b) => b.server.id === serverId)?.members ?? NO_MEMBERS);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  // On a phone the emoji and GIF pickers open as one full-width panel under the message box, where the keyboard was.
+  const phone = usePhone();
+  const [sheet, setSheet] = useState<SheetTab | null>(null);
+  const boxRef = useRef<HTMLDivElement>(null);
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const sheetOpen = phone && sheet !== null;
+  const closeSheet = useCallback(() => setSheet(null), []);
+  // Tapping anywhere else (the messages, the top bar) puts the panel away.
+  useEffect(() => {
+    if (!sheetOpen) return;
+    const doc = boxRef.current?.ownerDocument ?? document;
+    const onDown = (e: PointerEvent) => {
+      const t = e.target as Node;
+      if (!boxRef.current?.contains(t) && !sheetRef.current?.contains(t)) setSheet(null);
+    };
+    doc.addEventListener('pointerdown', onDown);
+    return () => doc.removeEventListener('pointerdown', onDown);
+  }, [sheetOpen]);
+  /** The GIF or emoji button on a phone: opens the panel on that tab, or, when it is already showing, goes back to typing. */
+  const toggleSheet = (tab: SheetTab) => {
+    if (sheet && (sheet === tab || (tab === 'server' && sheet === 'klipy'))) {
+      setSheet(null);
+      inputRef.current?.focus();
+      return;
+    }
+    inputRef.current?.blur(); // the panel takes the keyboard's place
+    setSheet(tab);
+  };
 
   const addFiles = (picked: File[]) => setFiles((cur) => [...cur, ...picked].slice(0, MAX_FILES));
   const canSend = !busy && (text.trim() !== '' || files.length > 0 || gif !== null);
@@ -126,16 +155,27 @@ export default function Composer({ channelId, channelName, serverId, onSent }: P
     const start = el?.selectionStart ?? text.length;
     const end = el?.selectionEnd ?? text.length;
     onChange(text.slice(0, start) + emoji + text.slice(end));
+    const pos = start + emoji.length;
+    setCaret(pos);
     requestAnimationFrame(() => {
-      const pos = start + emoji.length;
-      el?.focus();
+      // With the phone panel open the keyboard stays away, so more emoji can be picked; the caret still moves on.
+      if (!sheetOpen) el?.focus();
       el?.setSelectionRange(pos, pos);
     });
   };
 
+  const keyboardIcon = (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+      <rect x="2" y="6" width="20" height="12" rx="2" />
+      <path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10" />
+    </svg>
+  );
+
   return (
+    <>
     <div
-      className={`cv-composer${dragging ? ' cv-dragging' : ''}`}
+      ref={boxRef}
+      className={`cv-composer${phone ? ' cv-composer-phone' : ''}${dragging ? ' cv-dragging' : ''}`}
       onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
       onDragLeave={() => setDragging(false)}
       onDrop={onDrop}
@@ -182,7 +222,15 @@ export default function Composer({ channelId, channelName, serverId, onSent }: P
         </div>
       )}
       <div className="cv-row">
-        <button className="icon cv-tool" title="Attach files" aria-label="Attach files" onClick={() => fileRef.current?.click()}>📎</button>
+        {phone ? (
+          <button className="icon cv-tool cv-attach" aria-label="Attach files" onClick={() => fileRef.current?.click()}>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+          </button>
+        ) : (
+          <button className="icon cv-tool" title="Attach files" aria-label="Attach files" onClick={() => fileRef.current?.click()}>📎</button>
+        )}
         <input
           ref={fileRef}
           type="file"
@@ -204,13 +252,71 @@ export default function Composer({ channelId, channelName, serverId, onSent }: P
           onSelect={(e) => setCaret(e.currentTarget.selectionStart)}
           onKeyDown={onKeyDown}
           onPaste={onPaste}
+          onFocus={closeSheet}
         />
         <ListenAlongButton channelId={channelId} onError={setError} />
-        <GifPickerButton serverId={serverId} onPick={setGif} />
-        <EmojiPickerButton onPick={insertEmoji} />
-        <button className="primary cv-send" disabled={!canSend} onClick={() => void submit()}>Send</button>
+        {phone ? (
+          <>
+            <button
+              type="button"
+              className="icon media-toolbar-btn media-gif-btn"
+              aria-label={sheet === 'server' || sheet === 'klipy' ? 'Keyboard' : 'GIFs'}
+              aria-expanded={sheet === 'server' || sheet === 'klipy'}
+              onClick={() => toggleSheet('server')}
+            >
+              {sheet === 'server' || sheet === 'klipy' ? keyboardIcon : 'GIF'}
+            </button>
+            <button
+              type="button"
+              className="icon media-toolbar-btn"
+              aria-label={sheet === 'emoji' ? 'Keyboard' : 'Emoji'}
+              aria-expanded={sheet === 'emoji'}
+              onClick={() => toggleSheet('emoji')}
+            >
+              {sheet === 'emoji' ? keyboardIcon : (
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                  <circle cx="12" cy="12" r="10" />
+                  <path d="M8 14s1.5 2 4 2 4-2 4-2" />
+                  <line x1="9" y1="9" x2="9.01" y2="9" />
+                  <line x1="15" y1="9" x2="15.01" y2="9" />
+                </svg>
+              )}
+            </button>
+            <button
+              className="primary cv-send cv-send-icon"
+              aria-label="Send"
+              disabled={!canSend}
+              // keep the keyboard up while sending a run of messages
+              onPointerDown={(e) => e.preventDefault()}
+              onClick={() => void submit()}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M12 19V5M5 12l7-7 7 7" />
+              </svg>
+            </button>
+          </>
+        ) : (
+          <>
+            <GifPickerButton serverId={serverId} onPick={setGif} />
+            <EmojiPickerButton onPick={insertEmoji} />
+            <button className="primary cv-send" disabled={!canSend} onClick={() => void submit()}>Send</button>
+          </>
+        )}
       </div>
     </div>
+    {sheetOpen && (
+      <div ref={sheetRef} className="media-sheet-wrap">
+        <MediaSheet
+          tab={sheet}
+          onTab={setSheet}
+          serverId={serverId}
+          onEmoji={insertEmoji}
+          onGif={(g) => { setGif(g); setSheet(null); }}
+          onClose={closeSheet}
+        />
+      </div>
+    )}
+    </>
   );
 }
 
