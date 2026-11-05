@@ -76,6 +76,52 @@
 }
 .cv-msg:hover .cv-actions, .cv-actions:focus-within { display: flex; }
 
+.cv-actions button.icon { display: inline-grid; place-items: center; }
+
+/* Replies. The quote of the original sits on its own line above the reply, joined to the avatar by a curved line,
+   and clicking it scrolls back to the original. Colours come from the skin's own tokens. */
+.cv-msg.cv-is-reply { flex-wrap: wrap; row-gap: 2px; }
+.cv-reply-quote {
+  position: relative; flex: 0 0 100%; min-width: 0; display: flex; align-items: center; gap: 6px;
+  padding: 0 0 0 50px; margin: 0; height: 20px; min-height: 0; background: transparent; border: 0; box-shadow: none;
+  color: var(--text-muted); font-size: 13px; text-align: left; cursor: pointer; border-radius: 0;
+}
+.cv-reply-spine {
+  position: absolute; left: 17px; top: 9px; width: 26px; height: 12px;
+  border-left: 2px solid var(--text-muted); border-top: 2px solid var(--text-muted);
+  border-top-left-radius: 6px; opacity: .6;
+}
+.cv-reply-quote .cv-avatar { width: 16px; height: 16px; font-size: 9px; flex: none; }
+.cv-reply-name { font-weight: 600; color: var(--text-strong); opacity: .85; white-space: nowrap; flex: none; }
+.cv-reply-me .cv-reply-name { color: var(--accent); opacity: 1; }
+.cv-reply-snippet { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: .9; }
+.cv-reply-quote:hover .cv-reply-snippet, .cv-reply-quote:focus-visible .cv-reply-snippet { color: var(--text-strong); opacity: 1; }
+.cv-reply-quote:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.cv-reply-icon { display: block; }
+
+/* Phones: a message follows the finger when swiped left, and a reply arrow shows at the edge; past the line it lights. */
+.cv-msg { touch-action: pan-y; }
+.cv-msg.cv-swiping { transition: none; user-select: none; }
+.cv-msg:not(.cv-swiping) { transition: transform .18s ease-out; }
+.cv-swipe-reply {
+  position: absolute; top: 50%; width: 28px; height: 28px; margin: -14px 0 0; display: grid; place-items: center;
+  border-radius: 50%; background: var(--bg-3); color: var(--text-muted); pointer-events: none;
+}
+.cv-swipe-reply.cv-swipe-ready { background: var(--accent); color: var(--accent-text); }
+
+/* The message right-click menu reuses the picture menu's look (.media-menu). */
+.cv-msg-menu .cv-msg-menu-danger { color: var(--danger); }
+
+/* "Replying to Name" above the message box. */
+.cv-replybar {
+  display: flex; align-items: center; gap: 8px; margin: -2px -4px 6px; padding: 4px 4px 4px 10px;
+  border-radius: var(--radius-sm); background: var(--bg-1); font-size: 13px; color: var(--text-muted); min-width: 0;
+}
+.cv-replybar-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cv-replybar strong { color: var(--text-strong); }
+.cv-replybar-snippet { opacity: .8; }
+.cv-replybar-x { flex: none; padding: 0 6px; font-size: 16px; line-height: 1; }
+
 .cv-edit { display: flex; flex-direction: column; gap: 4px; }
 .cv-edit-input { width: 100%; resize: vertical; }
 .cv-edit-hint { font-size: 11px; }

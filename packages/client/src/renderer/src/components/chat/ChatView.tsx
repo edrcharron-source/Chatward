@@ -206,13 +206,15 @@ export default function ChatView({ channel }: { channel: Channel }) {
             {chat?.loaded && shown.length === 0 && <div className="cv-empty muted">No messages yet. Say hi 👋</div>}
             {shown.map(({ m, view, authorId }, i) => {
               const before = shown[i - 1];
-              const grouped = !!before && before.authorId === authorId && m.createdAt - before.m.createdAt < GROUP_MS;
+              const payload = view.payload ?? payloads[m.id];
+              // A reply always shows its name and quote, so it never folds into the message before it.
+              const grouped = !!before && before.authorId === authorId && m.createdAt - before.m.createdAt < GROUP_MS && !payload?.replyTo;
               const canDelete = m.authorId === me?.id || myRole === 'owner' || myRole === 'admin';
               return (
                 <MessageItem
                   key={m.id}
                   message={m}
-                  payload={view.payload ?? payloads[m.id]}
+                  payload={payload}
                   author={view.author ?? memberOf(m.authorId)?.user}
                   grouped={grouped}
                   canEdit={m.authorId === me?.id && !view.author}

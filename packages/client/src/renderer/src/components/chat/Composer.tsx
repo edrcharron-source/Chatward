@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent } from 'react';
 import { EmojiPickerButton, GifPickerButton, GifView } from '../media';
 import ListenAlongButton from '../spotify/ListenAlongButton';
-import type { Member } from '@chatward/shared';
-import { sendMessage, sendTyping, useChat, type Gif } from '../../state/chat';
+import type { Member, ReplyRef } from '@chatward/shared';
+import { guestMember } from '../../state/guests';
+import { cancelReply, sendMessage, sendTyping, useChat, type Gif } from '../../state/chat';
 import { activeMention, mentionOptions, type MentionOption } from '../../state/mentions';
 import { useSession } from '../../state/session';
 
@@ -31,6 +32,9 @@ export default function Composer({ channelId, channelName, serverId, onSent }: P
   const members = useSession((s) => s.servers.find((b) => b.server.id === serverId)?.members ?? NO_MEMBERS);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const replyTo = useChat((s) => s.replying[channelId]);
+  // Picking Reply on a message puts the caret in the box, ready to type.
+  useEffect(() => { if (replyTo) inputRef.current?.focus(); }, [replyTo?.messageId]);
 
   const addFiles = (picked: File[]) => setFiles((cur) => [...cur, ...picked].slice(0, MAX_FILES));
   const canSend = !busy && (text.trim() !== '' || files.length > 0 || gif !== null);
@@ -61,8 +65,10 @@ export default function Composer({ channelId, channelName, serverId, onSent }: P
     const sentText = text;
     const sentFiles = files;
     const sentGif = gif;
+    const sentReply = replyTo;
     try {
-      await sendMessage(channelId, { text: sentText.trim(), files: sentFiles, gif: sentGif ?? undefined });
+      await sendMessage(channelId, { text: sentText.trim(), files: sentFiles, gif: sentGif ?? undefined, replyTo: sentReply });
+      if (sentReply && useChat.getState().replying[channelId] === sentReply) cancelReply(channelId);
       // Only remove what was sent. Anything typed, attached or picked while the send was in flight stays.
       const latest = useChat.getState().drafts[channelId] ?? '';
       if (latest.startsWith(sentText)) setDraft(channelId, latest.slice(sentText.length));
@@ -98,6 +104,9 @@ export default function Composer({ channelId, channelName, serverId, onSent }: P
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
       void submit();
+    } else if (e.key === 'Escape' && replyTo) {
+      e.preventDefault();
+      cancelReply(channelId);
     }
   };
 
@@ -162,6 +171,7 @@ export default function Composer({ channelId, channelName, serverId, onSent }: P
         </div>
       )}
       {error && <div className="cv-error">{error}</div>}
+      {replyTo && <ReplyBar channelId={channelId} replyTo={replyTo} serverId={serverId} />}
       {picking && (
         <div className="cv-mention-picker" role="listbox" aria-label="Mention someone">
           {options.map((o, i) => (
@@ -233,5 +243,20 @@ function PendingImage({ file, onRemove }: { file: File; onRemove: () => void }) 
       )}
       <button className="icon cv-thumb-x" aria-label={`Remove ${file.name}`} onClick={onRemove}>×</button>
     </span>
+  );
+}
+
+/** "Replying to Name" above the message box, with the original's first words and an X to stop replying. */
+function ReplyBar({ channelId, replyTo, serverId }: { channelId: string; replyTo: ReplyRef; serverId: string }) {
+  const name = useSession((s) => s.servers.find((b) => b.server.id === serverId)?.members.find((m) => m.user.id === replyTo.authorId)?.user.displayName);
+  const guestName = guestMember(replyTo.authorId)?.user.displayName;
+  return (
+    <div className="cv-replybar" role="status">
+      <span className="cv-replybar-text">
+        Replying to <strong>{name ?? guestName ?? 'someone'}</strong>
+        <span className="cv-replybar-snippet"> {replyTo.snippet}</span>
+      </span>
+      <button type="button" className="icon cv-replybar-x" aria-label="Cancel reply" title="Cancel reply (Esc)" onClick={() => cancelReply(channelId)}>×</button>
+    </div>
   );
 }
