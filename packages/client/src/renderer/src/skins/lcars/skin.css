@@ -136,7 +136,7 @@
 :root[data-skin='lcars'][data-theme='light'] .cw-role { color: #b8650a; }
 /* The LCARS frame (components/lcars) keeps its shapes; only its colours follow. The status readout and the In call
    chip stay dark, like a display cut into the frame. */
-:root[data-skin='lcars'][data-theme='light'] .lcars-shell {
+:root[data-skin='lcars'][data-theme='light'] {
   --lc-frame: #3a85d0; --lc-live: #ec9330; --lc-alert: #d93e44; --lc-text: #1b2440;
   --lc-ground: #e6ebf3; --lc-ink: #0b1020; --lc-chip: #0b1020; --lc-off: #a9bfd9;
 }
