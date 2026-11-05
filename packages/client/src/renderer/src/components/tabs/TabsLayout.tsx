@@ -16,6 +16,7 @@ import MemberList from '../servers/MemberList';
 import StatusPicker from '../servers/StatusPicker';
 import ServerSettingsDialog from '../servers/ServerSettingsDialog';
 import Avatar from '../servers/Avatar';
+import WelcomeCard from '../welcome/WelcomeCard';
 import { isAdmin } from '../servers/util';
 import PixelIcon, { type PixelIconName } from '../icons/PixelIcon';
 import { PopoutWindow } from './PopoutWindow';
@@ -200,7 +201,17 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTes
     if (!bundle) return <div className="cw-main-empty muted">Waiting for the server…</div>;
     switch (t) {
       case 'text':
-        return text ? <ChatView key={text.id} channel={text} /> : <Empty>This server has no text chat yet.</Empty>;
+        return text
+          ? (
+            <div className="cw-tab-pane">
+              <WelcomeCard serverName={bundle.server.name}
+                onJoinVoice={voice && callChannelId !== voice.id ? () => { selectTab('voice', false); joinVoice?.(); } : undefined}
+                onOpenSettings={onOpenSettings}
+                onInvite={canOpenServerSettings ? () => setServerSettingsOpen(true) : undefined} />
+              <div className="cw-tab-pane"><ChatView key={text.id} channel={text} /></div>
+            </div>
+          )
+          : <Empty>This server has no text chat yet.</Empty>;
       case 'voice':
         return voice ? <VoiceChannelView key={voice.id} channel={voice} /> : <Empty>This server has no voice chat yet.</Empty>;
       case 'watch':

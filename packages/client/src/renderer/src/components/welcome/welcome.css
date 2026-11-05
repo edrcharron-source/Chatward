@@ -1,0 +1,13 @@
+/* The welcome card above the chat for new people (WelcomeCard.tsx). */
+.cw-welcome {
+  flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px;
+  margin: 12px 16px 0; padding: 12px 14px; background: var(--bg-1); border: 1px dashed var(--border); border-radius: var(--radius);
+}
+.cw-welcome-text { flex: 1 1 320px; min-width: 0; display: grid; gap: 4px; }
+.cw-welcome-text strong { color: var(--text-strong); }
+.cw-welcome-text p { margin: 0; color: var(--text-muted); }
+.cw-welcome-text b { color: var(--text); font-weight: 600; }
+.cw-welcome-tip { font-size: 13px; }
+.cw-welcome-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+/* On a phone the tabs along the bottom already say what each part is, so the card keeps to the buttons. */
+@media (max-width: 640px) { .cw-welcome { margin: 8px 8px 0; padding: 10px; } .cw-welcome-about { display: none; } }

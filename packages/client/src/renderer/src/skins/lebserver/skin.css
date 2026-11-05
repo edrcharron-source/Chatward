@@ -157,7 +157,8 @@
 :root[data-skin='lebserver'] .cv-text,
 :root[data-skin='lebserver'] .cv-edit-input,
 :root[data-skin='lebserver'] .cv-composer textarea,
-:root[data-skin='lebserver'] .setting-text small { font-family: var(--lb-read); }
+:root[data-skin='lebserver'] .setting-text small,
+:root[data-skin='lebserver'] .cw-welcome-text p { font-family: var(--lb-read); }
 
 /* The light version, used when Settings > Appearance > Theme is Light (or Match system picks light). Same skin, same
    rules: monospace, square thin-ruled panels, hard offset shadows and the peach, yellow, mint and blue accents, now as
