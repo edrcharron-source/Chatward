@@ -51,6 +51,11 @@
 }
 .choice:has(input:checked) { border-color: var(--accent); }
 .choice input { accent-color: var(--accent); align-self: flex-start; }
+/* The four layouts fit on one row. */
+.choice-group.layouts { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
+/* A choice with a picture (the layout picker): the button and its name sit side by side under the picture. */
+.choice-label { display: flex; align-items: center; gap: 8px; }
+.choice-label input { align-self: center; margin: 0; }
 .theme-swatch { height: 72px; border-radius: 8px; border: 1px solid var(--border); }
 .swatch-dark { background: linear-gradient(135deg, #313338 50%, #1e1f22 50%); }
 .swatch-light { background: linear-gradient(135deg, #ffffff 50%, #e3e5e8 50%); }
