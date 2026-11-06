@@ -85,7 +85,6 @@
 :root[data-skin='lcars'] h2,
 :root[data-skin='lcars'] h3,
 :root[data-skin='lcars'] .cw-members-title,
-:root[data-skin='lcars'] .cw-section-title,
 :root[data-skin='lcars'] .setting-section h3 { text-transform: uppercase; letter-spacing: .06em; }
 :root[data-skin='lcars'] .cw-members-title { color: var(--lcs-text); font-size: 17px; font-weight: 600; }
 :root[data-skin='lcars'] .cv-title,
@@ -103,7 +102,6 @@
 :root[data-skin='lcars'] .cw-tab .cw-tab-main,
 :root[data-skin='lcars'] .cw-tab .cw-tab-pop { background: transparent; color: var(--lcs-ink); }
 :root[data-skin='lcars'] .cw-tab.active { background: var(--lcs-live); border-color: var(--lcs-live); }
-:root[data-skin='lcars'] .cw-channel.active { color: var(--lcs-live); background: var(--lcs-live-tint); }
 :root[data-skin='lcars'] .cw-tool.active,
 :root[data-skin='lcars'] .cw-tool[aria-pressed='true'] { background: var(--lcs-live); color: var(--lcs-ink); }
 
@@ -132,7 +130,6 @@
 :root[data-skin='lcars'][data-theme='light'] ::placeholder,
 :root[data-skin='lcars'][data-theme='light'] button.icon { color: #2c6fb5; }
 :root[data-skin='lcars'][data-theme='light'] button.icon:hover { color: #0d1530; }
-:root[data-skin='lcars'][data-theme='light'] .cw-channel.active,
 :root[data-skin='lcars'][data-theme='light'] .cw-role { color: #b8650a; }
 /* The LCARS frame (components/lcars) keeps its shapes; only its colours follow. The status readout and the In call
    chip stay dark, like a display cut into the frame. */
