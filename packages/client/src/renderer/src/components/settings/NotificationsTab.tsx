@@ -1,5 +1,6 @@
 import { playSound, type SoundKind } from '../../notify/notify';
 import { useSettings } from '../../state/settings';
+import { PushSwitch } from '../workouts/WorkoutsView';
 import { Section, Slider, Toggle } from './controls';
 
 const PREVIEWS: { kind: SoundKind; label: string }[] = [
@@ -18,6 +19,8 @@ export default function NotificationsTab() {
 
   return (
     <>
+      <PushSwitch title="Phone notifications" />
+
       <Section title="Silence">
         <Toggle label="Silence all notifications" hint="No sounds and no taskbar flashing for messages, pings or voice. Highlights in chat still show."
           checked={silenceAll} onChange={(on) => set({ silenceAll: on })} />
