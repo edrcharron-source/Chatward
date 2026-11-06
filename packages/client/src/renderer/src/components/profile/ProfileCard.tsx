@@ -1,15 +1,18 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import type { User } from '@chatward/shared';
-import { fetchObjectUrl } from '../../api/http';
+import { useCachedImage } from '../../api/imageCache';
 import Avatar from '../servers/Avatar';
 import ImageLightbox from '../media/ImageLightbox';
 import ListeningNow from '../spotify/ListeningNow';
 import './profile.css';
 
 const DEFAULT_BANNER = 'var(--accent)';
+// Shown while an uploaded banner is still loading, so the default colour never flashes first.
+const LOADING_BANNER = 'var(--bg-3)';
 
 /** Banner image if there is one, otherwise the banner color, otherwise the accent color. */
 function bannerBackground(user: User): string {
+  if (user.profile.bannerUrl) return LOADING_BANNER;
   return user.profile.bannerColor ?? user.profile.accentColor ?? DEFAULT_BANNER;
 }
 
@@ -17,32 +20,10 @@ function memberSince(ms: number): string {
   return new Date(ms).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
 }
 
-/** Fetches an authed image into a local object URL; null while loading, when unset, or on failure. */
-function useObjectUrl(path: string | null | undefined): string | null {
-  const [url, setUrl] = useState<string | null>(null);
-  useEffect(() => {
-    if (!path) { setUrl(null); return; }
-    let alive = true;
-    let objectUrl: string | null = null;
-    fetchObjectUrl(path)
-      .then((u) => {
-        if (!alive) { URL.revokeObjectURL(u); return; }
-        objectUrl = u;
-        setUrl(u);
-      })
-      .catch(() => { /* caller falls back */ });
-    return () => {
-      alive = false;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-    };
-  }, [path]);
-  return url;
-}
-
 /** Read-only profile card. Used by ProfileTrigger; positioned by its parent. */
 export default function ProfileCard({ user, style }: { user: User; style: React.CSSProperties }) {
-  const banner = useObjectUrl(user.profile.bannerUrl);
-  const avatar = useObjectUrl(user.avatarUrl);
+  const banner = useCachedImage(user.profile.bannerUrl);
+  const avatar = useCachedImage(user.avatarUrl);
   const cardRef = useRef<HTMLDivElement>(null);
   const [viewing, setViewing] = useState<{ url: string; name: string } | null>(null);
 

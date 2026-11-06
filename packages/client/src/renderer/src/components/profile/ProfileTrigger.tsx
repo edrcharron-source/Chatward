@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 're
 import { createPortal } from 'react-dom';
 import type { User } from '@chatward/shared';
 import ProfileCard from './ProfileCard';
+import { preloadImages } from '../../api/imageCache';
 
 const CARD_WIDTH = 300;
 const GAP = 8;
@@ -53,6 +54,9 @@ export default function ProfileTrigger({ user, className, children }: {
         className={`profile-trigger ${className ?? ''}`}
         aria-haspopup="dialog"
         aria-expanded={open}
+        // Start loading the card's pictures as soon as the pointer is over the profile, so they are ready when it opens.
+        onPointerEnter={() => preloadImages(user.avatarUrl, user.profile.bannerUrl)}
+        onFocus={() => preloadImages(user.avatarUrl, user.profile.bannerUrl)}
         onClick={() => setOpen((o) => !o)}
       >
         {children}
