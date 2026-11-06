@@ -79,8 +79,8 @@ async function walk(page: Page, run: Run, shoot: (name: string) => Promise<void>
 
   await act(page, 'auth.try-demo');
   await page.getByText('This is the start of #general').waitFor();
-  for (const id of ['channel.create', 'server.settings', 'settings.open',
-    'watch-party.toggle', 'chat.attach', 'chat.emoji', 'chat.gif', 'member.profile', 'channel.open-memes']) {
+  for (const id of ['server.settings', 'settings.open', 'tab.voice', 'tab.watch', 'tab.vault',
+    'chat.attach', 'chat.emoji', 'chat.gif', 'member.profile']) {
     await probe(page, id, run);
   }
   await page.getByLabel('Message', { exact: true }).fill('skin check');
@@ -89,11 +89,6 @@ async function walk(page: Page, run: Run, shoot: (name: string) => Promise<void>
   await page.getByLabel('Message', { exact: true }).fill('');
   await controls(page, 'chat', run);
   await shoot('chat');
-
-  await act(page, 'channel.open-memes');
-  await page.getByText('This is the start of #memes').waitFor();
-  await page.getByRole('complementary', { name: 'Channels' }).getByText('general', { exact: true }).click();
-  await page.getByText('This is the start of #general').waitFor();
 
   await act(page, 'chat.emoji');
   await probe(page, 'emoji-picker.dialog', run);

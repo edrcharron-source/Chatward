@@ -13,7 +13,7 @@ import MysteryButton from '../mystery/MysteryButton';
  * - a sweep at the top left turns the thick left rail into the thin top bar, and another at the bottom left turns it
  *   into the bottom bar, so the frame is never the same thickness after a turn;
  * - the rail holds the tabs (Text, Voice, Watch together, Vault, Movies), then Server settings and Settings;
- * - the top bar holds Split, the window's drag area, the server's name, your status, and minimize, maximize and close;
+ * - the top bar holds the window's drag area, the server's name, your status, and minimize, maximize and close;
  * - the bottom bar holds the call controls, or Join voice when you are not in the call.
  *
  * While this frame is on screen it is the window's title bar, so lcars.css hides the app's usual one. The desktop app
@@ -31,8 +31,6 @@ export default function LcarsLayout(props: {
   };
   main: ReactNode;
   members: ReactNode;
-  split: boolean;
-  onToggleSplit: () => void;
   membersToggle: { hidden: boolean; toggle: () => void } | null;
   onOpenTest: () => void;
   onOpenServerSettings: (() => void) | null;
@@ -66,11 +64,6 @@ export default function LcarsLayout(props: {
 
       <header className="lcars-top" data-region="tabs">
         <span className="lcars-arm" aria-hidden="true" />
-        <button type="button" className={`lcars-seg${props.split ? ' active' : ''}`} aria-pressed={props.split}
-          title="Show the open tab beside the one before it (or Shift+click a tab; Shift+click a split tab to close it)"
-          onClick={props.onToggleSplit}>
-          <span className="lcars-label">Split</span>
-        </button>
         {props.membersToggle && (
           <button type="button" className="lcars-seg" aria-pressed={props.membersToggle.hidden} onClick={props.membersToggle.toggle}>
             <span className="lcars-label">{props.membersToggle.hidden ? 'Show members' : 'Hide members'}</span>

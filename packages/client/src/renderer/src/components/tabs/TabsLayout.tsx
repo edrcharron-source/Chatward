@@ -381,8 +381,6 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTes
         dropArea={dropArea}
         main={main}
         members={showMembers && bundle ? <MemberList serverId={bundle.server.id} members={members} /> : null}
-        split={split}
-        onToggleSplit={() => setSplit((s) => !s)}
         membersToggle={theaterKey !== null ? { hidden: membersHidden, toggle: () => setMembersHidden((h) => !h) } : null}
         onOpenTest={onOpenTest}
         onOpenServerSettings={canOpenServerSettings ? () => setServerSettingsOpen(true) : null}
@@ -449,11 +447,6 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTes
           : <strong className="cw-tabs-server">{bundle?.server.name ?? 'Chatward'}</strong>}
         {nav}
         <div className="cw-tabs-tools">
-          <button type="button" className={`cw-tool${split ? ' active' : ''}`} aria-pressed={split}
-            title="Show the open tab beside the one before it (or Shift+click a tab; Shift+click a split tab to close it)" onClick={() => setSplit((s) => !s)}>
-            <PixelIcon name="theater" size={14} />
-            <span>Split</span>
-          </button>
           {theaterKey !== null && (
             <button type="button" className="cw-tool" aria-pressed={membersHidden} onClick={() => setMembersHidden((h) => !h)}>
               {membersHidden ? 'Show members' : 'Hide members'}
