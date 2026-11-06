@@ -245,6 +245,14 @@ async function main() {
     assert.equal((await api(alice.token, 'POST', `/api/servers/${serverId}/invites`, { maxUses: 1 })).status, 404, 'in-app invites are gone');
     log('the first account gets the one server with #general; creating servers and in-app invites are gone');
 
+    const renamed = (await api(alice.token, 'PATCH', '/api/me', { displayName: '  Big Al  ' })).json;
+    assert.equal(renamed.user.displayName, 'Big Al', 'the display name can be changed');
+    assert.equal(renamed.user.username, 'alice', 'the username stays the same');
+    assert.equal((await api(alice.token, 'PATCH', '/api/me', { displayName: 'x'.repeat(33) })).status, 400, 'a display name over 32 characters is refused');
+    assert.equal((await api(alice.token, 'PATCH', '/api/me', { bio: 'hi' })).json.user.displayName, 'Big Al', 'other profile changes keep it');
+    assert.equal((await api(alice.token, 'PATCH', '/api/me', { displayName: ' ' })).json.user.displayName, 'alice', 'an empty display name goes back to the username');
+    log('the display name can be changed without touching the username; empty goes back to the username');
+
     const bobKeys = await makeDeviceKeys();
     const bobReg = (await api(null, 'POST', '/api/auth/register', {
       name: 'bob', password: PASSWORD, device: bobKeys, inviteCode: signupCode(),

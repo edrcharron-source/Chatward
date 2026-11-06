@@ -432,12 +432,15 @@ export function register(app: Express, ctx: Ctx): void {
     ctx.revokeSockets(uid, deviceId);
   }));
 
-  // Each field is optional; a missing field keeps its current value. The name is not one of them: it is what the
-  // app's stored keys are filed under, so it stays fixed. Older apps may still send displayName; it is ignored.
+  // Each field is optional; a missing field keeps its current value. displayName is only for show: signing in and
+  // the app's stored keys use the username, which never changes here. An empty display name goes back to the username.
   app.patch('/api/me', ctx.requireAuth, route((req, res) => {
     const uid = userIdOf(req);
     const body = bodyOf(req);
     const cur = mustUser(ctx, uid);
+    const shown = body.displayName === undefined
+      ? cur.displayName
+      : freeText(body.displayName, LIMITS.DISPLAY_NAME_MAX, 'display name', false) || cur.username;
     const bio = body.bio === undefined ? cur.profile.bio : freeText(body.bio, LIMITS.BIO_MAX, 'bio', true);
     const pronouns = body.pronouns === undefined
       ? cur.profile.pronouns
@@ -445,8 +448,8 @@ export function register(app: Express, ctx: Ctx): void {
     const accentColor = body.accentColor === undefined ? cur.profile.accentColor : colorOrNull(body.accentColor, 'accent color');
     const bannerColor = body.bannerColor === undefined ? cur.profile.bannerColor : colorOrNull(body.bannerColor, 'banner color');
     ctx.db
-      .prepare('UPDATE users SET bio=?, pronouns=?, accent_color=?, banner_color=? WHERE id=?')
-      .run(bio, pronouns, accentColor, bannerColor, uid);
+      .prepare('UPDATE users SET display_name=?, bio=?, pronouns=?, accent_color=?, banner_color=? WHERE id=?')
+      .run(shown, bio, pronouns, accentColor, bannerColor, uid);
     broadcastUser(ctx, uid);
     res.json({ user: mustUser(ctx, uid) });
   }));

@@ -114,7 +114,8 @@ export default function AccountTab() {
     <>
       <Section title="Name">
         <p className="setting-row">
-          You are <strong>{user.username}</strong> to everyone here, and it is also what you log in with. Names can't be changed yet.
+          You log in as <strong>{user.username}</strong>, and that never changes. Everyone sees you as <strong>{user.displayName}</strong>: to change it,
+          right-click your own name or picture and pick Change display name.
         </p>
       </Section>
 
