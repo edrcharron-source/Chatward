@@ -75,11 +75,10 @@ const clampSplit = (r: number) => Math.min(MAX_SPLIT, Math.max(MIN_SPLIT, r));
  * `rail` (the Classic layout) puts the tab bar down the left side instead of along the top, with room to name every
  * button. Orbit, LCARS and phones keep their own bars.
  */
-export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTest, onOpenMovies, frame, rail: railLayout = false }: {
+export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenMovies, frame, rail: railLayout = false }: {
   bundle: ServerBundle | undefined;
   onOpenSettings: () => void;
   onReload: () => Promise<void>;
-  onOpenTest: () => void;
   onOpenMovies: (() => void) | null;
   frame?: 'lcars' | 'orbit';
   rail?: boolean;
@@ -210,8 +209,7 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTes
             <div className="cw-tab-pane">
               <WelcomeCard serverName={bundle.server.name}
                 onJoinVoice={voice && callChannelId !== voice.id ? () => { selectTab('voice', false); joinVoice?.(); } : undefined}
-                onOpenSettings={onOpenSettings}
-                onInvite={canOpenServerSettings ? () => setServerSettingsOpen(true) : undefined} />
+                onOpenSettings={onOpenSettings} />
               <div className="cw-tab-pane"><ChatView key={text.id} channel={text} /></div>
             </div>
           )
@@ -382,7 +380,6 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTes
         main={main}
         members={showMembers && bundle ? <MemberList serverId={bundle.server.id} members={members} /> : null}
         membersToggle={theaterKey !== null ? { hidden: membersHidden, toggle: () => setMembersHidden((h) => !h) } : null}
-        onOpenTest={onOpenTest}
         onOpenServerSettings={canOpenServerSettings ? () => setServerSettingsOpen(true) : null}
         onOpenSettings={onOpenSettings}
         onJoinVoice={joinVoice ?? null}
@@ -455,10 +452,6 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTes
           {rail
             ? <MysteryButton className="cw-tool"><span aria-hidden="true">🔪</span><span>Mystery</span></MysteryButton>
             : <MysteryButton className="icon cw-tool-icon" />}
-          <button type="button" className={rail ? 'cw-tool' : 'icon cw-tool-icon'} title="Feature test console (Ctrl+Shift+T)" aria-label="Feature test console" onClick={onOpenTest}>
-            <PixelIcon name="test" size={rail ? 14 : 16} />
-            {rail && <span>Test console</span>}
-          </button>
           {canOpenServerSettings && (
             <button type="button" className="cw-tool" title="Server settings" aria-label="Server settings" onClick={() => setServerSettingsOpen(true)}>
               <PixelIcon name="gear" size={14} />

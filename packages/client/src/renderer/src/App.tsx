@@ -328,7 +328,7 @@ function Shell() {
       {testOpen
         ? <div className="cw-shell" data-region="shell"><main className="cw-main" data-region="main"><TestConsole onClose={() => setTestOpen(false)} /></main></div>
         : <TabsLayout bundle={bundle} onOpenSettings={() => setSettingsOpen(true)} onReload={loadServers}
-            onOpenTest={() => setTestOpen(true)} onOpenMovies={jellyfinEnabled ? () => setMoviesOpen(true) : null}
+            onOpenMovies={jellyfinEnabled ? () => setMoviesOpen(true) : null}
             frame={layout === 'lcars' || layout === 'orbit' ? layout : undefined} rail={layout === 'classic'} />}
       {modals}
     </>

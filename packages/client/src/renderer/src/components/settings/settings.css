@@ -23,11 +23,9 @@
 .settings-close { position: absolute; top: 12px; right: 12px; }
 
 .setting-section { display: flex; flex-direction: column; gap: 10px; margin-bottom: 26px; }
-.setting-section h3, .channel-group h4 {
+.setting-section h3 {
   margin: 0; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--text-muted);
 }
-.channel-group { display: flex; flex-direction: column; gap: 8px; }
-.channel-group h4 { margin-top: 4px; }
 .small { font-size: 12px; }
 
 .setting-row {
