@@ -89,10 +89,8 @@ interface Spec {
   props: TileProps;
 }
 
-/**
- * Voice channel view. With `theaterOnly` it draws just the theater stage (no header), which the app puts above a text chat.
- */
-export default function VoiceChannelView({ channel, theaterOnly = false }: { channel: Channel; theaterOnly?: boolean }) {
+/** Voice channel view: a header with the call's name, then the call's tiles (or the featured share in theater mode). */
+export default function VoiceChannelView({ channel }: { channel: Channel }) {
   const inCall = useVoice((s) => s.channelId === channel.id);
   const theaterKey = useVoice((s) => s.theaterKey);
   const setTheater = useVoice((s) => s.setTheater);
@@ -165,20 +163,6 @@ export default function VoiceChannelView({ channel, theaterOnly = false }: { cha
       </div>
     </div>
   );
-
-  if (theaterOnly) {
-    return (
-      <div style={{ height: '100%', minHeight: 0, padding: 12, boxSizing: 'border-box' }}>
-        {theaterLayout || (
-          <div className="muted" style={{ textAlign: 'center', paddingTop: 40 }}>
-            <p>Nobody is sharing a screen right now.</p>
-            <button className="icon" onClick={() => setTheater(null)}>Exit theater</button>
-          </div>
-        )}
-        {menu.element}
-      </div>
-    );
-  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>

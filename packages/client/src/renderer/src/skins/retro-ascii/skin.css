@@ -91,7 +91,6 @@
 :root[data-skin='retro-ascii'] .media-popover { box-shadow: 6px 6px 0 var(--border); }
 
 /* Dashed section rules under headers. The base already has a 1px bottom border there. */
-:root[data-skin='retro-ascii'] .cw-channels-head,
 :root[data-skin='retro-ascii'] .cv-header { border-bottom-style: dashed; }
 
 /* ASCII accents. The banner and the cursor are generated text placed outside the flow (absolute), so the empty
