@@ -4,6 +4,8 @@
 export const LIMITS = {
   USERNAME_MIN: 3,
   USERNAME_MAX: 24,
+  /** The name everyone sees. Only for show: signing in and stored keys use the username. */
+  DISPLAY_NAME_MAX: 32,
   PASSWORD_MIN: 8,
   MESSAGE_CIPHERTEXT_MAX: 16_000,
   UPLOAD_MAX_BYTES: 12 * 1024 * 1024, // encrypted image/file blob

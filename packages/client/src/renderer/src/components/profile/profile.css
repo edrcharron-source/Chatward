@@ -28,6 +28,13 @@ button.profile-image-open:focus-visible { outline: 2px solid var(--accent); outl
   border: 5px solid var(--bg-1); box-sizing: border-box; display: flex; align-items: center; justify-content: center;
 }
 .profile-name { margin-top: 8px; font-weight: 700; font-size: 18px; }
+.profile-name-edit {
+  display: block; width: 100%; padding: 0 4px; margin-left: -4px; text-align: left; background: none; border: 1px dashed transparent;
+  border-radius: 4px; color: inherit; font: inherit; font-weight: 700; font-size: 18px; cursor: text;
+}
+.profile-name-edit:hover, .profile-name-edit:focus-visible { border-color: var(--profile-accent, var(--accent)); }
+.profile-name-input { display: block; width: 100%; box-sizing: border-box; font-weight: 700; font-size: 18px; padding: 2px 6px; }
+.profile-name-hint { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
 .profile-handle { color: var(--text-muted); font-size: 13px; }
 .profile-pronouns { opacity: .8; }
 .profile-bio { margin: 10px 0 0; white-space: pre-wrap; font-size: 13px; line-height: 1.45; }

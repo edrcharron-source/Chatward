@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 export interface MenuItem { label: string; onPick: () => void; danger?: boolean }
 
 /** A message's right-click menu (Reply, Copy text, Edit, Delete). Drawn in the window the message is in. */
-export default function MessageMenu({ doc, x, y, items, onClose }: { doc: Document; x: number; y: number; items: MenuItem[]; onClose: () => void }): ReactElement {
+export default function MessageMenu({ doc, x, y, items, onClose, label = 'Message options' }: { doc: Document; x: number; y: number; items: MenuItem[]; onClose: () => void; label?: string }): ReactElement {
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ left: x, top: y });
   const view = doc.defaultView ?? window;
@@ -47,7 +47,7 @@ export default function MessageMenu({ doc, x, y, items, onClose }: { doc: Docume
     <div
       ref={ref}
       role="menu"
-      aria-label="Message options"
+      aria-label={label}
       className="media-popover media-menu cv-msg-menu"
       style={{ left: pos.left, top: pos.top }}
       onContextMenu={(e) => e.preventDefault()}
