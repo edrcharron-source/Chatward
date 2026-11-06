@@ -26,7 +26,6 @@ export interface Settings {
   noiseSuppression: boolean;
   echoCancellation: boolean;
   messageSounds: boolean;   // notification sound for new chat messages
-  mutedChannels: string[];  // channelIds with silenced notification sound
   voiceJoinLeaveSounds: boolean;
   /** Silences every notification: message and ping sounds, join/leave sounds, and taskbar flashing. Chat highlights still show. */
   silenceAll: boolean;
@@ -48,7 +47,7 @@ const LS = 'chatward.settings';
 const defaults = {
   theme: 'dark' as const, skin: 'lebserver', animatedBackgrounds: true, welcomeDismissed: false, layout: 'tabs' as Settings['layout'], splitRatio: 0.5, tabOrder: [] as string[], inputDeviceId: '', outputDeviceId: '', cameraDeviceId: '',
   masterVolume: 1, micGain: 1, noiseSuppression: true, echoCancellation: true,
-  messageSounds: true, mutedChannels: [] as string[], voiceJoinLeaveSounds: true, silenceAll: false, soundVolume: 0.6,
+  messageSounds: true, voiceJoinLeaveSounds: true, silenceAll: false, soundVolume: 0.6,
   autoLoadEmbeds: false, linkPreviews: true, confirmDeleteMessages: true, userVolumes: {} as Record<string, number>, mutedUsers: {} as Record<string, boolean>,
 };
 const saved = (() => { try { return JSON.parse(localStorage.getItem(LS) ?? '{}'); } catch { return {}; } })();

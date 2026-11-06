@@ -32,7 +32,6 @@ export default function LcarsLayout(props: {
   main: ReactNode;
   members: ReactNode;
   membersToggle: { hidden: boolean; toggle: () => void } | null;
-  onOpenTest: () => void;
   onOpenServerSettings: (() => void) | null;
   onOpenSettings: () => void;
   onJoinVoice: (() => void) | null;
@@ -76,9 +75,6 @@ export default function LcarsLayout(props: {
           <StatusPicker />
         </span>
         <MysteryButton className="lcars-seg"><span className="lcars-label">Mystery</span></MysteryButton>
-        <button type="button" className="lcars-seg" title="Feature test console (Ctrl+Shift+T)" aria-label="Feature test console" onClick={props.onOpenTest}>
-          <span className="lcars-label">Test</span>
-        </button>
         <WindowButtons />
       </header>
 
