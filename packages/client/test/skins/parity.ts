@@ -108,6 +108,9 @@ async function walk(page: Page, run: Run, shoot: (name: string) => Promise<void>
   await closePopups(page);
 
   await act(page, 'member.profile');
+  // The profile picture is fetched after the card opens, and its button only appears once it arrives. On a busy runner
+  // the card can be read before that, so wait for the button (a user without a picture just times out here).
+  await page.locator('.profile-card .profile-avatar-open').waitFor({ state: 'visible', timeout: 15_000 }).catch(() => {});
   await controls(page, 'profile', run);
   await closePopups(page);
 
