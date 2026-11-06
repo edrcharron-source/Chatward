@@ -2,7 +2,9 @@
 // sign-up codes from the chatward command, login for a second device, channels, removing accounts, and Commit delivery.
 // Run with: npm run test:e2e -w @chatward/server
 import assert from 'node:assert/strict';
+import Database from 'better-sqlite3';
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
@@ -137,6 +139,18 @@ function signupCode(): string {
 }
 
 const inviteLog = () => fs.readFileSync(path.join(dataDir, 'invites.log'), 'utf8');
+
+/** The app has no route for adding a channel, so a test that needs another one writes it straight into the database. */
+function addChannel(serverId: string, name: string, kind: 'text' | 'voice'): string {
+  const db = new Database(path.join(dataDir, 'chatward.db'));
+  try {
+    const id = Date.now().toString(36).padStart(9, '0') + randomBytes(5).toString('hex');
+    db.prepare('INSERT INTO channels (id, server_id, name, kind, created_at) VALUES (?, ?, ?, ?, ?)').run(id, serverId, name, kind, Date.now());
+    return id;
+  } finally {
+    db.close();
+  }
+}
 
 async function uploadPool(dev: Dev, singleUse: number, replace = false) {
   const items: { kp: string; lastResort?: boolean }[] = [];
@@ -437,8 +451,8 @@ async function main() {
       name: 'dave', password: PASSWORD, device: daveKeys, inviteCode: signupCode(),
     })).json;
     const dave = { id: daveReg.user.id as string, token: daveReg.token as string };
-    assert.equal((await api(bob.token, 'POST', `/api/servers/${serverId}/bans`, { userId: dave.id })).status, 403, 'a member cannot remove anyone');
-    const banRes = await api(alice.token, 'POST', `/api/servers/${serverId}/bans`, { userId: dave.id });
+    assert.equal((await api(bob.token, 'DELETE', `/api/servers/${serverId}/members/${dave.id}`)).status, 403, 'a member cannot remove anyone');
+    const banRes = await api(alice.token, 'DELETE', `/api/servers/${serverId}/members/${dave.id}`);
     assert.equal(banRes.status, 200, 'owner bans dave');
     assert.equal((await api(dave.token, 'GET', '/api/servers')).status, 401, 'banned dave is signed out');
     const bans = (await api(alice.token, 'GET', `/api/servers/${serverId}/bans`)).json.bans as { user: { id: string } }[];
@@ -523,8 +537,7 @@ async function main() {
     log('removed devices stay in the group device list with their registered keys');
 
     // Deleting a message frees the uploads attached to it, rows and files, so the quota comes back at once.
-    const chanBase = `/api/servers/${serverId}/channels`;
-    const upChannel = (await api(alice.token, 'POST', chanBase, { name: 'uploads', kind: 'text' })).json.channel.id as string;
+    const upChannel = addChannel(serverId, 'uploads', 'text');
     const blob = await fetch(`${BASE}/api/uploads?tracked=1`, {
       method: 'POST', headers: { authorization: `Bearer ${alice.token}`, 'content-type': 'application/octet-stream' },
       body: Buffer.alloc(64, 7),
@@ -540,11 +553,6 @@ async function main() {
     assert.ok(!fs.existsSync(blobFile), 'upload file removed when its message is deleted');
     assert.equal((await api(alice.token, 'GET', `/api/uploads/${uploadId}`)).status, 404, 'upload row is gone too');
     log('deleting a message frees its attached uploads from disk');
-
-    // A server keeps at least one text channel, since voice calls take their key from the first one.
-    assert.equal((await api(alice.token, 'DELETE', `${chanBase}/${upChannel}`)).status, 200, 'a text channel can go while another remains');
-    assert.equal((await api(alice.token, 'DELETE', `${chanBase}/${CHANNEL}`)).status, 409, 'the last text channel is kept');
-    log('deleting the last text channel is refused');
 
     // A voice slot left by a previous app run must not lock the account out. The startup clear frees it.
     const voiceChan = servers[0].channels.find((c) => c.kind === 'voice')!.id;
@@ -580,7 +588,7 @@ async function main() {
     log('a rejoin after being removed from the call is refused until the user joins again');
 
     // A rejoin needs a recent token for that room. A voice channel bob never joined is refused, even though he is a member.
-    const sideVoice = (await api(alice.token, 'POST', chanBase, { name: 'side call', kind: 'voice' })).json.channel.id as string;
+    const sideVoice = addChannel(serverId, 'side call', 'voice');
     assert.equal((await api(bob.token, 'POST', '/api/voice/rejoin', { channelId: sideVoice })).status, 409, 'a rejoin without a token for that room is refused');
     log('a rejoin into a voice channel the user never got a token for is refused');
 

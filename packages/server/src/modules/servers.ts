@@ -2,19 +2,16 @@ import type { Express, NextFunction, Request, Response } from 'express';
 import {
   DEFAULT_VOICE_BITRATE_KBPS,
   LIMITS,
-  VOICE_BITRATES_KBPS,
   type Channel,
   type Member,
   type Server,
   type ServerFrame,
 } from '@chatward/shared';
 import type { AuthedRequest, Ctx } from '../ctx.js';
-import { newId } from '../db.js';
 import { mainServerId } from '../singleServer.js';
-import { forgetWatchParty } from './watchparty.js';
-import { clearVoiceChannel, endAccountCall, forgetChannelRemovals, forgetMemberRemovals, kickFromCall } from './voice.js';
+import { endAccountCall, forgetMemberRemovals, kickFromCall } from './voice.js';
 
-const { SERVER_NAME_MAX, CHANNEL_NAME_MAX } = LIMITS;
+const { SERVER_NAME_MAX } = LIMITS;
 
 type ServerRow = { id: string; name: string; owner_id: string };
 type ChannelRow = {
@@ -86,18 +83,6 @@ export function channelsOf(ctx: Ctx, serverId: string): Channel[] {
     .map(toChannel);
 }
 
-function channelOf(ctx: Ctx, channelId: string): Channel {
-  return toChannel(ctx.db.prepare(`SELECT ${CHANNEL_COLUMNS} FROM channels WHERE id=?`).get(channelId) as ChannelRow);
-}
-
-function insertChannel(ctx: Ctx, serverId: string, name: string, kind: Channel['kind']): Channel {
-  const id = newId();
-  ctx.db
-    .prepare('INSERT INTO channels (id, server_id, name, kind, created_at) VALUES (?, ?, ?, ?, ?)')
-    .run(id, serverId, name, kind, Date.now());
-  return channelOf(ctx, id);
-}
-
 /** Owner or admin only. 404 for non-members so existence is not leaked. */
 function requireAdmin(ctx: Ctx, serverId: string, userId: string): 'owner' | 'admin' {
   const role = ctx.roleIn(serverId, userId);
@@ -160,67 +145,6 @@ export function register(app: Express, ctx: Ctx): void {
     });
   }));
 
-  app.post('/api/servers/:id/channels', ctx.requireAuth, route((req, res) => {
-    const serverId = String(req.params.id);
-    requireAdmin(ctx, serverId, userIdOf(req));
-    const body = bodyOf(req);
-    if (body.kind !== 'text' && body.kind !== 'voice') bad('kind must be text or voice');
-    const name = cleanText(body.name, CHANNEL_NAME_MAX, 'channel name');
-    const channel = insertChannel(ctx, serverId, name, body.kind);
-    ctx.broadcastToServer(serverId, { t: 'channel.new', channel });
-    res.json({ channel });
-  }));
-
-  /** Renames a channel and/or sets its voice bitrate. Both are validated before anything is written. */
-  app.patch('/api/servers/:id/channels/:channelId', ctx.requireAuth, route((req, res) => {
-    const serverId = String(req.params.id);
-    const channelId = String(req.params.channelId);
-    requireAdmin(ctx, serverId, userIdOf(req));
-    const row = ctx.db
-      .prepare('SELECT kind FROM channels WHERE id=? AND server_id=?')
-      .get(channelId, serverId) as { kind: Channel['kind'] } | undefined;
-    if (!row) throw new ApiError(404, 'channel not found');
-    const body = bodyOf(req);
-    if (body.name === undefined && body.bitrateKbps === undefined) bad('nothing to update');
-    const name = body.name === undefined ? null : cleanText(body.name, CHANNEL_NAME_MAX, 'channel name');
-    const bitrate = body.bitrateKbps;
-    if (bitrate !== undefined) {
-      if (typeof bitrate !== 'number' || !(VOICE_BITRATES_KBPS as readonly number[]).includes(bitrate)) {
-        bad(`bitrateKbps must be one of ${VOICE_BITRATES_KBPS.join(', ')}`);
-      }
-      if (row.kind !== 'voice') bad('bitrate can only be set on voice channels');
-    }
-    if (name !== null) ctx.db.prepare('UPDATE channels SET name=? WHERE id=?').run(name, channelId);
-    if (typeof bitrate === 'number') ctx.db.prepare('UPDATE channels SET bitrate_kbps=? WHERE id=?').run(bitrate, channelId);
-    const channel = channelOf(ctx, channelId);
-    ctx.broadcastToServer(serverId, { t: 'channel.update', channel });
-    res.json({ channel });
-  }));
-
-  app.delete('/api/servers/:id/channels/:channelId', ctx.requireAuth, route((req, res) => {
-    const serverId = String(req.params.id);
-    const channelId = String(req.params.channelId);
-    requireAdmin(ctx, serverId, userIdOf(req));
-    const row = ctx.db
-      .prepare('SELECT kind FROM channels WHERE id=? AND server_id=?')
-      .get(channelId, serverId) as { kind: Channel['kind'] } | undefined;
-    if (!row) throw new ApiError(404, 'channel not found');
-    // Voice calls take their key from the server's first text channel, so a server must always keep one.
-    if (row.kind === 'text') {
-      const { count } = ctx.db
-        .prepare("SELECT COUNT(*) AS count FROM channels WHERE server_id=? AND kind='text'")
-        .get(serverId) as { count: number };
-      if (count <= 1) throw new ApiError(409, 'a server needs at least one text channel');
-    }
-    // Everyone in the voice channel is dropped first. Messages, keys and MLS state cascade with the row.
-    clearVoiceChannel(ctx, channelId);
-    ctx.db.prepare('DELETE FROM channels WHERE id=?').run(channelId);
-    forgetChannelRemovals(ctx, channelId);
-    forgetWatchParty(channelId);
-    ctx.broadcastToServer(serverId, { t: 'channel.delete', serverId, channelId });
-    res.json({ ok: true });
-  }));
-
   app.patch('/api/servers/:id', ctx.requireAuth, route((req, res) => {
     const serverId = String(req.params.id);
     requireAdmin(ctx, serverId, userIdOf(req));
@@ -258,15 +182,6 @@ export function register(app: Express, ctx: Ctx): void {
     res.json({ ok: true });
   }));
 
-  app.post('/api/servers/:id/bans', ctx.requireAuth, route((req, res) => {
-    const serverId = String(req.params.id);
-    const targetId = bodyOf(req).userId;
-    if (typeof targetId !== 'string') bad('userId is required');
-    assertCanModerate(ctx, serverId, userIdOf(req), targetId);
-    disableAccount(ctx, targetId);
-    res.json({ ok: true });
-  }));
-
   app.get('/api/servers/:id/bans', ctx.requireAuth, route((req, res) => {
     const serverId = String(req.params.id);
     requireAdmin(ctx, serverId, userIdOf(req));
@@ -278,30 +193,6 @@ export function register(app: Express, ctx: Ctx): void {
       return user ? [{ user, bannedAt: r.disabled_at }] : [];
     });
     res.json({ bans });
-  }));
-
-  // People who have posted here but are no longer members and whose account is still on. With one server that is
-  // rare, but the moderation panel still offers it.
-  app.get('/api/servers/:id/former-members', ctx.requireAuth, route((req, res) => {
-    const serverId = String(req.params.id);
-    requireAdmin(ctx, serverId, userIdOf(req));
-    const rows = ctx.db
-      .prepare(`
-        SELECT m.author_id AS user_id FROM messages m
-        JOIN channels c ON c.id = m.channel_id
-        JOIN users u ON u.id = m.author_id
-        WHERE c.server_id = ?
-          AND m.author_id NOT IN (SELECT user_id FROM members WHERE server_id = ?)
-          AND u.disabled_at IS NULL AND u.deleted_at IS NULL
-        GROUP BY m.author_id
-        ORDER BY MAX(m.id) DESC
-        LIMIT 100`)
-      .all(serverId, serverId) as { user_id: string }[];
-    const users = rows.flatMap((r) => {
-      const user = ctx.getUser(r.user_id);
-      return user ? [user] : [];
-    });
-    res.json({ users });
   }));
 
   app.delete('/api/servers/:id/bans/:userId', ctx.requireAuth, route((req, res) => {

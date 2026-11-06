@@ -17,10 +17,10 @@ Auth (module `auth`)
 - GET  /api/avatars/:userId -> image bytes (public to authed users)
 
 Server/channels (module `servers`). There is exactly one server; there are no routes to create, join, leave,
-delete or transfer one, and no in-app invites.
+delete or transfer one, and no in-app invites. Its one text and one voice channel are made by the server itself;
+there are no routes to add, rename or delete a channel.
 - GET  /api/servers -> {servers: [{server, channels, members: Member[]}]}  (the one server)
-- POST /api/servers/:id/channels {name, kind} (admin) -> {channel}
-- DELETE /api/servers/:id/members/:userId and POST /api/servers/:id/bans {userId} (admin): turn the account off
+- DELETE /api/servers/:id/members/:userId (admin): turn the account off
   (signed out everywhere, leaves the server, cannot sign in). GET /api/servers/:id/bans lists turned-off accounts;
   DELETE /api/servers/:id/bans/:userId turns one back on.
 
@@ -72,8 +72,6 @@ Voice (module `voice`)
 - (do not implement) GET  /api/voice/e2ee-seed/:channelId -> {key: base64}  per-channel voice media key; derived from the channel's current message key client-side instead — server returns 404 (clients must NOT rely on this).
 
 `member.leave` {serverId,userId}: after a kick, send to remaining members AND to the kicked user (sendToUser) so their client drops the server.
-
-`channel.update` {channel}: a channel's settings changed (voice bitrateKbps). PATCH /api/servers/:id/channels/:channelId {bitrateKbps} (admin; one of 8/16/32/64/96/128, default 64) broadcasts it; live calls re-publish at the new bitrate.
 
 `activity` (Spotify "listening to"): client sends `{t:'activity', activity: Activity | null}` while its owner has sharing on. The
 server keeps only kind/title/artist (each cut to 200 characters) and a `https://open.spotify.com/track/<id>` url, holds it
