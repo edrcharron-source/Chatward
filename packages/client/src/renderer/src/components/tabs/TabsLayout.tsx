@@ -121,8 +121,10 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTes
   const [dropBefore, setDropBefore] = useState<TabId | null | undefined>(undefined);
   const tabNav = useRef<HTMLElement>(null);
   // the LCARS rail stacks the tabs top to bottom, so a drop lands above or below a tab rather than left or right of it
-  // The plain desktop tabs layout puts the bar down the left side as a rail, with room to name every button.
-  const rail = !frame && !phone;
+  // The plain desktop tabs layout can put the bar down the left side as a rail, with room to name every button
+  // (Settings > Appearance > Tab bar). By default it stays along the top.
+  const tabBar = useSettings((s) => s.tabBar);
+  const rail = !frame && !phone && tabBar === 'side';
   const vertical = frame === 'lcars' || rail;
   // the split view's two tabs sit in the tab bar's order
   const at = (t: TabId) => tabs.findIndex((x) => x.id === t);
@@ -437,7 +439,7 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTes
     );
   }
   return (
-    <div className={`cw-tabs-shell${orbit ? ' orbit-shell' : ''}`} data-region="shell" data-layout={orbit ? 'orbit' : 'tabs'}>
+    <div className={`cw-tabs-shell${orbit ? ' orbit-shell' : ''}`} data-region="shell" data-layout={orbit ? 'orbit' : 'tabs'} data-tabbar={rail ? 'side' : 'top'}>
       {orbit && <OrbitBackdrop />}
       <header className="cw-tabs-bar" data-region="tabs" {...dropArea}>
         {orbit

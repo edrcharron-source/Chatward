@@ -17,6 +17,8 @@ export interface Settings {
   splitRatio: number;
   /** tabs layout: the tab bar's order, by tab id; unknown ids are dropped and missing ones go at the end */
   tabOrder: string[];
+  /** plain desktop tabs layout: tabs in a bar along the top (the default) or down a rail on the left side */
+  tabBar: 'top' | 'side';
   inputDeviceId: string;   // '' = default
   outputDeviceId: string;
   cameraDeviceId: string;
@@ -45,7 +47,7 @@ export interface Settings {
 
 const LS = 'chatward.settings';
 const defaults = {
-  theme: 'dark' as const, skin: 'lebserver', animatedBackgrounds: true, welcomeDismissed: false, layout: 'tabs' as Settings['layout'], splitRatio: 0.5, tabOrder: [] as string[], inputDeviceId: '', outputDeviceId: '', cameraDeviceId: '',
+  theme: 'dark' as const, skin: 'lebserver', animatedBackgrounds: true, welcomeDismissed: false, layout: 'tabs' as Settings['layout'], splitRatio: 0.5, tabOrder: [] as string[], tabBar: 'top' as Settings['tabBar'], inputDeviceId: '', outputDeviceId: '', cameraDeviceId: '',
   masterVolume: 1, micGain: 1, noiseSuppression: true, echoCancellation: true,
   messageSounds: true, mutedChannels: [] as string[], voiceJoinLeaveSounds: true, silenceAll: false, soundVolume: 0.6,
   autoLoadEmbeds: false, linkPreviews: true, confirmDeleteMessages: true, userVolumes: {} as Record<string, number>, mutedUsers: {} as Record<string, boolean>,

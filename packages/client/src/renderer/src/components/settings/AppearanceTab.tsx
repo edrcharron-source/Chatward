@@ -15,6 +15,12 @@ const LAYOUTS = [
   { id: 'orbit', label: 'Orbit', hint: 'Clean sci-fi menus: tabs in a thin top bar over a line drawing. Comes with the Orbit skin' },
 ] as const;
 
+/** Where the Tabs layout's tabs sit on a computer. Phones always use their bottom bar. */
+const TAB_BARS = [
+  { id: 'top', label: 'Top', hint: 'Tabs in a bar along the top of the window' },
+  { id: 'side', label: 'Left side', hint: 'Tabs stacked down the left side, with every button named' },
+] as const;
+
 type Layout = (typeof LAYOUTS)[number]['id'];
 
 /** A layout that comes with a skin brings that skin along. */
@@ -27,6 +33,7 @@ export default function AppearanceTab() {
   const theme = useSettings((s) => s.theme);
   const skin = useSettings((s) => s.skin);
   const layout = useSettings((s) => s.layout);
+  const tabBar = useSettings((s) => s.tabBar);
   const confirmDeleteMessages = useSettings((s) => s.confirmDeleteMessages);
   const animatedBackgrounds = useSettings((s) => s.animatedBackgrounds);
   const set = useSettings((s) => s.set);
@@ -58,6 +65,19 @@ export default function AppearanceTab() {
           ))}
         </div>
       </Section>
+      {layout === 'tabs' && (
+        <Section title="Tab bar">
+          <div className="choice-group" role="radiogroup" aria-label="Tab bar">
+            {TAB_BARS.map((b) => (
+              <label key={b.id} className="choice" title={b.hint}>
+                <input type="radio" name="tabBar" value={b.id} checked={tabBar === b.id}
+                  onChange={() => set({ tabBar: b.id })} />
+                <span>{b.label}</span>
+              </label>
+            ))}
+          </div>
+        </Section>
+      )}
       <Section title="Confirmations">
         <Toggle label="Ask before deleting a message"
           hint="Turn off to delete a message straight away. Turn on again to be asked each time."

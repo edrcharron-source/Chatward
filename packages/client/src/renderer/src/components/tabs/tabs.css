@@ -88,28 +88,28 @@
 .cw-tab.drop-before::before { left: -5px; }
 .cw-tab.drop-after::after { right: -5px; }
 
-/* Desktop tabs layout: the bar runs down the left as a rail. The server name sits on top, the five views stack under
+/* Desktop tabs layout with Settings > Appearance > Tab bar set to Left side: the bar runs down the left as a rail. The server name sits on top, the five views stack under
    it with their names, and the tools (each with a written label) sit at the bottom. Orbit and LCARS keep their frames;
    phones keep the bottom bar (phone.css). */
-.cw-tabs-shell[data-layout='tabs'] {
+.cw-tabs-shell[data-layout='tabs'][data-tabbar='side'] {
   grid-template-columns: 220px minmax(0, 1fr) auto;
   grid-template-rows: minmax(0, 1fr);
   grid-template-areas: 'tabs main side';
 }
-.cw-tabs-shell[data-layout='tabs'] > .cw-tabs-bar {
+.cw-tabs-shell[data-layout='tabs'][data-tabbar='side'] > .cw-tabs-bar {
   flex-direction: column; align-items: stretch; flex-wrap: nowrap; gap: 16px;
   padding: 14px 10px; border-bottom: 0; border-right: 1px solid var(--border);
   overflow-y: auto; min-height: 0;
 }
-.cw-tabs-shell[data-layout='tabs'] .cw-tabs-server { padding: 0 6px; overflow: hidden; text-overflow: ellipsis; }
-.cw-tabs-shell[data-layout='tabs'] .cw-tabs { flex-direction: column; flex-wrap: nowrap; margin: 0; gap: 4px; }
-.cw-tabs-shell[data-layout='tabs'] .cw-tab { display: flex; }
-.cw-tabs-shell[data-layout='tabs'] .cw-tab-main { flex: 1; min-width: 0; justify-content: flex-start; min-height: 38px; }
-.cw-tabs-shell[data-layout='tabs'] .cw-tab-main .cw-badge { margin-left: auto; }
-.cw-tabs-shell[data-layout='tabs'] .cw-tabs-tools { flex-direction: column; align-items: stretch; margin-top: auto; gap: 4px; }
-.cw-tabs-shell[data-layout='tabs'] .cw-tool { justify-content: flex-start; }
+.cw-tabs-shell[data-layout='tabs'][data-tabbar='side'] .cw-tabs-server { padding: 0 6px; overflow: hidden; text-overflow: ellipsis; }
+.cw-tabs-shell[data-layout='tabs'][data-tabbar='side'] .cw-tabs { flex-direction: column; flex-wrap: nowrap; margin: 0; gap: 4px; }
+.cw-tabs-shell[data-layout='tabs'][data-tabbar='side'] .cw-tab { display: flex; }
+.cw-tabs-shell[data-layout='tabs'][data-tabbar='side'] .cw-tab-main { flex: 1; min-width: 0; justify-content: flex-start; min-height: 38px; }
+.cw-tabs-shell[data-layout='tabs'][data-tabbar='side'] .cw-tab-main .cw-badge { margin-left: auto; }
+.cw-tabs-shell[data-layout='tabs'][data-tabbar='side'] .cw-tabs-tools { flex-direction: column; align-items: stretch; margin-top: auto; gap: 4px; }
+.cw-tabs-shell[data-layout='tabs'][data-tabbar='side'] .cw-tool { justify-content: flex-start; }
 /* the drop marker sits above or below a tab in the rail */
-.cw-tabs-shell[data-layout='tabs'] .cw-tab.drop-before::before,
-.cw-tabs-shell[data-layout='tabs'] .cw-tab.drop-after::after { left: -3px; right: -3px; width: auto; height: 3px; top: auto; bottom: auto; }
-.cw-tabs-shell[data-layout='tabs'] .cw-tab.drop-before::before { top: -4px; }
-.cw-tabs-shell[data-layout='tabs'] .cw-tab.drop-after::after { bottom: -4px; }
+.cw-tabs-shell[data-layout='tabs'][data-tabbar='side'] .cw-tab.drop-before::before,
+.cw-tabs-shell[data-layout='tabs'][data-tabbar='side'] .cw-tab.drop-after::after { left: -3px; right: -3px; width: auto; height: 3px; top: auto; bottom: auto; }
+.cw-tabs-shell[data-layout='tabs'][data-tabbar='side'] .cw-tab.drop-before::before { top: -4px; }
+.cw-tabs-shell[data-layout='tabs'][data-tabbar='side'] .cw-tab.drop-after::after { bottom: -4px; }
