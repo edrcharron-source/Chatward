@@ -36,12 +36,17 @@ try {
   assert.ok(sid, 'a server is made for the existing owner');
   assert.equal((db.prepare('SELECT owner_id FROM servers WHERE id=?').get(sid) as { owner_id: string }).owner_id, 'u1');
   const channels = db.prepare('SELECT name, kind FROM channels WHERE server_id=? ORDER BY kind').all(sid);
-  assert.deepEqual(channels, [{ name: 'general', kind: 'text' }, { name: 'General', kind: 'voice' }]);
+  assert.deepEqual(channels, [{ name: 'general', kind: 'text' }, { name: 'Voice', kind: 'voice' }]);
   assert.equal((db.prepare("SELECT display_name FROM users WHERE id='u1'").get() as { display_name: string }).display_name, 'alice1',
     'the display name follows the login name');
   ensureSingleServer(db);
   assert.equal((db.prepare('SELECT COUNT(*) AS n FROM servers').get() as { n: number }).n, 1, 'running again changes nothing');
-  log('an owner without a server gets one with #general and General, once');
+  log('an owner without a server gets one with #general and Voice, once');
+  db.prepare("UPDATE channels SET name='test' WHERE server_id=? AND kind='voice'").run(sid);
+  ensureSingleServer(db);
+  assert.equal((db.prepare("SELECT name FROM channels WHERE server_id=? AND kind='voice'").get(sid) as { name: string }).name, 'Voice',
+    'an old voice channel name turns back into Voice');
+  log('a renamed voice channel is called Voice again on start');
   db.close();
 
   // Several servers, outsiders and a ban: the oldest server wins, everyone else joins it, the banned account turns off.

@@ -324,6 +324,7 @@ on('PATCH', /^\/api\/servers\/([^/]+)\/channels\/([^/]+)$/, (r) => {
   const channel = requireChannel(r.match[2]);
   const body = (r.body ?? {}) as { name?: unknown; bitrateKbps?: unknown };
   if (body.name === undefined && body.bitrateKbps === undefined) throw new HttpError(400, 'nothing to update');
+  if (body.name !== undefined && channel.kind === 'voice') throw new HttpError(400, "the voice chat can't be renamed");
   let updated: Channel = { ...channel, name: body.name === undefined ? channel.name : str(body.name, 'name', LIMITS.CHANNEL_NAME_MAX) };
   if (body.bitrateKbps !== undefined) {
     if (channel.kind !== 'voice') throw new HttpError(400, 'bitrate can only be set on voice channels');

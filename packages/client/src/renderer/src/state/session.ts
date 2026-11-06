@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Channel, Member, Server, User } from '@chatward/shared';
+import { VOICE_CHANNEL_NAME, type Channel, type Member, type Server, type User } from '@chatward/shared';
 import { api } from '../api/http';
 
 /** The address a fresh install starts with. Test runs outside the app have no build info, so they get none. */
@@ -13,6 +13,12 @@ function isWeb(): boolean {
 }
 
 export interface ServerBundle { server: Server; channels: Channel[]; members: Member[] }
+
+/** The voice chat always shows as "Voice", whatever name an older server still has stored for it. */
+function withVoiceName(b: ServerBundle): ServerBundle {
+  if (!b.channels.some((c) => c.kind === 'voice' && c.name !== VOICE_CHANNEL_NAME)) return b;
+  return { ...b, channels: b.channels.map((c) => (c.kind === 'voice' ? { ...c, name: VOICE_CHANNEL_NAME } : c)) };
+}
 
 interface SessionState {
   serverUrl: string;
@@ -90,13 +96,14 @@ export const useSession = create<SessionState>((set, get) => ({
   setAuth: (token, user) => { set({ token, user }); persist(); saveToken(token); },
   setUser: (user) => { set({ user }); persist(); },
   logout: () => { set({ token: null, user: null, servers: [], activeServerId: null, activeChannelId: null, myStatus: 'online', presence: {}, voiceOccupants: {}, unread: {}, theaterChatId: null }); persist(); saveToken(null); },
-  setServers: (servers) => {
+  setServers: (list) => {
+    const servers = list.map(withVoiceName);
     const s = get();
     const active = servers.find((x) => x.server.id === s.activeServerId) ?? servers[0];
     set({ servers, activeServerId: active?.server.id ?? null,
       activeChannelId: s.activeChannelId && active?.channels.some((c) => c.id === s.activeChannelId) ? s.activeChannelId : active?.channels.find((c) => c.kind === 'text')?.id ?? null });
   },
-  upsertServer: (b) => set((s) => ({ servers: s.servers.some((x) => x.server.id === b.server.id) ? s.servers.map((x) => (x.server.id === b.server.id ? b : x)) : [...s.servers, b] })),
+  upsertServer: (bundle) => set((s) => { const b = withVoiceName(bundle); return { servers: s.servers.some((x) => x.server.id === b.server.id) ? s.servers.map((x) => (x.server.id === b.server.id ? b : x)) : [...s.servers, b] }; }),
   removeServer: (serverId) => set((s) => {
     const servers = s.servers.filter((b) => b.server.id !== serverId);
     if (s.activeServerId !== serverId) return { servers };
