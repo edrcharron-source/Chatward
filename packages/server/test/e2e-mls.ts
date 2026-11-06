@@ -576,13 +576,6 @@ async function main() {
     assert.equal((await api(bob.token, 'POST', '/api/voice/rejoin', { channelId: sideVoice })).status, 409, 'a rejoin without a token for that room is refused');
     log('a rejoin into a voice channel the user never got a token for is refused');
 
-    // The voice chat is always called Voice: a new one gets that name, and renaming it is refused. Its bitrate can still change.
-    const sideRow = (await api(alice.token, 'GET', '/api/servers')).json.servers[0].channels.find((c: { id: string }) => c.id === sideVoice);
-    assert.equal(sideRow.name, 'Voice', 'a new voice channel is called Voice');
-    assert.equal((await api(alice.token, 'PATCH', `${chanBase}/${sideVoice}`, { name: 'test' })).status, 400, 'renaming the voice chat is refused');
-    assert.equal((await api(alice.token, 'PATCH', `${chanBase}/${sideVoice}`, { bitrateKbps: 64 })).status, 200, 'its bitrate can still change');
-    log('the voice chat cannot be renamed');
-
     // A server restart clears the voice slot but not the call. The rejoin after it puts the slot back, and a kick after that
     // must still keep removing bob from the room, because the rejoin starts the repeat for that room.
     assert.equal((await api(bob.token, 'POST', '/api/voice/token', { channelId: voiceChan })).status, 200, 'bob joins the call');

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { VOICE_CHANNEL_NAME, type Channel, type Member, type Server, type User } from '@chatward/shared';
+import type { Channel, Member, Server, User } from '@chatward/shared';
 import { api } from '../api/http';
 
 /** The address a fresh install starts with. Test runs outside the app have no build info, so they get none. */
@@ -14,10 +14,9 @@ function isWeb(): boolean {
 
 export interface ServerBundle { server: Server; channels: Channel[]; members: Member[] }
 
-/** The voice chat always shows as "Voice", whatever name an older server still has stored for it. */
+/** The voice chat always shows as "Voice", whatever name the server has stored. */
 function withVoiceName(b: ServerBundle): ServerBundle {
-  if (!b.channels.some((c) => c.kind === 'voice' && c.name !== VOICE_CHANNEL_NAME)) return b;
-  return { ...b, channels: b.channels.map((c) => (c.kind === 'voice' ? { ...c, name: VOICE_CHANNEL_NAME } : c)) };
+  return { ...b, channels: b.channels.map((c) => (c.kind === 'voice' ? { ...c, name: 'Voice' } : c)) };
 }
 
 interface SessionState {

@@ -3,7 +3,6 @@ import {
   DEFAULT_VOICE_BITRATE_KBPS,
   LIMITS,
   VOICE_BITRATES_KBPS,
-  VOICE_CHANNEL_NAME,
   type Channel,
   type Member,
   type Server,
@@ -166,14 +165,13 @@ export function register(app: Express, ctx: Ctx): void {
     requireAdmin(ctx, serverId, userIdOf(req));
     const body = bodyOf(req);
     if (body.kind !== 'text' && body.kind !== 'voice') bad('kind must be text or voice');
-    // The voice chat is always called "Voice", so a new one gets that name whatever was asked for.
-    const name = body.kind === 'voice' ? VOICE_CHANNEL_NAME : cleanText(body.name, CHANNEL_NAME_MAX, 'channel name');
+    const name = cleanText(body.name, CHANNEL_NAME_MAX, 'channel name');
     const channel = insertChannel(ctx, serverId, name, body.kind);
     ctx.broadcastToServer(serverId, { t: 'channel.new', channel });
     res.json({ channel });
   }));
 
-  /** Renames a text channel and/or sets a voice channel's bitrate. Both are validated before anything is written. The voice chat can't be renamed. */
+  /** Renames a channel and/or sets its voice bitrate. Both are validated before anything is written. */
   app.patch('/api/servers/:id/channels/:channelId', ctx.requireAuth, route((req, res) => {
     const serverId = String(req.params.id);
     const channelId = String(req.params.channelId);
@@ -184,7 +182,6 @@ export function register(app: Express, ctx: Ctx): void {
     if (!row) throw new ApiError(404, 'channel not found');
     const body = bodyOf(req);
     if (body.name === undefined && body.bitrateKbps === undefined) bad('nothing to update');
-    if (body.name !== undefined && row.kind === 'voice') bad('the voice chat can\'t be renamed');
     const name = body.name === undefined ? null : cleanText(body.name, CHANNEL_NAME_MAX, 'channel name');
     const bitrate = body.bitrateKbps;
     if (bitrate !== undefined) {

@@ -2,7 +2,6 @@
 // and MLS groups work as before; only the ways to have more than one server are gone.
 import type { DB } from './db.js';
 import { newId } from './db.js';
-import { VOICE_CHANNEL_NAME } from '@chatward/shared';
 
 /** The server everyone is in: the oldest one. Null until the first account exists. */
 export function mainServerId(db: DB): string | null {
@@ -15,7 +14,7 @@ export function createMainServer(db: DB, ownerId: string, name = 'Chatward'): st
   const now = Date.now();
   db.prepare('INSERT INTO servers (id, name, owner_id, created_at) VALUES (?, ?, ?, ?)').run(id, name, ownerId, now);
   db.prepare('INSERT INTO members (server_id, user_id, role, joined_at) VALUES (?, ?, ?, ?)').run(id, ownerId, 'owner', now);
-  for (const [channel, kind] of [['general', 'text'], [VOICE_CHANNEL_NAME, 'voice']] as const) {
+  for (const [channel, kind] of [['general', 'text'], ['General', 'voice']] as const) {
     db.prepare('INSERT INTO channels (id, server_id, name, kind, created_at) VALUES (?, ?, ?, ?, ?)')
       .run(newId(), id, channel, kind, now);
   }
@@ -30,12 +29,10 @@ export function createMainServer(db: DB, ownerId: string, name = 'Chatward'): st
  * - Anyone banned from the server is turned off instead, and the ban is dropped.
  * - Every other live account becomes a member.
  * - Display names follow the account name, which is the only name now.
- * - Every voice channel is called "Voice", which can't be changed.
  */
 export function ensureSingleServer(db: DB): void {
   db.transaction(() => {
     db.prepare("UPDATE users SET display_name=username WHERE deleted_at IS NULL AND display_name<>username").run();
-    db.prepare("UPDATE channels SET name=? WHERE kind='voice' AND name<>?").run(VOICE_CHANNEL_NAME, VOICE_CHANNEL_NAME);
     let serverId = mainServerId(db);
     if (!serverId) {
       const owner = db.prepare('SELECT id FROM users WHERE deleted_at IS NULL ORDER BY created_at, rowid LIMIT 1').get() as

@@ -25,9 +25,6 @@ export const LIMITS = {
   CHANNEL_NAME_MAX: 32,
 } as const;
 
-/** The one voice chat is always called this. It can't be renamed. */
-export const VOICE_CHANNEL_NAME = 'Voice';
-
 export const VOICE_BITRATES_KBPS = [8, 16, 32, 64, 96, 128] as const;
 export const DEFAULT_VOICE_BITRATE_KBPS = 64;
 
