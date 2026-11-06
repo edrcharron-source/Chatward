@@ -111,14 +111,6 @@ function demoTarget(actorId: string, targetId: string): Member {
   return target;
 }
 
-/** Past members are not in the member list, but any user the demo knows about can be banned by id. */
-function demoFormerUser(userId: string) {
-  if (userId === YOU_ID) throw new HttpError(400, 'you cannot ban yourself');
-  const bot = world.bots.find((b) => b.user.id === userId);
-  if (!bot) throw new HttpError(404, 'user not found');
-  return bot.user;
-}
-
 /** Takes a member out of the server, their voice call, and the member list, then tells every open socket. */
 function removeDemoMember(userId: string) {
   world.members = world.members.filter((m) => m.user.id !== userId);
@@ -306,49 +298,6 @@ on('GET', /^\/api\/avatars\/([^/]+)$/, async (r) => {
 });
 
 on('GET', /^\/api\/servers$/, () => json({ servers: [bundle()] }));
-on('POST', /^\/api\/servers\/([^/]+)\/channels$/, (r) => {
-  serverGuard(r.match[1]);
-  const body = (r.body ?? {}) as { name?: unknown; kind?: unknown };
-  const kind = body.kind === 'voice' ? 'voice' : 'text';
-  const channel: Channel = {
-    id: newId(world, 'ch'), serverId: SERVER_ID, name: str(body.name, 'name', 48), kind,
-    ...(kind === 'voice' ? { bitrateKbps: DEFAULT_VOICE_BITRATE_KBPS } : {}),
-  };
-  world.channels.push(channel);
-  world.voice[channel.id] ??= [];
-  emit({ t: 'channel.new', channel });
-  return json({ channel }, 201);
-});
-on('PATCH', /^\/api\/servers\/([^/]+)\/channels\/([^/]+)$/, (r) => {
-  serverGuard(r.match[1]);
-  const channel = requireChannel(r.match[2]);
-  const body = (r.body ?? {}) as { name?: unknown; bitrateKbps?: unknown };
-  if (body.name === undefined && body.bitrateKbps === undefined) throw new HttpError(400, 'nothing to update');
-  let updated: Channel = { ...channel, name: body.name === undefined ? channel.name : str(body.name, 'name', LIMITS.CHANNEL_NAME_MAX) };
-  if (body.bitrateKbps !== undefined) {
-    if (channel.kind !== 'voice') throw new HttpError(400, 'bitrate can only be set on voice channels');
-    if (!(VOICE_BITRATES_KBPS as readonly unknown[]).includes(body.bitrateKbps)) {
-      throw new HttpError(400, `bitrateKbps must be one of ${VOICE_BITRATES_KBPS.join(', ')}`);
-    }
-    updated = { ...updated, bitrateKbps: body.bitrateKbps as number };
-  }
-  world.channels = world.channels.map((c) => (c.id === channel.id ? updated : c));
-  emit({ t: 'channel.update', channel: updated });
-  return json({ channel: updated });
-});
-on('DELETE', /^\/api\/servers\/([^/]+)\/channels\/([^/]+)$/, (r) => {
-  serverGuard(r.match[1]);
-  const channel = requireChannel(r.match[2]);
-  if (channel.kind === 'text' && world.channels.filter((c) => c.kind === 'text').length <= 1) {
-    throw new HttpError(409, 'a server needs at least one text channel');
-  }
-  world.channels = world.channels.filter((c) => c.id !== channel.id);
-  delete world.messages[channel.id];
-  delete world.watch[channel.id];
-  delete world.voice[channel.id];
-  emit({ t: 'channel.delete', serverId: SERVER_ID, channelId: channel.id });
-  return json({ ok: true });
-});
 on('PATCH', /^\/api\/servers\/([^/]+)$/, (r) => {
   serverGuard(r.match[1]);
   world.server = { ...world.server, name: str((r.body as { name?: unknown })?.name, 'server name', LIMITS.SERVER_NAME_MAX) };
@@ -376,27 +325,6 @@ on('DELETE', /^\/api\/servers\/([^/]+)\/members\/([^/]+)$/, (r) => {
 on('GET', /^\/api\/servers\/([^/]+)\/bans$/, (r) => {
   serverGuard(r.match[1]);
   return json({ bans: world.bans });
-});
-on('POST', /^\/api\/servers\/([^/]+)\/bans$/, (r) => {
-  serverGuard(r.match[1]);
-  const targetId = (r.body as { userId?: unknown })?.userId;
-  if (typeof targetId !== 'string') throw new HttpError(400, 'userId is required');
-  const user = world.members.some((m) => m.user.id === targetId) ? demoTarget(YOU_ID, targetId).user : demoFormerUser(targetId);
-  world.bans = [...world.bans.filter((b) => b.user.id !== targetId), { user, bannedAt: Date.now() }];
-  removeDemoMember(targetId);
-  return json({ ok: true });
-});
-on('GET', /^\/api\/servers\/([^/]+)\/former-members$/, (r) => {
-  serverGuard(r.match[1]);
-  const current = new Set([...world.members.map((m) => m.user.id), ...world.bans.map((b) => b.user.id)]);
-  const users = new Map<string, User>();
-  for (const msgs of Object.values(world.messages)) {
-    for (const msg of msgs) {
-      const bot = world.bots.find((b) => b.user.id === msg.authorId);
-      if (bot && !current.has(bot.user.id)) users.set(bot.user.id, bot.user);
-    }
-  }
-  return json({ users: [...users.values()] });
 });
 on('DELETE', /^\/api\/servers\/([^/]+)\/bans\/([^/]+)$/, (r) => {
   serverGuard(r.match[1]);
