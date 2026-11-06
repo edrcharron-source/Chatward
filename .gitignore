@@ -7,3 +7,6 @@ data
 release
 /deploy/updates/
 /deploy/backups/
+
+# Signing key for desktop updates. Never commit it.
+update-keys

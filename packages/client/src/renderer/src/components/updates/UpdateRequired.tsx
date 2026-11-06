@@ -9,13 +9,17 @@ export default function UpdateRequired({ serverUrl, minClientVersion }: { server
 
   let body: ReactNode;
   if (status.state === 'ready') {
-    body = <button className="primary" onClick={() => void installUpdate()}>Restart to update</button>;
+    body = <button className="primary" onClick={() => void installUpdate()}>Update</button>;
   } else if (status.state === 'downloading') {
     body = <p className="muted">Downloading Chatward {status.version}… {status.percent}%</p>;
   } else {
     body = (
       <>
-        <p className="muted">{status.state === 'error' ? `Could not download the update: ${status.message}` : 'Looking for the update…'}</p>
+        <p className="muted">
+          {status.state === 'error' ? `Could not download the update: ${status.message}`
+            : status.state === 'rejected' ? `Chatward ${status.version} failed the safety check, so it was not installed. Tell the server owner.`
+            : 'Looking for the update…'}
+        </p>
         <button onClick={() => void checkServerVersion(serverUrl)}>Check again</button>
       </>
     );

@@ -367,6 +367,8 @@ export type UpdateStatus =
   | { state: 'downloading'; version: string; percent: number }
   | { state: 'ready'; version: string }
   | { state: 'none' }
+  /** The download did not carry a valid signature, so it was deleted and will not install. */
+  | { state: 'rejected'; version: string }
   | { state: 'error'; message: string };
 
 /** Compares dotted numeric versions: negative if a < b, 0 if equal, positive if a > b. */

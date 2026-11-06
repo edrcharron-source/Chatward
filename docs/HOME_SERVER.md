@@ -93,7 +93,7 @@ first.
 | `/srv/chatward/data` (NVMe) | `chatward.db`, `jwt-secret`, `invites.log`, `admin.sock`, avatars, banners, sounds |
 | `/mnt/storage/chatward/uploads` (RAID) | encrypted attachments |
 | `/mnt/storage/chatward/backups` (RAID) | `update-home.sh` backups, newest 5 |
-| `/srv/chatward/updates` | desktop installer feed (`latest.yml`, `Chatward-Setup.exe`) |
+| `/srv/chatward/updates` | desktop app update feed, filled from the newest GitHub release by `update-home.sh` (see docs/UPDATES.md) |
 | `deploy/home/.env` | domain, tokens and keys, mode 600 |
 
 Backups hold password hashes and the login secret: anyone with a copy can sign in as any member. Keep them private.
