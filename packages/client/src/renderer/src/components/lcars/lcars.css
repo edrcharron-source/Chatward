@@ -149,7 +149,7 @@ html.cw-shaped-lcars body::before, html.cw-shaped-lcars body::after { display: n
 .lcars-rail .cw-tab.drop-before::before { top: -4px; bottom: auto; }
 .lcars-rail .cw-tab.drop-after::after { top: auto; bottom: -4px; }
 
-/* The top bar: arm, Split, the drag area, the server's name, you, Test, and the window's buttons. */
+/* The top bar: arm, the drag area, the server's name, you, Test, and the window's buttons. */
 .lcars-top { grid-area: top; display: flex; align-items: stretch; gap: var(--lc-gap); min-width: 0; user-select: none; }
 .lcars-arm { flex: none; width: var(--lc-arm); margin-right: 0; background: var(--lc-frame); -webkit-app-region: drag; }
 .lcars-top > .lcars-arm + * { margin-left: 0; }

@@ -9,7 +9,8 @@ export interface Feature {
   find: (page: Page) => Locator;
 }
 
-const channels = (page: Page) => page.getByRole('complementary', { name: 'Channels' });
+// The tabs layout's tab buttons, by tab id (the pop-out button beside each is a different control).
+const tab = (page: Page, id: string) => page.locator(`[data-tab='${id}'] .cw-tab-main`);
 const members = (page: Page) => page.getByRole('complementary', { name: 'Members' });
 const settings = (page: Page) => page.getByRole('dialog', { name: 'Settings' });
 
@@ -32,12 +33,12 @@ const settingsTabs: Feature[] = SETTINGS_TABS.map(([id, name]) => ({
 export const FEATURES: Feature[] = [
   { id: 'auth.try-demo', what: 'start the offline demo', find: (p) => p.getByText('Try demo', { exact: false }) },
 
-  { id: 'channel.open-memes', what: 'open another text channel', find: (p) => channels(p).getByText('memes', { exact: true }) },
-  { id: 'channel.create', what: 'create a channel (admin)', find: (p) => p.getByRole('button', { name: 'Create channel', exact: true }) },
+  { id: 'tab.voice', what: 'open the Voice tab', find: (p) => tab(p, 'voice') },
+  { id: 'tab.watch', what: 'open the Watch together tab', find: (p) => tab(p, 'watch') },
+  { id: 'tab.vault', what: 'open the Vault tab', find: (p) => tab(p, 'vault') },
   { id: 'server.settings', what: 'open server settings', find: (p) => p.getByRole('button', { name: 'Server settings', exact: true }) },
   { id: 'settings.open', what: 'open app settings', find: (p) => p.getByRole('button', { name: 'Settings', exact: true }) },
   { id: 'settings.close', what: 'close app settings', find: (p) => p.getByRole('button', { name: 'Close settings', exact: true }) },
-  { id: 'watch-party.toggle', what: 'watch YouTube together', find: (p) => p.getByTitle('Watch YouTube together', { exact: true }) },
 
   { id: 'chat.message', what: 'message composer', find: (p) => p.getByLabel('Message', { exact: true }) },
   { id: 'chat.send', what: 'send a message (once text is typed)', find: (p) => p.getByRole('button', { name: 'Send', exact: true }) },

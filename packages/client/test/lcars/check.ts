@@ -35,7 +35,7 @@ async function controls(page: Page): Promise<string[]> {
     }), CONTROLS);
 }
 
-// The harness pins the classic layout before every load; this runs after it and picks the layout under test instead.
+// The harness pins the tabs layout before every load; this runs after it and picks the layout under test instead.
 async function setLayout(page: Page, layout: string, skin: string) {
   await page.context().addInitScript(({ layout, skin }) => {
     const saved = JSON.parse(localStorage.getItem('chatward.settings') ?? '{}');
@@ -96,10 +96,11 @@ async function walk(page: Page, shoot: (name: string) => Promise<void>): Promise
   await snap('9-vault');
 
   await tab(page, 'Text').click();
-  await page.getByRole('button', { name: 'Split', exact: false }).first().click();
+  // Shift+click a tab shows it beside the open one; Shift+click it again closes that side.
+  await tab(page, 'Vault').click({ modifiers: ['Shift'] });
   await page.getByRole('separator').first().waitFor();
   await snap('10-split');
-  await page.getByRole('button', { name: 'Split', exact: false }).first().click();
+  await tab(page, 'Vault').click({ modifiers: ['Shift'] });
 
   await page.getByRole('button', { name: 'Server settings', exact: true }).click();
   await page.getByRole('dialog').first().waitFor();

@@ -74,7 +74,7 @@ layout is on goes back to Tabs. A skin entry in `SKINS` names its layout with `l
   added to the tabs layout shows up in LCARS too. The call controls are `VoiceDock` with `bar`.
 - **The frame** is built from interlocking blocks: two elbows (top left, bottom left) that turn the thick left rail into
   the thin top and bottom bars, flat segments that are the buttons (4px black gaps, label bottom right), fillers, and
-  round caps on free ends only. The rail holds the tabs, Server settings and Settings; the top bar holds Split, the drag
+  round caps on free ends only. The rail holds the tabs, Server settings and Settings; the top bar holds the drag
   area, the server name, your status, Test and the window's Min/Max/Close (the usual title bar is hidden while the frame
   is up); the bottom bar holds the call controls or Join voice. The soundboard opens in a pop-up with a small frame.
 - **The window** (desktop app, not macOS) is see-through around the frame: picking the LCARS layout swaps the main

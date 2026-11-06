@@ -10,7 +10,7 @@ const THEMES = [
 
 const LAYOUTS = [
   { id: 'tabs', label: 'Tabs', hint: 'One text chat and one voice chat, picked from tabs along the top' },
-  { id: 'classic', label: 'Classic', hint: 'Channel list on the left' },
+  { id: 'classic', label: 'Classic', hint: 'The same tabs, stacked down a sidebar on the left with every button named' },
   { id: 'lcars', label: 'LCARS', hint: 'The LCARS frame: tabs down a rail on the left, call controls along the bottom. Comes with the LCARS skin' },
   { id: 'orbit', label: 'Orbit', hint: 'Clean sci-fi menus: tabs in a thin top bar over a line drawing. Comes with the Orbit skin' },
 ] as const;

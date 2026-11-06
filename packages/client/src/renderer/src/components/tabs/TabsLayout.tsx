@@ -71,14 +71,18 @@ const clampSplit = (r: number) => Math.min(MAX_SPLIT, Math.max(MIN_SPLIT, r));
  * `frame="orbit"` keeps this layout's places for everything and dresses it as the Orbit frame (components/orbit): a line
  * drawing behind the panes, an emblem before the server's name, and the window buttons at the end of the tab bar, which
  * becomes the window's title bar.
+ *
+ * `rail` (the Classic layout) puts the tab bar down the left side instead of along the top, with room to name every
+ * button. Orbit, LCARS and phones keep their own bars.
  */
-export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTest, onOpenMovies, frame }: {
+export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTest, onOpenMovies, frame, rail: railLayout = false }: {
   bundle: ServerBundle | undefined;
   onOpenSettings: () => void;
   onReload: () => Promise<void>;
   onOpenTest: () => void;
   onOpenMovies: (() => void) | null;
   frame?: 'lcars' | 'orbit';
+  rail?: boolean;
 }) {
   const user = useSession((s) => s.user);
   const myStatus = useSession((s) => s.myStatus);
@@ -121,8 +125,8 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTes
   const [dropBefore, setDropBefore] = useState<TabId | null | undefined>(undefined);
   const tabNav = useRef<HTMLElement>(null);
   // the LCARS rail stacks the tabs top to bottom, so a drop lands above or below a tab rather than left or right of it
-  // The plain desktop tabs layout puts the bar down the left side as a rail, with room to name every button.
-  const rail = !frame && !phone;
+  // The Classic layout puts the bar down the left side as a rail, with room to name every button.
+  const rail = railLayout && !frame && !phone;
   const vertical = frame === 'lcars' || rail;
   // the split view's two tabs sit in the tab bar's order
   const at = (t: TabId) => tabs.findIndex((x) => x.id === t);
@@ -377,8 +381,6 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTes
         dropArea={dropArea}
         main={main}
         members={showMembers && bundle ? <MemberList serverId={bundle.server.id} members={members} /> : null}
-        split={split}
-        onToggleSplit={() => setSplit((s) => !s)}
         membersToggle={theaterKey !== null ? { hidden: membersHidden, toggle: () => setMembersHidden((h) => !h) } : null}
         onOpenTest={onOpenTest}
         onOpenServerSettings={canOpenServerSettings ? () => setServerSettingsOpen(true) : null}
@@ -437,7 +439,7 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTes
     );
   }
   return (
-    <div className={`cw-tabs-shell${orbit ? ' orbit-shell' : ''}`} data-region="shell" data-layout={orbit ? 'orbit' : 'tabs'}>
+    <div className={`cw-tabs-shell${orbit ? ' orbit-shell' : ''}`} data-region="shell" data-layout={orbit ? 'orbit' : 'tabs'} data-tabbar={rail ? 'side' : 'top'}>
       {orbit && <OrbitBackdrop />}
       <header className="cw-tabs-bar" data-region="tabs" {...dropArea}>
         {orbit
@@ -445,11 +447,6 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTes
           : <strong className="cw-tabs-server">{bundle?.server.name ?? 'Chatward'}</strong>}
         {nav}
         <div className="cw-tabs-tools">
-          <button type="button" className={`cw-tool${split ? ' active' : ''}`} aria-pressed={split}
-            title="Show the open tab beside the one before it (or Shift+click a tab; Shift+click a split tab to close it)" onClick={() => setSplit((s) => !s)}>
-            <PixelIcon name="theater" size={14} />
-            <span>Split</span>
-          </button>
           {theaterKey !== null && (
             <button type="button" className="cw-tool" aria-pressed={membersHidden} onClick={() => setMembersHidden((h) => !h)}>
               {membersHidden ? 'Show members' : 'Hide members'}

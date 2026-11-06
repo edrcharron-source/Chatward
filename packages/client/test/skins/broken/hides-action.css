@@ -1,5 +1,5 @@
-/* A skin that hides the channel admin icons (create channel, server settings). The feature check and
+/* A skin that hides the tab bar's icon buttons (settings, test console). The feature check and
    the lint must both catch it. Kept out of the shipped-skin lint on purpose. */
-:root[data-skin='hides-action'] [data-region='channels'] .icon {
+:root[data-skin='hides-action'] [data-region='tabs'] .icon {
   display: none;
 }

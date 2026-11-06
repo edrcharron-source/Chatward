@@ -8,7 +8,8 @@ export interface Settings {
   /** the welcome card above the chat was closed with Got it */
   welcomeDismissed: boolean;
   /**
-   * 'tabs': tab bar, one text and one voice chat (the default). 'classic': the channel sidebar layout. 'lcars': the tabs
+   * 'tabs': tab bar, one text and one voice chat (the default). 'classic': the same views with the tabs
+   * down a sidebar on the left. 'lcars': the tabs
    * layout's views inside the LCARS frame (components/lcars), which comes with the LCARS skin. 'orbit': the tabs layout
    * in the Orbit frame (components/orbit), which comes with the Orbit skin.
    */
