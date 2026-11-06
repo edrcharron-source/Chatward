@@ -22,7 +22,7 @@ Open the server address in Safari, tap Share, then **Add to Home Screen**.
 ## Notifications (Web Push)
 
 - On iPhone, notifications only work in the app added to the home screen (iOS 16.4 or later). Turn them on in **Workouts → My plan → Reminders and privacy → Turn on notifications**.
-- The server makes a VAPID key pair on first start and saves it as `vapid.json` in the data folder. Set `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY` to use your own, and set `VAPID_SUBJECT` (a `mailto:` or `https:` address) for Apple.
+- The server makes a VAPID key pair on first start and saves it as `vapid.json` in the data folder. Set `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY` to use your own, and set `VAPID_SUBJECT` (a `mailto:` or `https:` address) for Apple. On the home server it goes in `deploy/home/.env`.
 - A push only says who did what, for example "Caleb sent a message" in #general. Message text is end-to-end encrypted, so the server can't read it and never sends it. Chat pushes go only to people with no open connection, at most one per channel every 3 minutes.
 - Workouts pushes: nudges, cheers, comments, the crew's check-ins, PRs and milestones (these can be turned off), and the daily reminder.
 
