@@ -33,7 +33,7 @@ function livekitKeys(): { apiKey: string; apiSecret: string } {
   return { apiKey, apiSecret };
 }
 
-/** Per-person upload quota. 1 GB each keeps seven people well inside the Lightsail disk. */
+/** Per-person upload quota. 1 GB each keeps the group well inside the server's disk. */
 function uploadQuotaBytes(): number {
   const raw = process.env.UPLOAD_QUOTA_MB ?? '1024';
   const mb = Number(raw);

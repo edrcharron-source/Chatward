@@ -36,36 +36,20 @@ jobs:
             packages/client/release/*.exe
             packages/client/release/latest.yml
             packages/client/release/*.blockmap
-  server-bundle:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Assemble server bundle
-        run: |
-          d=chatward-server; mkdir -p $d/packages/client
-          cp -r deploy/bundle/. $d/
-          echo "${{ inputs.tag }}" | sed 's/^v//' > $d/VERSION
-          cp package.json package-lock.json tsconfig.base.json $d/
-          cp -r packages/shared packages/server $d/packages/
-          cp packages/client/package.json $d/packages/client/
-          rm -rf $d/packages/*/node_modules $d/packages/*/dist
-          zip -qr chatward-server.zip $d
-      - uses: actions/upload-artifact@v4
-        with: { name: server, path: chatward-server.zip, retention-days: 1 }
   publish:
-    needs: [windows-app, server-bundle]
+    needs: windows-app
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
-        with: { path: dist }
+        with: { name: win, path: dist/win }
       - name: Create release
         env: { GH_TOKEN: '${{ github.token }}' }
         run: |
           cd dist
           cp win/Chatward-Setup.exe Chatward-Setup.exe
           gh release create "${{ inputs.tag }}" --repo "${{ github.repository }}" \
-            --title "Chatward ${{ inputs.tag }}" --notes "Test build. Download Chatward-Setup.exe and install it. To try the app with no server, click Try demo on the login screen. chatward-server.zip is only needed for a real server (needs Docker Desktop)." \
-            Chatward-Setup.exe server/chatward-server.zip
+            --title "Chatward ${{ inputs.tag }}" --notes "Test build. Download Chatward-Setup.exe and install it. To try the app with no server, click Try demo on the login screen." \
+            Chatward-Setup.exe
       - name: Publish update feed to the server
         env:
           SSH_HOST: ${{ secrets.UPDATE_SSH_HOST }}

@@ -8,12 +8,11 @@ The app updates itself from your own server, because the repo is private and fri
   - If the app is older than `minClientVersion`, it shows a full-screen "Update required" screen and waits for the download. It does not open the chat.
   - If the server is older than the app, a yellow strip warns that the server should be updated.
 - **Release:** the Release workflow builds `Chatward-Setup.exe` and `latest.yml`, then copies them to `updates/` on the server over SSH.
-- **Server update:** unzip the new `chatward-server.zip` over the server folder and run `./update-server.sh`. It backs up the database volume to `backups/`, rebuilds the server and prints rollback steps if it does not come back. Before it stops the server it checks that the disk holding `backups/` has room for a full copy of the data plus 2 GB. The image pull and build use Docker's own disk space, which this check does not measure, so keep some room free there too. The backups are on the same disk as the data, and only the newest 3 are kept, so with a large upload folder they can take up to three times its size.
+- **Server update:** on the home server, `./deploy/home/update-home.sh` (see docs/HOME_SERVER.md). It backs up the data folder first and prints rollback steps if the server does not come back.
 
 ## Server setup: LiveKit keys (required)
 Voice, video and screen share use LiveKit, which signs every call with a key pair. The old `devkey` / `secret` pair is public, so anyone could join your calls with it. The server now refuses to start with those values.
-- **Windows test server:** `start-server.bat` creates the keys in `.env` by itself on first run. Nothing to do.
-- **Linux server (Lightsail):** before the first start, or before `./update-server.sh`, edit `.env` in the server folder and set:
+- **Home server:** `deploy/home/install.sh` creates random keys in `deploy/home/.env` on first run. To set them by hand:
   - `LIVEKIT_API_KEY`: any short ID, e.g. `API` followed by 12 random characters.
   - `LIVEKIT_API_SECRET`: at least 32 random characters. Make one with `openssl rand -hex 32`.
 
@@ -23,14 +22,12 @@ Voice, video and screen share use LiveKit, which signs every call with a key pai
 Every account, the first one included, is made with a one-time sign-up code from the `chatward` admin command on the
 server. The first account made with a code owns the server, so make that one yourself before you share the address.
 - **Home server:** `chatward invite` (see docs/HOME_SERVER.md, section 4).
-- **Windows test server:** open a terminal in the `chatward-server` folder and run `chatward invite`.
-- **Linux server (Lightsail):** `docker compose -f deploy/docker-compose.yml exec server node packages/server/dist/cli.js invite`.
 
 A code works once and expires after 48 hours. `SETUP_CODE` in old `.env` files is no longer read and can be deleted.
 
 ## One-time setup (GitHub repo secrets)
 Settings → Secrets and variables → Actions:
-- `UPDATE_SSH_HOST`: the server's address, e.g. the Lightsail static IP.
+- `UPDATE_SSH_HOST`: the server's address, e.g. the server's domain or public IP.
 - `UPDATE_SSH_USER`: the deploy user on the server, `chatward-deploy` (set up below). Do not use `ubuntu`, which is an admin account.
 - `UPDATE_SSH_KEY`: the private key for the deploy user. Its public key goes in the deploy user's `authorized_keys` (below).
 - `UPDATE_SSH_HOST_KEY`: the server's SSH host key, so the release refuses to talk to any other machine. Put in the whole line `ssh-ed25519 AAAA…` copied from the server (step 4 below).
@@ -52,7 +49,7 @@ This user can only put files into the `updates/` folder. It cannot run Docker, c
 8. Turn on two-step login for the GitHub account that owns the repo, since anyone with access to its secrets can publish updates.
 
 ### Backups are secrets
-`update-cloud.sh` backs up the database, avatars and uploads to `deploy/backups/`. The backup holds the login-signing secret and password hashes, so anyone with a copy can sign in as any member. The script makes the folder private (`chmod 700`) and the archive private (`umask 077`). Do not copy a backup off the server to a PC, email or cloud storage unless you protect it, and delete old ones you no longer need.
+`update-home.sh` backs up the database, login secret, avatars and sounds to `BACKUP_PATH` (see docs/HOME_SERVER.md). The backup holds the login-signing secret and password hashes, so anyone with a copy can sign in as any member. The script makes each archive private (`umask 077`). Do not copy a backup off the server to a PC, email or cloud storage unless you protect it, and delete old ones you no longer need.
 
 ## Releasing a new version
 1. Run the Release workflow with a new tag, e.g. `v0.2.0`. Never reuse a tag.

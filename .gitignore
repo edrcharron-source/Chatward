@@ -6,4 +6,3 @@ data
 *.log
 release
 /deploy/updates/
-/deploy/backups/

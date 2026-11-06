@@ -95,7 +95,7 @@ const ctx: Ctx = {
 
 const app = express();
 app.disable('x-powered-by');
-// Behind Caddy (TRUST_PROXY=1 in deploy/docker-compose.yml), trust its X-Forwarded-For so the login rate limit sees real client IPs.
+// Behind Caddy (TRUST_PROXY=1 in deploy/home/docker-compose.yml), trust its X-Forwarded-For so the login rate limit sees real client IPs.
 if (config.trustProxy) app.set('trust proxy', 1);
 app.use(helmet());
 // The desktop app's page is served from app://chatward, so every API call is cross-origin and needs CORS. Only the app's
