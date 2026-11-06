@@ -137,6 +137,11 @@ html.cw-shaped-lcars body::before, html.cw-shaped-lcars body::after { display: n
   padding: 0 8px 4px; border: 0; border-radius: 0; box-shadow: none; background: var(--lc-frame); color: var(--lc-ink);
   font: 600 14px/1 var(--lc-font); letter-spacing: .05em; text-transform: uppercase; white-space: nowrap;
 }
+/* A tab never grows past the rail, whatever the skin's typeface: a long name is cut short with an ellipsis, so the
+   pop-out button always stays inside the frame. */
+:root:root .lcars-rail .cw-tab { width: 100%; min-width: 0; }
+:root:root .lcars-rail .cw-tab-main { overflow: hidden; }
+:root:root .lcars-rail .cw-tab-main > span:not([aria-hidden], .cw-badge, .cw-tab-live) { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 :root:root .lcars-rail .cw-tab-main:hover, :root:root .lcars-rail .cw-tab-pop:hover { filter: brightness(1.18); color: var(--lc-ink); }
 :root:root .lcars-rail .cw-tab.active .cw-tab-main { background: var(--lc-live); color: var(--lc-ink); }
 :root:root .lcars-rail .cw-tab-main:focus-visible, :root:root .lcars-rail .cw-tab-pop:focus-visible { outline: 2px solid var(--lc-text); outline-offset: -2px; }
