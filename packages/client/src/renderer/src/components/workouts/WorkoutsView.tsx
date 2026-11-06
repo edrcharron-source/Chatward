@@ -480,14 +480,17 @@ function SettingsForm({ me, onSaved }: { me: WorkoutMe; onSaved: () => void }) {
   );
 }
 
-/** Turns phone notifications on or off for this device (web app only). */
-export function PushSwitch() {
+/**
+ * Turns phone notifications on or off for this device (web app only). Shown here and in Settings > Notifications;
+ * with a title it draws its own settings heading, so nothing shows at all where push is not available.
+ */
+export function PushSwitch({ title }: { title?: string } = {}) {
   const [state, setState] = useState<PushState | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   useEffect(() => { void pushState().then(setState, () => setState('unsupported')); }, []);
   if (!state || state === 'unsupported') return null;
   const run = async (fn: () => Promise<PushState>) => { setMsg(null); try { setState(await fn()); } catch (e) { setMsg(errText(e)); } };
-  return (
+  const body = (
     <div className="wk-push">
       {state === 'needs-install' && <p className="muted wk-small">To get notifications on iPhone, add Chatward to your home screen (Share, then Add to Home Screen) and open it from there.</p>}
       {state === 'denied' && <p className="muted wk-small">Notifications are blocked. Turn them on for Chatward in your phone's Settings.</p>}
@@ -502,6 +505,7 @@ export function PushSwitch() {
       {msg && <p className="muted wk-small">{msg}</p>}
     </div>
   );
+  return title ? <section className="setting-section"><h3>{title}</h3>{body}</section> : body;
 }
 
 // ---------- helpers ----------

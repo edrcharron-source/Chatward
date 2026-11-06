@@ -13,7 +13,7 @@ import { accountKey, adoptLegacyIfOwned, initDevice, syncChannelKeys, handleEnve
 import { installNotifications } from './notify/notify';
 import { installSpotifyActivity } from './state/spotify';
 import AuthScreen from './components/auth/AuthScreen';
-import SettingsModal from './components/settings/SettingsModal';
+import SettingsModal, { type SettingsTabId } from './components/settings/SettingsModal';
 import { JellyfinBrowser, useJellyfinEnabled } from './components/jellyfin/JellyfinBrowser';
 import TestConsole from './components/testconsole/TestConsole';
 import TabsLayout from './components/tabs/TabsLayout';
@@ -72,7 +72,7 @@ function syncAfterLowKeyPackages(): void {
 }
 
 function Shell() {
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState<SettingsTabId | false>(false);
   const [ready, setReady] = useState(false);
   const [unreachable, setUnreachable] = useState(false);
   const [testOpen, setTestOpen] = useState(false);
@@ -318,7 +318,7 @@ function Shell() {
   const modals = (
     <>
       {moviesOpen && <JellyfinBrowser onClose={() => setMoviesOpen(false)} />}
-      {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
+      {settingsOpen && <SettingsModal initialTab={settingsOpen} onClose={() => setSettingsOpen(false)} />}
     </>
   );
   // The modals sit after the layout, so switching the layout in settings keeps the settings open.
@@ -327,7 +327,7 @@ function Shell() {
     <>
       {testOpen
         ? <div className="cw-shell" data-region="shell"><main className="cw-main" data-region="main"><TestConsole onClose={() => setTestOpen(false)} /></main></div>
-        : <TabsLayout bundle={bundle} onOpenSettings={() => setSettingsOpen(true)} onReload={loadServers}
+        : <TabsLayout bundle={bundle} onOpenSettings={(tab) => setSettingsOpen(tab ?? 'account')} onReload={loadServers}
             onOpenTest={() => setTestOpen(true)} onOpenMovies={jellyfinEnabled ? () => setMoviesOpen(true) : null}
             frame={layout === 'lcars' || layout === 'orbit' ? layout : undefined} rail={layout === 'classic'} />}
       {modals}

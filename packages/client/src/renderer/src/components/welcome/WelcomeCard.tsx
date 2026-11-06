@@ -13,10 +13,11 @@ function installed(): boolean {
  * A short welcome above the chat for someone new: what each tab is for, and buttons for the first things people do.
  * It stays until they press Got it (saved on this device only).
  */
-export default function WelcomeCard({ serverName, onJoinVoice, onOpenSettings, onInvite }: {
+export default function WelcomeCard({ serverName, onJoinVoice, onOpenNotifications, onInvite }: {
   serverName: string;
   onJoinVoice?: () => void;
-  onOpenSettings: () => void;
+  /** opens Settings on the Notifications tab */
+  onOpenNotifications: () => void;
   /** set for the owner and admins: opens server settings, where sign-up codes are made */
   onInvite?: () => void;
 }) {
@@ -39,7 +40,7 @@ export default function WelcomeCard({ serverName, onJoinVoice, onOpenSettings, o
       <div className="cw-welcome-actions">
         {onJoinVoice && <button type="button" className="primary" onClick={onJoinVoice}>Join voice</button>}
         {onInvite && <button type="button" onClick={onInvite}>Invite a friend</button>}
-        <button type="button" onClick={onOpenSettings}>Set up notifications</button>
+        <button type="button" onClick={onOpenNotifications}>Set up notifications</button>
         <button type="button" className="cw-welcome-done" onClick={() => set({ welcomeDismissed: true })}>Got it</button>
       </div>
     </section>
