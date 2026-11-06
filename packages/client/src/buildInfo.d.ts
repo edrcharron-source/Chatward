@@ -14,3 +14,5 @@ declare const __CHATWARD_BUILD__: {
 };
 /** The Spotify app's client ID (SPOTIFY_CLIENT_ID at build time), or empty. Main process only. */
 declare const __SPOTIFY_CLIENT_ID__: string;
+/** PEM public key that update installers must be signed with (CHATWARD_UPDATE_PUBLIC_KEY at build time), or empty. Main process only. */
+declare const __CHATWARD_UPDATE_KEY__: string;

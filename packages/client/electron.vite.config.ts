@@ -19,7 +19,13 @@ const build = {
 };
 const define = { __CHATWARD_BUILD__: JSON.stringify(build) };
 // Spotify's terms treat the client ID as confidential, so it comes from a CI secret and is only built into the main process.
-const mainDefine = { ...define, __SPOTIFY_CLIENT_ID__: JSON.stringify((process.env.SPOTIFY_CLIENT_ID ?? '').trim()) };
+// The public half of the update signing key. The Release workflow derives it from the UPDATE_SIGNING_KEY secret.
+// Without it (dev and test builds) the app refuses every update, which those builds never take anyway.
+const mainDefine = {
+  ...define,
+  __SPOTIFY_CLIENT_ID__: JSON.stringify((process.env.SPOTIFY_CLIENT_ID ?? '').trim()),
+  __CHATWARD_UPDATE_KEY__: JSON.stringify((process.env.CHATWARD_UPDATE_PUBLIC_KEY ?? '').trim()),
+};
 
 export default defineConfig({
   main: { plugins: [externalizeDepsPlugin()], define: mainDefine, build: { rollupOptions: { input: resolve(__dirname, 'src/main/index.ts') } } },

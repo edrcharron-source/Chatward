@@ -4,10 +4,11 @@
 # The version defaults to the tag on HEAD. Needs docker (the admin user is in the docker group), not sudo.
 #
 # 1. Checks .env.
-# 2. Stops the server and backs up the data folder (database, login secret, avatars, sounds) to BACKUP_PATH.
+# 2. Downloads the newest desktop app release into UPDATES_PATH, so members' apps offer the Update button.
+# 3. Stops the server and backs up the data folder (database, login secret, avatars, sounds) to BACKUP_PATH.
 #    Uploads are not copied here: they live on the RAID and an update never rewrites them. Keeps the newest 5 backups.
-# 3. Refreshes LiveKit, rebuilds Caddy and the server, and starts everything.
-# 4. Waits for the server. If it does not answer, prints the rollback steps.
+# 4. Refreshes LiveKit, rebuilds Caddy and the server, and starts everything.
+# 5. Waits for the server. If it does not answer, prints the rollback steps.
 set -Eeuo pipefail
 umask 077
 cd "$(dirname "$0")"
@@ -29,6 +30,33 @@ VERSION=${VERSION:-$(sed -n 's/^  "version": "\(.*\)",$/\1/p' ../../package.json
 STAMP=$(date -u +%Y%m%d-%H%M%S)
 ARCHIVE="$BACKUP_PATH/chatward-data-$STAMP.tar.gz"
 KEEP_BACKUPS=5
+
+# The desktop app updates itself from UPDATES_PATH, so fill it from the newest GitHub release. The app checks each
+# installer's signature (the .sig file) before installing, so these downloads need no trust in GitHub or the network.
+# A failure here only means members keep their current app; it never stops the server update.
+fetch_desktop_update() {
+  local base="https://github.com/${UPDATES_REPO}/releases/latest/download" tmp f
+  command -v curl >/dev/null || { echo "curl is not installed, so the desktop update was not fetched." >&2; return 1; }
+  tmp=$(mktemp -d "$UPDATES_PATH/.incoming-XXXXXX") || return 1
+  # latest.yml first: if it matches the one already here, the release has not changed and nothing else is downloaded.
+  if ! curl -fsSL --retry 3 -o "$tmp/latest.yml" "$base/latest.yml"; then rm -rf "$tmp"; return 1; fi
+  if cmp -s "$tmp/latest.yml" "$UPDATES_PATH/latest.yml"; then
+    echo "==> Desktop app update already up to date ($(sed -n 's/^version: *//p' "$tmp/latest.yml"))"
+    rm -rf "$tmp"; return 0
+  fi
+  for f in Chatward-Setup.exe Chatward-Setup.exe.sig Chatward-Setup.exe.blockmap; do
+    if ! curl -fsSL --retry 3 -o "$tmp/$f" "$base/$f"; then rm -rf "$tmp"; return 1; fi
+  done
+  chmod 644 "$tmp"/*
+  # Installer, signature and blockmap first, latest.yml last, so apps never see a version whose files are missing.
+  for f in Chatward-Setup.exe Chatward-Setup.exe.sig Chatward-Setup.exe.blockmap latest.yml; do mv -f "$tmp/$f" "$UPDATES_PATH/$f"; done
+  rm -rf "$tmp"
+  echo "==> Desktop app update ready for members: $(sed -n 's/^version: *//p' "$UPDATES_PATH/latest.yml")"
+}
+UPDATES_PATH=$(read_env UPDATES_PATH); UPDATES_PATH=${UPDATES_PATH:-/srv/chatward/updates}
+UPDATES_REPO=$(read_env UPDATES_REPO); UPDATES_REPO=${UPDATES_REPO:-edrcharron-source/Chatward}
+echo "==> Fetching the newest desktop app release from github.com/$UPDATES_REPO"
+fetch_desktop_update || echo "Could not fetch the desktop app update; members keep their current version. The server update continues." >&2
 
 echo "==> Installing Chatward server $VERSION"
 if [ -n "$(docker compose ps -a -q server)" ]; then

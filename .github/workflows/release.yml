@@ -22,6 +22,13 @@ jobs:
         shell: bash
         run: npm version "${TAG#v}" --no-git-tag-version --allow-same-version -w @chatward/client
       - run: npm run build -w @chatward/shared
+      - name: Build the update signing public key into the app
+        env: { UPDATE_SIGNING_KEY: '${{ secrets.UPDATE_SIGNING_KEY }}' }
+        shell: bash
+        run: |
+          # Required: an app built without the key refuses every update, so members would be stuck on it (docs/UPDATES.md).
+          if [ -z "$UPDATE_SIGNING_KEY" ]; then echo "UPDATE_SIGNING_KEY is not set; see docs/UPDATES.md." >&2; exit 1; fi
+          { echo 'CHATWARD_UPDATE_PUBLIC_KEY<<CHATWARD_PEM'; node scripts/update-signing.mjs public-key; echo; echo 'CHATWARD_PEM'; } >> "$GITHUB_ENV"
       - run: npm run dist:win
         env:
           CHATWARD_DEFAULT_SERVER: ${{ vars.CHATWARD_DEFAULT_SERVER || 'https://chat.lebserver.com' }}
@@ -56,16 +63,25 @@ jobs:
     needs: [windows-app, server-bundle]
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with: { path: dist }
+      - name: Sign the installer
+        env:
+          UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          # Every desktop app refuses an update without a valid signature for its version.
+          node scripts/update-signing.mjs sign dist/win/Chatward-Setup.exe "${TAG#v}"
       - name: Create release
         env: { GH_TOKEN: '${{ github.token }}' }
         run: |
           cd dist
-          cp win/Chatward-Setup.exe Chatward-Setup.exe
+          # The installer plus the files the updater needs. Servers copy these four into their update folder.
+          cp win/Chatward-Setup.exe win/Chatward-Setup.exe.sig win/Chatward-Setup.exe.blockmap win/latest.yml .
           gh release create "${{ inputs.tag }}" --repo "${{ github.repository }}" \
             --title "Chatward ${{ inputs.tag }}" --notes "Test build. Download Chatward-Setup.exe and install it. To try the app with no server, click Try demo on the login screen. chatward-server.zip is only needed for a real server (needs Docker Desktop)." \
-            Chatward-Setup.exe server/chatward-server.zip
+            Chatward-Setup.exe Chatward-Setup.exe.sig Chatward-Setup.exe.blockmap latest.yml server/chatward-server.zip
       - name: Publish update feed to the server
         env:
           SSH_HOST: ${{ secrets.UPDATE_SSH_HOST }}
@@ -83,6 +99,6 @@ jobs:
           ssh_opts=(-i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$HOME/.ssh/known_hosts")
           target="$SSH_USER@$SSH_HOST:$DEPLOY_DIR/updates/"
           ssh "${ssh_opts[@]}" "$SSH_USER@$SSH_HOST" "mkdir -p '$DEPLOY_DIR/updates'"
-          # Installer and blockmap first, latest.yml last, so clients never see a version whose file is missing.
-          scp "${ssh_opts[@]}" dist/win/Chatward-Setup.exe dist/win/*.blockmap "$target"
+          # Installer, signature and blockmap first, latest.yml last, so clients never see a version whose file is missing.
+          scp "${ssh_opts[@]}" dist/win/Chatward-Setup.exe dist/win/Chatward-Setup.exe.sig dist/win/*.blockmap "$target"
           scp "${ssh_opts[@]}" dist/win/latest.yml "$target"
