@@ -17,6 +17,7 @@ import StatusPicker from '../servers/StatusPicker';
 import ServerSettingsDialog from '../servers/ServerSettingsDialog';
 import Avatar from '../servers/Avatar';
 import WelcomeCard from '../welcome/WelcomeCard';
+import type { SettingsTabId } from '../settings/SettingsModal';
 import { isAdmin } from '../servers/util';
 import PixelIcon, { type PixelIconName } from '../icons/PixelIcon';
 import { PopoutWindow } from './PopoutWindow';
@@ -77,7 +78,8 @@ const clampSplit = (r: number) => Math.min(MAX_SPLIT, Math.max(MIN_SPLIT, r));
  */
 export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTest, onOpenMovies, frame, rail: railLayout = false }: {
   bundle: ServerBundle | undefined;
-  onOpenSettings: () => void;
+  /** opens Settings, on the given tab or the first one */
+  onOpenSettings: (tab?: SettingsTabId) => void;
   onReload: () => Promise<void>;
   onOpenTest: () => void;
   onOpenMovies: (() => void) | null;
@@ -210,7 +212,7 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTes
             <div className="cw-tab-pane">
               <WelcomeCard serverName={bundle.server.name}
                 onJoinVoice={voice && callChannelId !== voice.id ? () => { selectTab('voice', false); joinVoice?.(); } : undefined}
-                onOpenSettings={onOpenSettings}
+                onOpenNotifications={() => onOpenSettings('notifications')}
                 onInvite={canOpenServerSettings ? () => setServerSettingsOpen(true) : undefined} />
               <div className="cw-tab-pane"><ChatView key={text.id} channel={text} /></div>
             </div>
@@ -384,7 +386,7 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTes
         membersToggle={theaterKey !== null ? { hidden: membersHidden, toggle: () => setMembersHidden((h) => !h) } : null}
         onOpenTest={onOpenTest}
         onOpenServerSettings={canOpenServerSettings ? () => setServerSettingsOpen(true) : null}
-        onOpenSettings={onOpenSettings}
+        onOpenSettings={() => onOpenSettings()}
         onJoinVoice={joinVoice ?? null}
         windows={windows}
       />
@@ -423,7 +425,7 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTes
               <span>Server</span>
             </button>
           )}
-          <button type="button" className="icon cw-tool-icon" aria-label="Settings" onClick={onOpenSettings}>
+          <button type="button" className="icon cw-tool-icon" aria-label="Settings" onClick={() => onOpenSettings()}>
             <PixelIcon name="gear" size={18} />
           </button>
           <button type="button" className={`cw-tool${drawerOpen ? ' active' : ''}`} aria-expanded={drawerOpen} onClick={() => setDrawerOpen((o) => !o)}>
@@ -465,7 +467,7 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTes
               <span>Server</span>
             </button>
           )}
-          <button type="button" className={rail ? 'cw-tool' : 'icon cw-tool-icon'} title="Settings" aria-label="Settings" onClick={onOpenSettings}>
+          <button type="button" className={rail ? 'cw-tool' : 'icon cw-tool-icon'} title="Settings" aria-label="Settings" onClick={() => onOpenSettings()}>
             <PixelIcon name="gear" size={rail ? 14 : 16} />
             {rail && <span>Settings</span>}
           </button>

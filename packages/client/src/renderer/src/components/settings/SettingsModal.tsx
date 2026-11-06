@@ -17,10 +17,10 @@ const TABS = [
   { id: 'security', label: 'Security', Panel: SecurityTab },
 ] as const;
 
-type TabId = (typeof TABS)[number]['id'];
+export type SettingsTabId = (typeof TABS)[number]['id'];
 
-export default function SettingsModal({ onClose }: { onClose: () => void }) {
-  const [tab, setTab] = useState<TabId>('account');
+export default function SettingsModal({ onClose, initialTab = 'account' }: { onClose: () => void; initialTab?: SettingsTabId }) {
+  const [tab, setTab] = useState<SettingsTabId>(initialTab);
   const current = TABS.find((t) => t.id === tab) ?? TABS[0];
 
   useEffect(() => {
