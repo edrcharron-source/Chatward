@@ -5,8 +5,9 @@
    gold   #e9c46a  you, the open tab's marker, owner/admin tags, a pressed toggle
    cyan   #7fd1e0  live: speaking, in the call, online
    red    #e5484d  close, leave and alerts
-   It comes with the Orbit layout (components/orbit) and its own icon set, Glyph (components/icons/glyphIcons.ts). Every
-   rule sits under :root[data-skin='orbit']. The Barlow fonts are under the SIL Open Font License (fonts/OFL.txt). */
+   It works in every layout; the Orbit layout (components/orbit) reads its --orb-* colours. It has its own icon set,
+   Glyph (components/icons/glyphIcons.ts). Every rule sits under
+   :root[data-skin='orbit']. The Barlow fonts are under the SIL Open Font License (fonts/OFL.txt). */
 
 @font-face { font-family: 'Barlow'; font-style: normal; font-weight: 400; font-display: swap; src: url('./fonts/barlow-latin-400-normal.woff2') format('woff2'); }
 @font-face { font-family: 'Barlow'; font-style: normal; font-weight: 500; font-display: swap; src: url('./fonts/barlow-latin-500-normal.woff2') format('woff2'); }

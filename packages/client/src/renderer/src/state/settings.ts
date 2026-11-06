@@ -10,8 +10,8 @@ export interface Settings {
   /**
    * 'tabs': tab bar, one text and one voice chat (the default). 'classic': the same views with the tabs
    * down a sidebar on the left. 'lcars': the tabs
-   * layout's views inside the LCARS frame (components/lcars), which comes with the LCARS skin. 'orbit': the tabs layout
-   * in the Orbit frame (components/orbit), which comes with the Orbit skin.
+   * layout's views inside the LCARS frame (components/lcars). 'orbit': the tabs layout in the Orbit frame
+   * (components/orbit). Separate from the skin: every skin works in every layout.
    */
   layout: 'tabs' | 'classic' | 'lcars' | 'orbit';
   /** tabs layout split view: share of the width the left tab takes, 0.2..0.8 */

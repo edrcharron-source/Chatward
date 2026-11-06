@@ -1,0 +1,30 @@
+/* The layout picker's drawings (LayoutPreview.tsx). Every colour is a token of the active skin, so each drawing shows
+   its layout in the skin that is on now. The LCARS drawing uses the frame's own --lc-* colours, which follow the skin
+   too (components/lcars/lcars.css), and the Orbit drawing the Orbit layout's --orb-* colours with the same fallbacks. */
+.lp {
+  display: block; width: 100%; height: auto; aspect-ratio: 16 / 10;
+  border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; background: var(--bg-2);
+}
+.lp .lp-ground { fill: var(--bg-2); }
+.lp .lp-bar, .lp .lp-side { fill: var(--bg-1); }
+.lp .lp-strong { fill: var(--text-strong); }
+.lp .lp-name { fill: var(--text); }
+.lp .lp-quiet { fill: var(--text-muted); }
+.lp .lp-line { fill: var(--text-muted); opacity: .55; }
+.lp .lp-avatar { fill: var(--text-muted); opacity: .45; }
+.lp .lp-live { fill: var(--ok); }
+.lp .lp-tab { fill: var(--bg-3); stroke: var(--text-muted); stroke-opacity: .35; stroke-width: .6; }
+.lp .lp-tab-on { fill: var(--accent-tint); stroke: var(--accent); stroke-opacity: 1; }
+.lp .lp-field { fill: var(--bg-3); }
+.lp .lp-accent { fill: var(--accent); }
+
+.lp .lp-lc-ground { fill: var(--lc-ground); }
+.lp .lp-lc-frame { fill: var(--lc-frame); }
+.lp .lp-lc-live { fill: var(--lc-live); }
+.lp .lp-lc-alert { fill: var(--lc-alert); }
+.lp-lcars { background: var(--lc-ground); }
+
+.lp .lp-orb-drawing { fill: none; stroke: var(--orb-ink, var(--text-strong)); stroke-width: .6; opacity: .2; }
+.lp .lp-orb-rule { stroke: var(--orb-rule, color-mix(in srgb, var(--text-strong) 14%, transparent)); stroke-width: 1; }
+.lp .lp-orb-mark { fill: var(--orb-gold, var(--accent)); }
+.lp .lp-orb-box { fill: none; stroke: var(--orb-line-strong, color-mix(in srgb, var(--text-strong) 22%, transparent)); stroke-width: .8; }

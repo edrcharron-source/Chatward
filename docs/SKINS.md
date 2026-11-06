@@ -63,11 +63,25 @@ the look gets the `visual-change` label; the check then passes and the screensho
 
 Skins that must pass are listed in `SKINS` in `test/skins/parity.ts`. Once the skin registry exists, the check reads it instead.
 
-## LCARS (a skin with its own layout)
+## Skins and layouts are separate
 
-The LCARS skin (`skins/lcars/skin.css`) comes with the LCARS layout (`components/lcars`). Picking the skin in Settings >
-Appearance also picks the layout, picking the LCARS layout also picks the skin, and picking another skin while the LCARS
-layout is on goes back to Tabs. A skin entry in `SKINS` names its layout with `layout`.
+The skin and the layout are two separate settings, and every skin works in every layout: picking a layout never changes
+the skin, and picking a skin never changes the layout. Settings > Appearance shows each layout as a small drawing
+(`components/settings/LayoutPreview.tsx`) made from the active skin's colour tokens, so it always shows that layout in
+the skin that is on now, light or dark.
+
+- A layout's frame reads the skin's tokens, never a skin by name. The LCARS frame's colours (`--lc-*`) take the active
+  skin's colours (`components/lcars/lcars.css`, with a small block per skin for the best fit); the Orbit frame reads the
+  Orbit skin's `--orb-*` colours and falls back to the shared tokens under any other skin.
+- A frame's rules start with `:root:root`, so a skin's general rules (every button, every corner) never repaint its blocks.
+  A skin's rules for the tabs layout skip the LCARS rail with `:not(.lcars-rail *)`.
+- A new skin should look right in all four layouts; `npm run lcars:check` and `npm run orbit:check` walk each frame under
+  its own skin and under the Lebserver skin.
+
+## LCARS (a layout and a skin)
+
+The LCARS layout (`components/lcars`) and the LCARS skin (`skins/lcars/skin.css`) were made together, but each works with
+any other choice.
 
 - **Same features as Tabs.** The LCARS layout is the tabs layout drawn in a different frame: `TabsLayout` with
   `frame="lcars"` hands its own tab bar, panes, member list, pop-out windows and dialogs to `LcarsLayout`, so a feature
@@ -91,10 +105,10 @@ layout is on goes back to Tabs. A skin entry in `SKINS` names its layout with `l
   (`--chatward-keep-window`). `npm run lcars:shaped -w @chatward/client -- <out dir>` checks the see-through window:
   the swap, clear corners (also with a dialog open) and the usual window coming back.
 
-## Orbit (a skin with its own layout)
+## Orbit (a layout and a skin)
 
-The Orbit skin (`skins/orbit/skin.css`) comes with the Orbit layout (`components/orbit`), paired the same way as LCARS:
-picking either picks both, and picking another skin while the Orbit layout is on goes back to Tabs.
+The Orbit layout (`components/orbit`) and the Orbit skin (`skins/orbit/skin.css`) were made together, like LCARS, but each
+works with any other choice.
 
 - **Same features as Tabs.** The Orbit layout is the tabs layout itself with `frame="orbit"`: every tab, tool, pane,
   member list and call control stays where Tabs puts it. The frame adds a line drawing behind the panes

@@ -8,7 +8,7 @@
 .cw-app:has(> .cw-app-body [data-layout='orbit']) > .cw-titlebar { display: none; }
 
 .orbit-shell {
-  --orb-line: var(--orb-rule, rgba(232, 236, 242, .14));
+  --orb-line: var(--orb-rule, color-mix(in srgb, var(--text-strong) 14%, transparent));
   --orb-mark: var(--orb-gold, var(--accent));
   position: relative; isolation: isolate; background: var(--bg-2);
 }
@@ -16,7 +16,7 @@
   position: absolute; inset: 0; width: 100%; height: 100%; z-index: -1; pointer-events: none;
   color: var(--orb-ink, var(--text-strong));
 }
-.orbit-backdrop .orbit-glow-stop { stop-color: var(--orb-glow, #c9d6ea); }
+.orbit-backdrop .orbit-glow-stop { stop-color: var(--orb-glow, var(--text-muted)); }
 .orbit-backdrop .orbit-glow { opacity: var(--orb-glow-strength, .08); }
 .orbit-backdrop .orbit-grain { opacity: var(--orb-grain, 1); }
 
@@ -36,7 +36,7 @@
 .orbit-shell .cw-tab.active { background: transparent; border-bottom-color: var(--text-strong); }
 .orbit-shell .cw-tab-main {
   min-height: 44px; padding: 0 6px; gap: 8px; border-radius: 0;
-  font-family: var(--orb-display, inherit); font-weight: 600; font-size: 14px; letter-spacing: .2em; text-transform: uppercase;
+  font-family: var(--orb-display, inherit); font-weight: 600; font-size: 14px; letter-spacing: .2em; text-transform: uppercase; white-space: nowrap;
 }
 .orbit-shell .cw-tab-main:hover { background: transparent; }
 .orbit-shell .cw-tab-main > span[aria-hidden='true'] { display: none; }
@@ -52,7 +52,7 @@
 /* Tools: thin outlined boxes in the same capitals. */
 .orbit-shell .cw-tabs-tools { margin-left: auto; gap: 8px; }
 .orbit-shell .cw-tool, .orbit-shell .cw-tool-icon {
-  min-height: 36px; border-radius: 0; background: transparent; border: 1px solid var(--orb-line-strong, rgba(232, 236, 242, .22));
+  min-height: 36px; border-radius: 0; background: transparent; border: 1px solid var(--orb-line-strong, color-mix(in srgb, var(--text-strong) 22%, transparent));
   color: var(--text-strong); font-family: var(--orb-display, inherit); font-weight: 600; font-size: 12px; letter-spacing: .16em; text-transform: uppercase;
 }
 .orbit-shell .cw-tool:hover, .orbit-shell .cw-tool-icon:hover { background: var(--hover-tint); }
@@ -73,11 +73,11 @@
 .orbit-shell .cw-tabs-main,
 .orbit-shell .cv-root { background: transparent; }
 .orbit-shell .cw-tabs-side {
-  width: 300px; background: var(--orb-side, rgba(232, 236, 242, .02)); border-left: 1px solid var(--orb-line);
+  width: 300px; background: var(--orb-side, color-mix(in srgb, var(--text-strong) 2%, transparent)); border-left: 1px solid var(--orb-line);
 }
 .orbit-shell .cw-tabs-side .cw-members { background: transparent; }
 .orbit-shell .cw-me {
-  margin: 0 14px 14px; padding: 12px; border: 1px solid var(--orb-line-strong, rgba(232, 236, 242, .22));
+  margin: 0 14px 14px; padding: 12px; border: 1px solid var(--orb-line-strong, color-mix(in srgb, var(--text-strong) 22%, transparent));
   background: var(--orb-panel, var(--bg-2));
 }
 .orbit-shell .cw-split-divider { background: var(--orb-line); }
