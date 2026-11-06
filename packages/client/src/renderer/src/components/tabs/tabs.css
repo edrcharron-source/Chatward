@@ -88,7 +88,7 @@
 .cw-tab.drop-before::before { left: -5px; }
 .cw-tab.drop-after::after { right: -5px; }
 
-/* Desktop tabs layout with Settings > Appearance > Tab bar set to Left side: the bar runs down the left as a rail. The server name sits on top, the five views stack under
+/* Classic layout (the tabs layout with rail): the bar runs down the left as a rail. The server name sits on top, the five views stack under
    it with their names, and the tools (each with a written label) sit at the bottom. Orbit and LCARS keep their frames;
    phones keep the bottom bar (phone.css). */
 .cw-tabs-shell[data-layout='tabs'][data-tabbar='side'] {

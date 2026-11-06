@@ -35,7 +35,7 @@ async function controls(page: Page): Promise<string[]> {
     }), CONTROLS);
 }
 
-// The harness pins the classic layout before every load; this runs after it and picks the layout under test instead.
+// The harness pins the tabs layout before every load; this runs after it and picks the layout under test instead.
 async function setLayout(page: Page, layout: string, skin: string) {
   await page.context().addInitScript(({ layout, skin }) => {
     const saved = JSON.parse(localStorage.getItem('chatward.settings') ?? '{}');

@@ -71,14 +71,18 @@ const clampSplit = (r: number) => Math.min(MAX_SPLIT, Math.max(MIN_SPLIT, r));
  * `frame="orbit"` keeps this layout's places for everything and dresses it as the Orbit frame (components/orbit): a line
  * drawing behind the panes, an emblem before the server's name, and the window buttons at the end of the tab bar, which
  * becomes the window's title bar.
+ *
+ * `rail` (the Classic layout) puts the tab bar down the left side instead of along the top, with room to name every
+ * button. Orbit, LCARS and phones keep their own bars.
  */
-export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTest, onOpenMovies, frame }: {
+export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTest, onOpenMovies, frame, rail: railLayout = false }: {
   bundle: ServerBundle | undefined;
   onOpenSettings: () => void;
   onReload: () => Promise<void>;
   onOpenTest: () => void;
   onOpenMovies: (() => void) | null;
   frame?: 'lcars' | 'orbit';
+  rail?: boolean;
 }) {
   const user = useSession((s) => s.user);
   const myStatus = useSession((s) => s.myStatus);
@@ -121,10 +125,8 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenTes
   const [dropBefore, setDropBefore] = useState<TabId | null | undefined>(undefined);
   const tabNav = useRef<HTMLElement>(null);
   // the LCARS rail stacks the tabs top to bottom, so a drop lands above or below a tab rather than left or right of it
-  // The plain desktop tabs layout can put the bar down the left side as a rail, with room to name every button
-  // (Settings > Appearance > Tab bar). By default it stays along the top.
-  const tabBar = useSettings((s) => s.tabBar);
-  const rail = !frame && !phone && tabBar === 'side';
+  // The Classic layout puts the bar down the left side as a rail, with room to name every button.
+  const rail = railLayout && !frame && !phone;
   const vertical = frame === 'lcars' || rail;
   // the split view's two tabs sit in the tab bar's order
   const at = (t: TabId) => tabs.findIndex((x) => x.id === t);
