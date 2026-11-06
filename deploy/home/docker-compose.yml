@@ -59,6 +59,7 @@ services:
       VAULT_QUOTA_MB: ${VAULT_QUOTA_MB:-20480}   # Vault photos and videos per person. 0 = no limit
       VAULT_MAX_MB: ${VAULT_MAX_MB:-200}   # largest single Vault file
       PUBLIC_URL: https://${DOMAIN}   # shown in the message chatward invite prints
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-}   # contact for push notifications; Apple wants a real one. Blank = placeholder
     volumes:
       - ${DATA_PATH:-/srv/chatward/data}:/data
       - ${UPLOADS_PATH:-/mnt/storage/chatward/uploads}:/uploads
