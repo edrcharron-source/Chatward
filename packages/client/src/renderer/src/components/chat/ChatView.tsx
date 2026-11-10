@@ -14,6 +14,8 @@ const GROUP_MS = 5 * 60_000;
 const TYPING_MS = 5_000;
 const NEAR_BOTTOM_PX = 120;
 const NEAR_TOP_PX = 80;
+/** Away (app in the background) at least this long, the chat reopens at the newest messages. */
+const AWAY_MS = 5 * 60_000;
 const NO_MEMBERS: Member[] = [];
 
 function typingLabel(names: string[]): string {
@@ -66,10 +68,23 @@ export default function ChatView({ channel }: { channel: Channel }) {
     const doc = listRef.current?.ownerDocument ?? document;
     const win = doc.defaultView ?? window;
     const markRead = () => { if (!doc.hidden) useSession.getState().clearUnread(channel.id); };
-    doc.addEventListener('visibilitychange', markRead);
+    // Coming back after a while (a phone reopening the app, say) starts at the newest messages, not wherever the
+    // reader had scrolled to before leaving. A quick look at another app keeps their place.
+    let hiddenAt = doc.hidden ? Date.now() : 0;
+    const onVisibility = () => {
+      markRead();
+      if (doc.hidden) { hiddenAt = Date.now(); return; }
+      const el = listRef.current;
+      if (el && hiddenAt && Date.now() - hiddenAt >= AWAY_MS) {
+        stick.current = true;
+        el.scrollTop = el.scrollHeight;
+      }
+      hiddenAt = 0;
+    };
+    doc.addEventListener('visibilitychange', onVisibility);
     win.addEventListener('focus', markRead);
     return () => {
-      doc.removeEventListener('visibilitychange', markRead);
+      doc.removeEventListener('visibilitychange', onVisibility);
       win.removeEventListener('focus', markRead);
     };
   }, [channel.id]);
