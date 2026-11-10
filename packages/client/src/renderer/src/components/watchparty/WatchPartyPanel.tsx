@@ -4,8 +4,9 @@ import { api } from '../../api/http';
 import { onFrame } from '../../api/ws';
 import { decryptMessage, encryptPayload, onKeysChanged } from '../../crypto';
 import { useSession } from '../../state/session';
-import { decodeState, DRIFT_SECONDS, encodeState, mediaKey, parseVideoUrl, playhead, QUEUE_MAX, SEEK_SECONDS, stateForItem, type QueueItem, type StampedState, type WatchState } from './sync';
+import { decodeState, DRIFT_SECONDS, encodeState, mediaKey, moveQueueItem, parseVideoUrl, playhead, QUEUE_MAX, SEEK_SECONDS, stateForItem, type QueueItem, type StampedState, type WatchState } from './sync';
 import { registerQueueHandler } from './bridge';
+import { QueueList } from './QueueList';
 import { attachJellyfin, startJellyfinPlayback } from '../jellyfin/JellyfinBrowser';
 import { bindPlayer, embedSrc, parseYouTubeUrl, sendCommand, type PlayerEvent } from './youtube';
 import { popoutUrl, type PanelToPopout, type PopoutToPanel } from './popout';
@@ -347,6 +348,15 @@ export function WatchPartyPanel({ callChannelId: channelId, keyChannelId, onActi
     void publish({ ...carry(cur), queue: cur.queue.filter((_, j) => j !== i), playing: cur.playing, position, rate: cur.rate });
   };
 
+  /** Drag-to-reorder: the new order goes out like any other change, so everyone's list updates. */
+  const moveQueued = (from: number, to: number, ref: string) => {
+    const cur = remoteRef.current;
+    const queue = cur?.queue && moveQueueItem(cur.queue, from, to, ref);
+    if (!cur || !queue) return;
+    const position = local.current ? playhead(local.current, performance.now()) : cur.position;
+    void publish({ ...carry(cur), queue, playing: cur.playing, position, rate: cur.rate });
+  };
+
   const skip = () => {
     const cur = remoteRef.current;
     if (!cur) return;
@@ -475,16 +485,7 @@ export function WatchPartyPanel({ callChannelId: channelId, keyChannelId, onActi
       )}
 
       {active && remote?.title && <p className="watch-party-now">Now playing: {remote.title}</p>}
-      {queue.length > 0 && (
-        <ol className="watch-party-queue" aria-label="Up next">
-          {queue.map((it, i) => (
-            <li key={`${i}-${it.ref}`}>
-              <span>{itemLabel(it)}</span>
-              <button type="button" aria-label={`Remove ${itemLabel(it)} from the queue`} onClick={() => removeQueued(i)}>Remove</button>
-            </li>
-          ))}
-        </ol>
-      )}
+      {queue.length > 0 && <QueueList queue={queue} label={itemLabel} onMove={moveQueued} onRemove={removeQueued} />}
 
       <form className="watch-party-form" onSubmit={submit}>
         <input

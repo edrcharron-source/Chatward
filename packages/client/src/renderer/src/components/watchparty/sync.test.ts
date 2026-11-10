@@ -1,7 +1,7 @@
 // Run with: npm run test:watch -w @chatward/client
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { decodeState, encodeState, mediaKey, QUEUE_MAX, stateForItem } from './sync';
+import { decodeState, encodeState, mediaKey, moveQueueItem, QUEUE_MAX, stateForItem, type QueueItem } from './sync';
 
 const JF = 'a'.repeat(32);
 
@@ -38,4 +38,14 @@ test('rejects hostile or malformed states', () => {
     { ...base, queue: 'x' },
   ];
   for (const b of bad) assert.equal(decodeState({ text: JSON.stringify(b) }), null);
+});
+
+test('moves a queue item up or down, and ignores a stale or empty move', () => {
+  const q: QueueItem[] = ['aaaaaaaaaaa', 'bbbbbbbbbbb', 'ccccccccccc'].map((ref) => ({ kind: 'youtube', ref }));
+  assert.deepEqual(moveQueueItem(q, 0, 2, 'aaaaaaaaaaa')?.map((i) => i.ref), ['bbbbbbbbbbb', 'ccccccccccc', 'aaaaaaaaaaa']);
+  assert.deepEqual(moveQueueItem(q, 2, 0, 'ccccccccccc')?.map((i) => i.ref), ['ccccccccccc', 'aaaaaaaaaaa', 'bbbbbbbbbbb']);
+  assert.equal(moveQueueItem(q, 1, 1, 'bbbbbbbbbbb'), null);
+  assert.equal(moveQueueItem(q, 0, 1, 'ccccccccccc'), null);
+  assert.equal(moveQueueItem(q, 0, 3, 'aaaaaaaaaaa'), null);
+  assert.deepEqual(q.map((i) => i.ref), ['aaaaaaaaaaa', 'bbbbbbbbbbb', 'ccccccccccc']);
 });
