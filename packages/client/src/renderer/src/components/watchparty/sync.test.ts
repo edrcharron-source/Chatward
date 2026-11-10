@@ -1,7 +1,7 @@
 // Run with: npm run test:watch -w @chatward/client
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { decodeState, encodeState, mediaKey, moveQueueItem, QUEUE_MAX, stateForItem, type QueueItem } from './sync';
+import { decodeState, encodeState, mediaKey, moveQueueItem, QUEUE_MAX, stateForItem, vaultItem, type QueueItem } from './sync';
 
 const JF = 'a'.repeat(32);
 
@@ -48,4 +48,25 @@ test('moves a queue item up or down, and ignores a stale or empty move', () => {
   assert.equal(moveQueueItem(q, 0, 1, 'ccccccccccc'), null);
   assert.equal(moveQueueItem(q, 0, 3, 'aaaaaaaaaaa'), null);
   assert.deepEqual(q.map((i) => i.ref), ['aaaaaaaaaaa', 'bbbbbbbbbbb', 'ccccccccccc']);
+});
+
+test('round-trips a Vault video and a queued Vault item', () => {
+  const f = { id: 'mhs0abcde1234567890', key: 'a2V5a2V5a2V5a2V5a2V5a2V5a2V5a2V5a2V5a2V5a2U=', iv: 'aXZpdml2aXZpdml2', mime: 'video/mp4' };
+  const s = stateForItem(vaultItem(f, 'Beach day.mp4'), [vaultItem({ ...f, id: 'mhs0abcde0000000000' })], 1);
+  const back = decodeState(encodeState(s));
+  assert.ok(back);
+  assert.deepEqual(back.vault, f);
+  assert.equal(back.title, 'Beach day.mp4');
+  assert.equal(mediaKey(back), f.id);
+  assert.equal(back.queue?.[0].kind, 'vault');
+  assert.equal(back.queue?.[0].vault?.key, f.key);
+});
+
+test('rejects a Vault item that is not a video or has a bad id', () => {
+  const f = { id: 'mhs0abcde1234567890', key: 'a2V5', iv: 'aXY=', mime: 'video/mp4' };
+  const bad = (v: object) => decodeState({ text: JSON.stringify({ v: 1, videoId: null, vault: { ...f, ...v }, playing: true, position: 0, rate: 1 }) });
+  assert.equal(bad({ mime: 'image/png' }), null);
+  assert.equal(bad({ id: '../etc' }), null);
+  assert.equal(bad({ key: 'x'.repeat(200) }), null);
+  assert.ok(bad({}));
 });

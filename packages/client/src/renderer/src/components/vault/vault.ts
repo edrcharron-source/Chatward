@@ -78,9 +78,14 @@ export async function openDescriptor(item: VaultItem): Promise<VaultDescriptor |
 
 /** Downloads and decrypts the thumbnail or the file; returns an object URL the caller revokes. */
 export async function fetchVaultUrl(item: Pick<VaultItem, 'id'>, d: VaultDescriptor, thumb: boolean): Promise<string> {
-  const buf = await api.getBytes(`/api/vault/${item.id}/${thumb ? 'thumb' : 'file'}`);
-  const plain = await decryptBlob(new Uint8Array(buf), thumb ? d.thumbKey : d.key, thumb ? d.thumbIv : d.iv);
-  return URL.createObjectURL(new Blob([plain as Uint8Array<ArrayBuffer>], { type: thumb ? 'image/webp' : d.mime }));
+  return thumb ? fetchVaultFile(item.id, d.thumbKey, d.thumbIv, 'image/webp', true) : fetchVaultFile(item.id, d.key, d.iv, d.mime);
+}
+
+/** Downloads and decrypts one Vault file from its id and key alone (Watch together has no descriptor); returns an object URL. */
+export async function fetchVaultFile(id: string, key: string, iv: string, mime: string, thumb = false): Promise<string> {
+  const buf = await api.getBytes(`/api/vault/${encodeURIComponent(id)}/${thumb ? 'thumb' : 'file'}`);
+  const plain = await decryptBlob(new Uint8Array(buf), key, iv);
+  return URL.createObjectURL(new Blob([plain as Uint8Array<ArrayBuffer>], { type: mime }));
 }
 
 /** Opens one person's sealed tags; null when the channel key is missing or the data is not tags. */

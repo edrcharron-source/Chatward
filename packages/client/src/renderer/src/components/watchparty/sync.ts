@@ -9,6 +9,8 @@ export interface WatchState {
   url?: string | null;
   /** Jellyfin item id (32 hex); each viewer asks the server for their own ticket, so no credential is shared */
   jellyfinId?: string | null;
+  /** Vault video: its item id plus the file key, so each viewer downloads and decrypts it themselves */
+  vault?: VaultFile | null;
   /** display name of the current item (Jellyfin items have no readable id) */
   title?: string | null;
   /** items waiting after the current one, played in order */
@@ -21,15 +23,46 @@ export interface WatchState {
   rate: number;
 }
 
-/** One entry in the shared queue. `ref` is a YouTube id, an https file url or a Jellyfin item id, by `kind`. */
+/**
+ * A Vault video. The key and iv open the encrypted file. They ride inside the watch state, which is itself encrypted
+ * with the server's channel key, the same way a Vault item shared in chat carries its keys.
+ */
+export interface VaultFile {
+  id: string;
+  key: string;
+  iv: string;
+  mime: string;
+}
+
+/** One entry in the shared queue. `ref` is a YouTube id, an https file url, a Jellyfin item id or a Vault item id, by `kind`. */
 export interface QueueItem {
-  kind: 'youtube' | 'url' | 'jellyfin';
+  kind: 'youtube' | 'url' | 'jellyfin' | 'vault';
   ref: string;
   title?: string;
+  /** kind 'vault' only: what opens the file */
+  vault?: Omit<VaultFile, 'id'>;
 }
 
 export const QUEUE_MAX = 50;
 const JELLYFIN_ID = /^[0-9a-f]{32}$/i;
+const VAULT_ID = /^[0-9a-z]{9,32}$/;
+const B64 = /^[A-Za-z0-9+/=_-]{0,64}$/;
+const VIDEO_MIME = /^video\/[a-z0-9.+-]{1,40}$/i;
+
+/** A well-formed Vault file reference, or null. */
+function parseVaultFile(raw: unknown): VaultFile | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const v = raw as Record<string, unknown>;
+  if (typeof v.id !== 'string' || !VAULT_ID.test(v.id)) return null;
+  if (typeof v.key !== 'string' || !B64.test(v.key) || typeof v.iv !== 'string' || !B64.test(v.iv)) return null;
+  if (typeof v.mime !== 'string' || !VIDEO_MIME.test(v.mime)) return null;
+  return { id: v.id, key: v.key, iv: v.iv, mime: v.mime };
+}
+
+/** The queue item that plays a Vault video. */
+export const vaultItem = (f: VaultFile, title?: string): QueueItem =>
+  ({ kind: 'vault', ref: f.id, title: title?.trim().slice(0, 120) || undefined, vault: { key: f.key, iv: f.iv, mime: f.mime } });
+
 const cleanTitle = (t: unknown): string | undefined => (typeof t === 'string' && t.trim() ? t.trim().slice(0, 120) : undefined);
 
 function parseQueueItem(raw: unknown): QueueItem | null {
@@ -40,6 +73,10 @@ function parseQueueItem(raw: unknown): QueueItem | null {
   if (r.kind === 'youtube') return VIDEO_ID.test(r.ref) ? { kind: 'youtube', ref: r.ref, title } : null;
   if (r.kind === 'url') { const u = parseVideoUrl(r.ref); return u ? { kind: 'url', ref: u, title } : null; }
   if (r.kind === 'jellyfin') return JELLYFIN_ID.test(r.ref) ? { kind: 'jellyfin', ref: r.ref.toLowerCase(), title } : null;
+  if (r.kind === 'vault') {
+    const f = parseVaultFile({ ...(r.vault && typeof r.vault === 'object' ? r.vault : {}), id: r.ref });
+    return f ? vaultItem(f, title) : null;
+  }
   return null;
 }
 
@@ -61,6 +98,7 @@ export function stateForItem(item: QueueItem, rest: QueueItem[], n: number, rate
     videoId: item.kind === 'youtube' ? item.ref : null,
     url: item.kind === 'url' ? item.ref : null,
     jellyfinId: item.kind === 'jellyfin' ? item.ref : null,
+    vault: item.kind === 'vault' && item.vault ? { id: item.ref, ...item.vault } : null,
     title: item.title ?? null,
     queue: rest, n, playing: true, position, rate,
   };
@@ -71,9 +109,9 @@ export interface StampedState extends WatchState {
   ts: number;
 }
 
-/** The one thing being watched: a YouTube id or a file url, null when stopped. */
-export const mediaKey = (s: { videoId: string | null; url?: string | null; jellyfinId?: string | null } | null | undefined): string | null =>
-  s?.videoId ?? s?.url ?? s?.jellyfinId ?? null;
+/** The one thing being watched: a YouTube id, a file url, a Jellyfin id or a Vault id, null when stopped. */
+export const mediaKey = (s: { videoId: string | null; url?: string | null; jellyfinId?: string | null; vault?: VaultFile | null } | null | undefined): string | null =>
+  s?.videoId ?? s?.url ?? s?.jellyfinId ?? s?.vault?.id ?? null;
 
 /** Returns the https URL for a playable video file link, or null. */
 export function parseVideoUrl(input: string): string | null {
@@ -119,6 +157,8 @@ export function decodeState(payload: MessagePayload): WatchState | null {
   if (url === undefined || (s.url != null && url === null) || (videoId && url)) return null;
   const jellyfinId = s.jellyfinId == null ? null : typeof s.jellyfinId === 'string' && JELLYFIN_ID.test(s.jellyfinId) ? s.jellyfinId.toLowerCase() : undefined;
   if (jellyfinId === undefined || (jellyfinId && (videoId || url))) return null;
+  const vault = s.vault == null ? null : parseVaultFile(s.vault) ?? undefined;
+  if (vault === undefined || (vault && (videoId || url || jellyfinId))) return null;
   const queue: QueueItem[] = [];
   if (s.queue !== undefined) {
     if (!Array.isArray(s.queue) || s.queue.length > QUEUE_MAX) return null;
@@ -132,6 +172,7 @@ export function decodeState(payload: MessagePayload): WatchState | null {
     videoId,
     url,
     jellyfinId,
+    vault,
     title: cleanTitle(s.title) ?? null,
     queue,
     n,
