@@ -2,6 +2,7 @@ import type { Express } from 'express';
 import { LIMITS } from '@chatward/shared';
 import type { AuthedRequest, Ctx } from '../ctx.js';
 import { perMember } from '../userLimit.js';
+import { isInVoiceChannel } from './voice.js';
 
 // Latest watch-party snapshot per channel. The server never reads it: the body is the client-encrypted
 // playback state, so a relayed snapshot is opaque ciphertext. In memory, so a restart means nothing is playing.
@@ -31,7 +32,8 @@ export function register(app: Express, ctx: Ctx): void {
     const channel = serverId ? ctx.getChannel(channelId) : null;
     if (!serverId || !channel) { res.status(404).json({ error: 'channel not found' }); return; }
     if (channel.kind !== 'voice') { res.status(400).json({ error: 'not a voice channel' }); return; }
-    // Watch together is separate from the voice call: any member can change it, same as posting a message.
+    // Only someone in the call can change what the call is watching.
+    if (!isInVoiceChannel(channelId, userId)) { res.status(409).json({ error: 'join the voice channel first' }); return; }
 
     const { ciphertext, keyVersion } = (req.body ?? {}) as { ciphertext?: unknown; keyVersion?: unknown };
     if (typeof ciphertext !== 'string' || ciphertext.length === 0 || ciphertext.length > LIMITS.MESSAGE_CIPHERTEXT_MAX) {
