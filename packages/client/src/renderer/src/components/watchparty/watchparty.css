@@ -224,3 +224,61 @@
 .cw-watch-mini .watch-party-frame { aspect-ratio: 16 / 9; }
 .cw-watch-mini .watch-party-frame iframe,
 .cw-watch-mini .watch-party-frame video { width: 100%; height: 100%; }
+
+/* Dropping a video file on the link box uploads it to the Vault and queues it. */
+.watch-party-form.dropping input {
+  border-style: dashed;
+  border-color: var(--accent);
+}
+.watch-party-loading {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  color: var(--text-muted, var(--text));
+  pointer-events: none;
+}
+.watch-party-vault {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  background: var(--bg-2, var(--bg-3));
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.watch-party-vault-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.watch-party-vault-head > span { flex: 1; font-weight: 600; }
+.watch-party-vault-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 280px;
+  overflow-y: auto;
+}
+.watch-party .watch-party-vault-list button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  color: var(--text);
+}
+.watch-party .watch-party-vault-list button:hover { background: var(--bg-3); }
+.watch-party-vault-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cw-watch-mini .watch-party-vault { display: none; }

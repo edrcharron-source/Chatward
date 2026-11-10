@@ -7,6 +7,8 @@ import { sendMessage } from '../../state/chat';
 import { useSession } from '../../state/session';
 import { buildAlbums } from './albums';
 import { fetchVaultUrl, mergedNotes, normalizeTag, openDescriptor, openNotes, saveNotes, uploadToVault, type NotesByItem, type VaultPage } from './vault';
+import { canQueueToWatchParty, queueToWatchParty } from '../watchparty/bridge';
+import { vaultItem } from '../watchparty/sync';
 import './vault.css';
 
 const mb = (n: number) => `${(n / (1024 * 1024)).toFixed(n < 10 * 1024 * 1024 ? 1 : 0)} MB`;
@@ -115,6 +117,11 @@ export default function VaultView({ serverId, keyChannelId, canModerate, chatCha
     finally { setSending(false); }
   }
 
+  /** Adds the video to the call's Watch together queue (or starts it), the same as picking it there. */
+  function watchTogether(item: VaultItem, d: VaultDescriptor) {
+    if (queueToWatchParty(vaultItem({ id: item.id, key: d.key, iv: d.iv, mime: d.mime }, d.name))) { setOpen(null); setStatus('Added to Watch together.'); }
+  }
+
   async function remove(item: VaultItem) {
     if (!window.confirm('Delete this from the Vault for everyone?')) return;
     try {
@@ -162,7 +169,10 @@ export default function VaultView({ serverId, keyChannelId, canModerate, chatCha
       {hasMore && <button type="button" className="cw-vault-more" onClick={() => void loadMore()}>Load older</button>}
       {open && <Viewer item={open.item} d={open.d} canDelete={open.item.ownerId === me || canModerate} onDelete={() => void remove(open.item)} onClose={() => setOpen(null)}
         panel={<NotesEditor item={open.item} me={me} mine={notes[open.item.id]?.[me]} merged={mergedNotes(notes[open.item.id])} people={people} onError={setError} />}
-        extra={chatChannelId && <button type="button" disabled={sending} onClick={() => void sendToChat(open.item, open.d)}>{sending ? 'Sending…' : 'Send to chat'}</button>} />}
+        extra={<>
+          {open.d.kind === 'video' && canQueueToWatchParty() && <button type="button" title="Queue this for everyone in your call" onClick={() => watchTogether(open.item, open.d)}>Watch together</button>}
+          {chatChannelId && <button type="button" disabled={sending} onClick={() => void sendToChat(open.item, open.d)}>{sending ? 'Sending…' : 'Send to chat'}</button>}
+        </>} />}
     </section>
   );
 }

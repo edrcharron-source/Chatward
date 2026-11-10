@@ -241,7 +241,7 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenMov
               <button type="button" className="primary" onClick={() => setWatchLeft(false)}>Join watch together</button>
             </Empty>
           )
-          : <div className="cw-tab-scroll"><WatchPartyPanel key={`watch-${callChannelId}`} callChannelId={callChannelId} keyChannelId={text.id} onActiveChange={setWatchPlaying} onLeave={leaveWatch} /></div>;
+          : <div className="cw-tab-scroll"><WatchPartyPanel key={`watch-${callChannelId}`} callChannelId={callChannelId} keyChannelId={text.id} vaultServerId={bundle.server.id} onActiveChange={setWatchPlaying} onLeave={leaveWatch} /></div>;
       case 'workouts':
         return <WorkoutsView />;
       case 'vault':
