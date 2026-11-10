@@ -62,7 +62,7 @@ const errorText = (e: unknown) => (e instanceof Error ? e.message : 'Something w
  * in that call change it. Voice channels have no message key of their own, so the state is encrypted with the key of
  * `keyChannelId`, the call's server's first text channel, the same channel the call's media key comes from.
  */
-export function WatchPartyPanel({ callChannelId: channelId, keyChannelId, onActiveChange }: { callChannelId: string; keyChannelId: string; onActiveChange?: (active: boolean) => void }): ReactElement {
+export function WatchPartyPanel({ callChannelId: channelId, keyChannelId, onActiveChange, onLeave }: { callChannelId: string; keyChannelId: string; onActiveChange?: (active: boolean) => void; onLeave?: () => void }): ReactElement {
   const me = useSession((s) => s.user?.id ?? null);
   const [remote, setRemote] = useState<StampedState | null>(null);
   const [draft, setDraft] = useState('');
@@ -444,10 +444,11 @@ export function WatchPartyPanel({ callChannelId: channelId, keyChannelId, onActi
     <section className="watch-party" aria-label="Watch party">
       <header className="watch-party-head">
         <span>Watch party</span>
-        {active && (
+        {(active || onLeave) && (
           <span className="watch-party-head-actions">
-            {!useVideo && !popped && <button type="button" onClick={() => popOut(true)}>Picture in picture</button>}
-            <button type="button" className="watch-party-stop" onClick={stop}>Stop</button>
+            {active && !useVideo && !popped && <button type="button" onClick={() => popOut(true)}>Picture in picture</button>}
+            {active && <button type="button" className="watch-party-stop" onClick={stop}>Stop</button>}
+            {onLeave && <button type="button" className="watch-party-stop" title="Leave the watch party and stay in the voice chat" onClick={onLeave}>Leave</button>}
           </span>
         )}
       </header>
