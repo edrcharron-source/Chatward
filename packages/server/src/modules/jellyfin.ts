@@ -115,6 +115,10 @@ export function register(app: Express, ctx: Ctx): void {
       const qs = new URLSearchParams({
         MediaSourceId: id, PlaySessionId: crypto.randomUUID().replace(/-/g, ''), DeviceId: 'chatward',
         VideoCodec: 'h264', AudioCodec: 'aac', TranscodingMaxAudioChannels: '2', SegmentContainer: 'ts',
+        // Jellyfin's HLS endpoint ignores MaxStreamingBitrate when it picks a quality. Without VideoBitRate it leaves
+        // the bitrate to the encoder's default, which for hardware encoders is low and very blocky. Jellyfin never
+        // raises this above the movie's own bitrate, and keeps full resolution up to 1080p at this rate.
+        VideoBitRate: '11000000', AudioBitRate: '192000',
         MaxStreamingBitrate: '12000000',
       });
       const out: JellyfinPlayback = {
