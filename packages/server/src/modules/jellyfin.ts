@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import { Readable } from 'node:stream';
 import type { Express, Response } from 'express';
-import type { JellyfinItem, JellyfinPlayback } from '@chatward/shared';
+import type { JellyfinItem, JellyfinPlayback, JellyfinQuality } from '@chatward/shared';
 import type { AuthedRequest, Ctx } from '../ctx.js';
 import { perMember } from '../userLimit.js';
 
@@ -96,11 +96,23 @@ export function register(app: Express, ctx: Ctx): void {
     } catch (e) { fail(res, e); }
   });
 
+  // What each picture quality asks Jellyfin for. Jellyfin never goes above the movie's own bitrate or size, so
+  // 'original' plays the file as it is (or, if it has to be converted, at its own resolution and detail).
+  // Without VideoBitRate Jellyfin leaves the bitrate to the encoder's default, which for hardware encoders is very low.
+  const QUALITY: Record<JellyfinQuality, Record<string, string>> = {
+    original: { VideoBitRate: '120000000', MaxStreamingBitrate: '120320000' },
+    2160: { VideoBitRate: '40000000', MaxStreamingBitrate: '40320000', MaxWidth: '3840', MaxHeight: '2160' },
+    1080: { VideoBitRate: '11000000', MaxStreamingBitrate: '11320000', MaxWidth: '1920', MaxHeight: '1080' },
+    720: { VideoBitRate: '5000000', MaxStreamingBitrate: '5320000', MaxWidth: '1280', MaxHeight: '720' },
+  };
+
   // Starts playback: checks the item exists, then hands back an HLS playlist path with a ticket in it.
   app.post('/api/jellyfin/items/:id/play', ctx.requireAuth, perMember(60_000, 30), async (req, res) => {
     const userId = (req as AuthedRequest).userId;
     const id = normId(req.params.id);
     if (!ID_RE.test(id)) { res.status(400).json({ error: 'invalid id' }); return; }
+    const asked = (req.body as { quality?: unknown } | undefined)?.quality;
+    const quality: JellyfinQuality = typeof asked === 'string' && Object.hasOwn(QUALITY, asked) ? asked as JellyfinQuality : 'original';
     try {
       const r = await upstream(`/Users/${jfUser}/Items/${id}`);
       if (!r.ok) { res.status(404).json({ error: 'not found' }); return; }
@@ -115,11 +127,7 @@ export function register(app: Express, ctx: Ctx): void {
       const qs = new URLSearchParams({
         MediaSourceId: id, PlaySessionId: crypto.randomUUID().replace(/-/g, ''), DeviceId: 'chatward',
         VideoCodec: 'h264', AudioCodec: 'aac', TranscodingMaxAudioChannels: '2', SegmentContainer: 'ts',
-        // Jellyfin's HLS endpoint ignores MaxStreamingBitrate when it picks a quality. Without VideoBitRate it leaves
-        // the bitrate to the encoder's default, which for hardware encoders is low and very blocky. Jellyfin never
-        // raises this above the movie's own bitrate, and keeps full resolution up to 1080p at this rate.
-        VideoBitRate: '11000000', AudioBitRate: '192000',
-        MaxStreamingBitrate: '12000000',
+        AudioBitRate: '320000', ...QUALITY[quality],
       });
       const out: JellyfinPlayback = {
         url: `/api/jellyfin/hls/${ticket}/Videos/${id}/master.m3u8?${qs}`,

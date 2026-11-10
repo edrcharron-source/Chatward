@@ -396,6 +396,14 @@ export interface JellyfinItem {
   /** true for things that play (Movie, Episode); false for containers to open with `parentId`. */
   playable: boolean;
 }
+/** Picture quality a viewer picks for a Jellyfin movie. 'original' keeps the file's own resolution and detail. */
+export type JellyfinQuality = 'original' | '2160' | '1080' | '720';
+export const JELLYFIN_QUALITIES: readonly { id: JellyfinQuality; label: string }[] = [
+  { id: 'original', label: 'Original' },
+  { id: '2160', label: '4K' },
+  { id: '1080', label: '1080p' },
+  { id: '720', label: '720p' },
+];
 export interface JellyfinPlayback {
   /** Master playlist path on the Chatward server. Already carries its own ticket, so a plain <video>/hls.js can load it. */
   url: string;
