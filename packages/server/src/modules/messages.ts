@@ -240,7 +240,7 @@ export function register(app: Express, ctx: Ctx): void {
     })();
     const message = toMessage(row);
     ctx.broadcastToServer(ch.serverId, { t: 'message.new', message });
-    for (const hook of messageHooks) hook(ch.id, userId);
+    for (const hook of messageHooks) hook({ channelId: ch.id, authorId: userId, keyVersion: row.key_version, ciphertext: row.ciphertext });
     res.status(201).json({ message });
   });
 
