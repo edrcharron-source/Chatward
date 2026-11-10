@@ -6,7 +6,7 @@ import { decryptMessage, encryptPayload, onKeysChanged } from '../../crypto';
 import { useSession } from '../../state/session';
 import { decodeState, DRIFT_SECONDS, encodeState, mediaKey, parseVideoUrl, playhead, QUEUE_MAX, SEEK_SECONDS, stateForItem, type QueueItem, type StampedState, type WatchState } from './sync';
 import { registerQueueHandler } from './bridge';
-import { attachJellyfin, JellyfinQualityPicker, startJellyfinPlayback, useJellyfinQuality } from '../jellyfin/JellyfinBrowser';
+import { attachJellyfin, startJellyfinPlayback } from '../jellyfin/JellyfinBrowser';
 import { bindPlayer, embedSrc, parseYouTubeUrl, sendCommand, type PlayerEvent } from './youtube';
 import { popoutUrl, type PanelToPopout, type PopoutToPanel } from './popout';
 import './watchparty.css';
@@ -218,8 +218,6 @@ export function WatchPartyPanel({ callChannelId: channelId, keyChannelId, onActi
   const videoId = remote?.videoId ?? null;
   const fileUrl = remote?.url ?? null;
   const jellyfinId = remote?.jellyfinId ?? null;
-  // Each viewer picks their own picture quality. A change mounts a fresh player, which re-syncs to the group's spot.
-  const [quality, setQuality] = useJellyfinQuality();
   const queue = remote?.queue ?? [];
   /** files and Jellyfin both play in a <video>; only YouTube uses the iframe */
   const useVideo = Boolean(fileUrl || jellyfinId);
@@ -241,7 +239,7 @@ export function WatchPartyPanel({ callChannelId: channelId, keyChannelId, onActi
     const frame = frameRef.current;
     if (!frame) return;
     return bindPlayer(frame, (e) => onPlayerEvent.current(e));
-  }, [videoId, fileUrl, jellyfinId, quality, channelId, popped]);
+  }, [videoId, fileUrl, jellyfinId, channelId, popped]);
 
   /** Reports a <video> element's state like the YouTube embed does, so the rest of the sync logic is shared. */
   const bindVideo = () => {
@@ -280,11 +278,11 @@ export function WatchPartyPanel({ callChannelId: channelId, keyChannelId, onActi
     if (!jellyfinId) return;
     let live = true;
     let detach = () => {};
-    startJellyfinPlayback(jellyfinId, quality)
+    startJellyfinPlayback(jellyfinId)
       .then((p) => { if (live && videoRef.current) detach = attachJellyfin(videoRef.current, p, setError); })
       .catch((e: unknown) => { if (live) setError(errorText(e)); });
     return () => { live = false; detach(); };
-  }, [jellyfinId, quality]);
+  }, [jellyfinId]);
 
   // A remote change, or our own publish echoed back into state, is applied here.
   useEffect(() => {
@@ -454,7 +452,7 @@ export function WatchPartyPanel({ callChannelId: channelId, keyChannelId, onActi
           ) : (
             <div className="watch-party-frame">
               {useVideo ? (
-                <video key={fileUrl ?? `${jellyfinId}-${quality}`} ref={videoRef} src={fileUrl ?? undefined} controls playsInline preload="metadata" />
+                <video key={fileUrl ?? jellyfinId} ref={videoRef} src={fileUrl ?? undefined} controls playsInline preload="metadata" />
               ) : (
               <iframe
                 key={videoId ?? ""}
@@ -470,7 +468,6 @@ export function WatchPartyPanel({ callChannelId: channelId, keyChannelId, onActi
           <div className="watch-party-bar">
             <button type="button" onClick={skip}>{queue.length ? 'Skip' : 'End'}</button>
             <span className="watch-party-hint">Play, pause and seeks in the player sync for everyone.</span>
-            {jellyfinId && <JellyfinQualityPicker quality={quality} onChange={setQuality} />}
           </div>
         </>
       ) : (

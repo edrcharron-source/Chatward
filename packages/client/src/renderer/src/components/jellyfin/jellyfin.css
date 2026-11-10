@@ -7,7 +7,3 @@
 .cw-jf-player { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 .cw-jf-player video { flex: 1; min-height: 0; width: 100%; background: #000; }
 .cw-jf-error { padding: 12px 16px; color: var(--danger, #e66); }
-
-/* Picture quality dropdown, used here and in Watch together. Skins restyle select through their own form rules. */
-.cw-jf-quality { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; font-size: 13px; color: var(--text-muted, inherit); }
-.cw-jf-quality select { font: inherit; }

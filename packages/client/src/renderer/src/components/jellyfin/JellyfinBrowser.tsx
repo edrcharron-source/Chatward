@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactElement } from 'react';
 import Hls from 'hls.js';
-import { JELLYFIN_QUALITIES, type JellyfinItem, type JellyfinPlayback, type JellyfinQuality } from '@chatward/shared';
+import type { JellyfinItem, JellyfinPlayback } from '@chatward/shared';
 import { api, fetchObjectUrl } from '../../api/http';
 import { useSession } from '../../state/session';
 import { queueToWatchParty, canQueueToWatchParty } from '../watchparty/bridge';
@@ -18,45 +18,7 @@ export function useJellyfinEnabled(): boolean {
 }
 
 /** Asks the server for a ticketed HLS playlist for one item. Anything that wants to play Jellyfin (the player below, watch party) starts here. */
-export const startJellyfinPlayback = (itemId: string, quality: JellyfinQuality = 'original') =>
-  api.post<JellyfinPlayback>(`/api/jellyfin/items/${itemId}/play`, { quality });
-
-// Each viewer's own picture quality, remembered on this device. Watch together still syncs: everyone just streams their own copy.
-const QUALITY_KEY = 'cw.jellyfinQuality';
-const qualityListeners = new Set<(q: JellyfinQuality) => void>();
-function savedQuality(): JellyfinQuality {
-  try {
-    const v = localStorage.getItem(QUALITY_KEY);
-    if (JELLYFIN_QUALITIES.some((q) => q.id === v)) return v as JellyfinQuality;
-  } catch { /* storage blocked: use the default */ }
-  return 'original';
-}
-
-/** The picture quality this viewer picked for Jellyfin movies, shared by every player in the app. */
-export function useJellyfinQuality(): [JellyfinQuality, (q: JellyfinQuality) => void] {
-  const [quality, setLocal] = useState(savedQuality);
-  useEffect(() => {
-    qualityListeners.add(setLocal);
-    return () => { qualityListeners.delete(setLocal); };
-  }, []);
-  const set = (q: JellyfinQuality) => {
-    try { localStorage.setItem(QUALITY_KEY, q); } catch { /* not remembered, still applies now */ }
-    qualityListeners.forEach((fn) => fn(q));
-  };
-  return [quality, set];
-}
-
-/** A small dropdown for the picture quality. Changing it restarts the stream at the same spot. */
-export function JellyfinQualityPicker({ quality, onChange }: { quality: JellyfinQuality; onChange: (q: JellyfinQuality) => void }): ReactElement {
-  return (
-    <label className="cw-jf-quality" title="Picture quality for movies. Higher needs a faster connection.">
-      <span>Quality</span>
-      <select value={quality} onChange={(e) => onChange(e.target.value as JellyfinQuality)}>
-        {JELLYFIN_QUALITIES.map((q) => <option key={q.id} value={q.id}>{q.label}</option>)}
-      </select>
-    </label>
-  );
-}
+export const startJellyfinPlayback = (itemId: string) => api.post<JellyfinPlayback>(`/api/jellyfin/items/${itemId}/play`);
 
 /** Attaches an HLS playlist from the Chatward server to a <video>. Returns a cleanup. */
 export function attachJellyfin(video: HTMLVideoElement, playback: JellyfinPlayback, onError: (msg: string) => void): () => void {
@@ -85,7 +47,6 @@ function Player({ item, onBack }: { item: JellyfinItem; onBack: () => void }): R
   const ref = useRef<HTMLVideoElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
-  const [quality, setQuality] = useJellyfinQuality();
   const addToParty = () => {
     const ok = queueToWatchParty({ kind: 'jellyfin', ref: item.id, title: item.name });
     setNote(ok ? 'Added to the watch party.' : 'Join a voice channel and open its watch party first.');
@@ -93,32 +54,16 @@ function Player({ item, onBack }: { item: JellyfinItem; onBack: () => void }): R
   useEffect(() => {
     let stop = () => {};
     let live = true;
-    // A quality change restarts the stream, so pick up where it was.
-    const video = ref.current;
-    const resumeAt = video?.currentTime ?? 0;
-    const wasPlaying = video ? !video.paused : true;
-    setError(null);
-    startJellyfinPlayback(item.id, quality)
-      .then((p) => {
-        if (!live || !ref.current) return;
-        const v = ref.current;
-        stop = attachJellyfin(v, p, setError);
-        if (resumeAt > 0) {
-          v.addEventListener('loadedmetadata', () => {
-            v.currentTime = resumeAt;
-            if (!wasPlaying) v.pause();
-          }, { once: true });
-        }
-      })
+    startJellyfinPlayback(item.id)
+      .then((p) => { if (live && ref.current) stop = attachJellyfin(ref.current, p, setError); })
       .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Could not start playback.'));
     return () => { live = false; stop(); };
-  }, [item.id, quality]);
+  }, [item.id]);
   return (
     <div className="cw-jf-player">
       <div className="cw-jf-bar"><button className="icon" onClick={onBack}>← Back</button><strong>{item.name}</strong>
         <button className="icon" onClick={addToParty} disabled={!canQueueToWatchParty()} title="Queue this for everyone in your call">Add to watch party</button>
-        {note && <span className="muted">{note}</span>}
-        <JellyfinQualityPicker quality={quality} onChange={setQuality} /></div>
+        {note && <span className="muted">{note}</span>}</div>
       {error ? <div className="cw-jf-error">{error}</div> : <video ref={ref} controls autoPlay />}
     </div>
   );

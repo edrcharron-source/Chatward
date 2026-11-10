@@ -40,7 +40,6 @@ process.env.JELLYFIN_USER_ID = 'u1';
 const { register } = await import('../src/modules/jellyfin.js');
 
 const app = express();
-app.use(express.json());
 const ctx = {
   config: (await import('../src/config.js')).config,
   requireAuth: (req: express.Request, res: express.Response, next: express.NextFunction) => {
@@ -84,21 +83,9 @@ try {
   const upstreamQuery = seen.filter((s) => s.url.startsWith(`/Videos/${ID}/master`)).at(-1)!;
   assert.equal(upstreamQuery.token, 'KEY');
   const q = new URL(upstreamQuery.url, 'http://x').searchParams;
-  assert.equal(q.get('VideoBitRate'), '120000000', 'by default asks for the original quality, not the encoder default');
+  assert.equal(q.get('VideoBitRate'), '120000000', 'asks for the movie\'s own quality, not the encoder default');
   assert.equal(q.get('MaxWidth'), null, 'original quality does not shrink the picture');
   log('tickets are scoped to one item; unknown tickets are refused');
-
-  const low = await (await fetch(`${base}/api/jellyfin/items/${ID}/play`, {
-    method: 'POST', headers: { Authorization: 'Bearer ok', 'content-type': 'application/json' }, body: JSON.stringify({ quality: '720' }),
-  })).json() as { url: string };
-  const lq = new URL(low.url, 'http://x').searchParams;
-  assert.equal(lq.get('MaxHeight'), '720');
-  assert.equal(lq.get('VideoBitRate'), '5000000');
-  const odd = await (await fetch(`${base}/api/jellyfin/items/${ID}/play`, {
-    method: 'POST', headers: { Authorization: 'Bearer ok', 'content-type': 'application/json' }, body: JSON.stringify({ quality: 'constructor' }),
-  })).json() as { url: string };
-  assert.equal(new URL(odd.url, 'http://x').searchParams.get('VideoBitRate'), '120000000', 'unknown qualities fall back to original');
-  log('the viewer can pick a lower picture quality');
   console.log('jellyfin: all checks passed');
 } finally {
   srv.close(); fake.close();
