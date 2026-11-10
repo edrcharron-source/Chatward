@@ -113,9 +113,12 @@ export default function AccountTab() {
   return (
     <>
       <Section title="Name">
+        {/* The row is a flex box, so the sentence sits in one span to keep it flowing as one paragraph. */}
         <p className="setting-row">
-          You log in as <strong>{user.username}</strong>, and that never changes. Everyone sees you as <strong>{user.displayName}</strong>: to change it,
-          right-click your own name or picture and pick Change display name.
+          <span>
+            You log in as <strong>{user.username}</strong>, and that never changes. Everyone sees you as <strong>{user.displayName}</strong>: to change it,
+            right-click your own name or picture and pick Change display name.
+          </span>
         </p>
       </Section>
 
