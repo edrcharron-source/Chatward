@@ -57,11 +57,11 @@ const itemLabel = (it: QueueItem) => it.title ?? (it.kind === 'youtube' ? `YouTu
 const errorText = (e: unknown) => (e instanceof Error ? e.message : 'Something went wrong.');
 
 /**
- * `callChannelId` is the voice channel whose call is watching: the server keeps the snapshot per call and only lets people
- * in that call change it. Voice channels have no message key of their own, so the state is encrypted with the key of
+ * `callChannelId` is the voice channel the watch party belongs to: the server keeps one snapshot per voice channel. You
+ * don't have to be in its call to watch or control it. Voice channels have no message key of their own, so the state is encrypted with the key of
  * `keyChannelId`, the call's server's first text channel, the same channel the call's media key comes from.
  */
-export function WatchPartyPanel({ callChannelId: channelId, keyChannelId, onActiveChange }: { callChannelId: string; keyChannelId: string; onActiveChange?: (active: boolean) => void }): ReactElement {
+export function WatchPartyPanel({ callChannelId: channelId, keyChannelId, onActiveChange, onLeave }: { callChannelId: string; keyChannelId: string; onActiveChange?: (active: boolean) => void; onLeave?: () => void }): ReactElement {
   const me = useSession((s) => s.user?.id ?? null);
   const [remote, setRemote] = useState<StampedState | null>(null);
   const [draft, setDraft] = useState('');
@@ -434,10 +434,11 @@ export function WatchPartyPanel({ callChannelId: channelId, keyChannelId, onActi
     <section className="watch-party" aria-label="Watch party">
       <header className="watch-party-head">
         <span>Watch party</span>
-        {active && (
+        {(active || onLeave) && (
           <span className="watch-party-head-actions">
-            {!useVideo && !popped && <button type="button" onClick={() => popOut(true)}>Picture in picture</button>}
-            <button type="button" className="watch-party-stop" onClick={stop}>Stop</button>
+            {active && !useVideo && !popped && <button type="button" onClick={() => popOut(true)}>Picture in picture</button>}
+            {active && <button type="button" className="watch-party-stop" onClick={stop}>Stop</button>}
+            {onLeave && <button type="button" className="watch-party-stop" title="Leave watch together (the video keeps playing for everyone else)" onClick={onLeave}>Leave</button>}
           </span>
         )}
       </header>

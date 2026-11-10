@@ -111,6 +111,9 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenMov
   const [split, setSplit] = useState(false);
   // true while the watch party has something playing, so it can be shown as a corner preview when its tab is left
   const [watchPlaying, setWatchPlaying] = useState(false);
+  // Whether you have joined Watch together. It is separate from the voice chat: you join and leave it with its own buttons.
+  const [watchJoined, setWatchJoined] = useState(false);
+  const leaveWatch = () => { setWatchJoined(false); setWatchPlaying(false); };
   const [popped, setPopped] = useState<TabId[]>([]);
   const [membersHidden, setMembersHidden] = useState(false);
   const [serverSettingsOpen, setServerSettingsOpen] = useState(false);
@@ -219,13 +222,16 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenMov
       case 'voice':
         return voice ? <VoiceChannelView key={voice.id} channel={voice} /> : <Empty>This server has no voice chat yet.</Empty>;
       case 'watch':
-        // Voice channels have no message key of their own, so the watch party rides the text chat's key.
-        return callChannelId && text
-          ? <div className="cw-tab-scroll"><WatchPartyPanel key={`watch-${callChannelId}`} callChannelId={callChannelId} keyChannelId={text.id} onActiveChange={setWatchPlaying} /></div>
+        // Watch together is its own thing: joining it doesn't need the voice chat, and leaving it doesn't leave voice.
+        // It belongs to the server's one voice chat (the server keeps one snapshot per voice channel), and voice channels
+        // have no message key of their own, so it rides the text chat's key.
+        if (!voice || !text) return <Empty>This server has no voice chat yet.</Empty>;
+        return watchJoined
+          ? <div className="cw-tab-scroll"><WatchPartyPanel key={`watch-${voice.id}`} callChannelId={voice.id} keyChannelId={text.id} onActiveChange={setWatchPlaying} onLeave={leaveWatch} /></div>
           : (
             <Empty>
-              <p>Join the voice chat to start or join a watch party.</p>
-              {joinVoice && <button type="button" className="primary" onClick={joinVoice}>Join voice</button>}
+              <p>Watch videos together in sync. You don't need to be in the voice chat.</p>
+              <button type="button" className="primary" onClick={() => setWatchJoined(true)}>Join watch together</button>
             </Empty>
           );
       case 'workouts':
@@ -335,9 +341,10 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenMov
   // The watch party stays mounted once it has been opened, in its own place in TabStage, and is only hidden while another
   // tab is shown. So its player keeps playing when the tab changes or the split view is turned on or off, instead of
   // reloading. Popping the tab out moves the panel into the pop-out window, so it is unmounted here.
-  const [watchOpened, setWatchOpened] = useState(false);
   const watchOn = !isPopped('watch') && (split ? leftTab === 'watch' || rightTab === 'watch' : tab === 'watch');
-  useEffect(() => { if (watchOn) setWatchOpened(true); }, [watchOn]);
+  // Mounted while it is on screen, and kept mounted after that only while you are in it, so leaving stops the player.
+  const [watchOpened, setWatchOpened] = useState(false);
+  useEffect(() => { if (watchOn) setWatchOpened(true); else if (!watchJoined) setWatchOpened(false); }, [watchOn, watchJoined]);
   // Playing while its tab is left: the panel shows as a small corner preview, and clicking it goes back to the tab.
   const watchPlace: WatchPane['place'] = watchOn ? (split ? (leftTab === 'watch' ? 'left' : 'right') : 'only') : null;
   const watchMini = watchOpened && !watchOn && !isPopped('watch') && watchPlaying;
