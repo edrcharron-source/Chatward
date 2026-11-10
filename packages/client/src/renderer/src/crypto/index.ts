@@ -106,6 +106,8 @@ export function accountKey(serverUrl: string, username: string): string {
 
 const deviceStore = (acct: string) => `crypto.device.v2|${acct}`;
 const vaultStore = (acct: string) => `crypto.vault.v2|${acct}`;
+/** Which account's vault the web app's notification handler reads. web/sw.js uses the same name and vault store. */
+const PUSH_ACCOUNT_STORE = 'push.account';
 
 function currentAccount(): string {
   if (account === null) throw new Error('No account is active; call initDevice() first');
@@ -155,6 +157,8 @@ export function initDevice(acct: string): Promise<DeviceKeys> {
       account = acct;
       groupStates.clear();
       aesCache.clear();
+      // The web app's notification handler (web/sw.js) opens locked chat pushes with this account's keys.
+      if (typeof __CHATWARD_BUILD__ !== 'undefined' && __CHATWARD_BUILD__.web === true) await secureStore().set(PUSH_ACCOUNT_STORE, acct).catch(() => {});
     }
     return getDevice();
   });

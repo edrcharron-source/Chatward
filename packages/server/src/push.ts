@@ -9,15 +9,25 @@ import { newId } from './db.js';
  * Web Push: notifications for the web app, including the app added to an iPhone home screen (iOS 16.4 or later).
  *
  * The server signs pushes with a VAPID key pair made on first start and kept in the data folder (vapid.json), unless
- * VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY are set. Pushes only carry what the server already knows: who did what, never
- * message text, which stays end-to-end encrypted.
+ * VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY are set. Pushes carry what the server already knows (who did what) plus, for
+ * chat messages, the message still encrypted end to end, which only the phone can open. The server never sees the text.
  */
 
 const MAX_DEVICES = 10;
 /** Push services browsers use. A subscription naming any other host is refused, so the server never posts to arbitrary URLs. */
 const PUSH_HOSTS = [/\.push\.apple\.com$/, /^fcm\.googleapis\.com$/, /^updates\.push\.services\.mozilla\.com$/, /\.notify\.windows\.com$/, /^android\.googleapis\.com$/];
 
-export interface PushPayload { title: string; body: string; url?: string; tag?: string }
+/**
+ * `locked` is a chat message still in its end-to-end encrypted form, exactly as the server stored it. The phone opens it
+ * with the chat key it already holds and shows the text; the server cannot read it. `body` is shown when it can't.
+ */
+export interface PushPayload {
+  title: string; body: string; url?: string; tag?: string;
+  locked?: { channelId: string; keyVersion: number; authorId: string; author: string; ciphertext: string };
+}
+
+/** Push services take about 4 KB per push. A message whose locked form is longer than this goes without it. */
+const LOCKED_MAX = 2_800;
 
 let vapidPublic = '';
 let ready = false;
@@ -119,14 +129,15 @@ export function register(app: Express, ctx: Ctx): void {
     res.json({ ok: true, delivered });
   });
 
-  // New messages: a member with no open connection gets "Name sent a message in #channel". The text is encrypted, so
-  // the push never has it. One push per channel per person every few minutes, so a busy chat doesn't buzz nonstop.
+  // New messages: a member with no open connection gets a push with the message still encrypted; the phone opens it and
+  // shows the text, or "Name sent a message" when it can't. One push per channel per person every few minutes, so a busy
+  // chat doesn't buzz nonstop.
   const lastPushed = new Map<string, number>();
   const QUIET_MS = 3 * 60_000;
   const online = new Set<string>();
   ctx.onConnect.push((userId) => { online.add(userId); });
   ctx.onDisconnect.push((userId, _device, state) => { if (!state.user) online.delete(userId); });
-  messageHooks.push((channelId, authorId) => {
+  messageHooks.push(({ channelId, authorId, keyVersion, ciphertext }) => {
     const ch = ctx.getChannel(channelId);
     if (!ch) return;
     const author = ctx.getUser(authorId)?.displayName ?? 'Someone';
@@ -137,10 +148,12 @@ export function register(app: Express, ctx: Ctx): void {
       const now = Date.now();
       if (now - (lastPushed.get(key) ?? 0) < QUIET_MS) continue;
       lastPushed.set(key, now);
-      void pushToUser(ctx, uid, { title: `#${ch.name}`, body: `${author} sent a message`, url: '/?tab=text', tag: `chat-${channelId}` });
+      const locked = ciphertext.length <= LOCKED_MAX ? { channelId, keyVersion, authorId, author, ciphertext } : undefined;
+      void pushToUser(ctx, uid, { title: `#${ch.name}`, body: `${author} sent a message`, url: '/?tab=text', tag: `chat-${channelId}`, locked });
     }
   });
 }
 
 /** Called by the messages module after a new message is stored. */
-export const messageHooks: Array<(channelId: string, authorId: string) => void> = [];
+export interface NewMessage { channelId: string; authorId: string; keyVersion: number; ciphertext: string }
+export const messageHooks: Array<(m: NewMessage) => void> = [];

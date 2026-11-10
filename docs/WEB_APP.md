@@ -23,7 +23,7 @@ Open the server address in Safari, tap Share, then **Add to Home Screen**.
 
 - On iPhone, notifications only work in the app added to the home screen (iOS 16.4 or later). Turn them on in **Workouts → My plan → Reminders and privacy → Turn on notifications**.
 - The server makes a VAPID key pair on first start and saves it as `vapid.json` in the data folder. Set `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY` to use your own, and set `VAPID_SUBJECT` (a `mailto:` or `https:` address) for Apple.
-- A push only says who did what, for example "Caleb sent a message" in #general. Message text is end-to-end encrypted, so the server can't read it and never sends it. Chat pushes go only to people with no open connection, at most one per channel every 3 minutes.
+- A chat push shows the message, for example "Caleb: are you on tonight?" in #general. The server can't read it: it puts the message in the push still end-to-end encrypted (only when it fits, about 2,000 characters), and the phone opens it with the chat key it already holds (`web/sw.js`). When the phone can't (no key for that message yet, or the message was too big), the push says "Caleb sent a message". Photos and GIFs show as "sent a photo", "sent a GIF". Chat pushes go only to people with no open connection, at most one per channel every 3 minutes.
 - Workouts pushes: nudges, cheers, comments, the crew's check-ins, PRs and milestones (these can be turned off), and the daily reminder.
 
 ## Workouts (formerly DOSS)
