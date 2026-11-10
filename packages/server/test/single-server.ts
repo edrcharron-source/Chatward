@@ -37,8 +37,8 @@ try {
   assert.equal((db.prepare('SELECT owner_id FROM servers WHERE id=?').get(sid) as { owner_id: string }).owner_id, 'u1');
   const channels = db.prepare('SELECT name, kind FROM channels WHERE server_id=? ORDER BY kind').all(sid);
   assert.deepEqual(channels, [{ name: 'general', kind: 'text' }, { name: 'General', kind: 'voice' }]);
-  assert.equal((db.prepare("SELECT display_name FROM users WHERE id='u1'").get() as { display_name: string }).display_name, 'alice1',
-    'the display name follows the login name');
+  assert.equal((db.prepare("SELECT display_name FROM users WHERE id='u1'").get() as { display_name: string }).display_name, 'Alice',
+    'a chosen display name is kept');
   ensureSingleServer(db);
   assert.equal((db.prepare('SELECT COUNT(*) AS n FROM servers').get() as { n: number }).n, 1, 'running again changes nothing');
   log('an owner without a server gets one with #general and General, once');

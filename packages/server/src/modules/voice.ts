@@ -214,11 +214,6 @@ function dropRemovals(ctx: Ctx, condition: string, params: string[]): void {
   for (const { room_id, user_id } of rows) stopRemovalRetry(room_id, user_id);
 }
 
-/** For a deleted channel: drops every mark in it. */
-export function forgetChannelRemovals(ctx: Ctx, channelId: string): void {
-  dropRemovals(ctx, 'room_id=?', [channelId]);
-}
-
 /** For a deleted account: drops every mark it has. */
 export function forgetUserRemovals(ctx: Ctx, userId: string): void {
   dropRemovals(ctx, 'user_id=?', [userId]);
@@ -336,14 +331,6 @@ function occupy(ctx: Ctx, channelId: string, userId: string, deviceId: string | 
     set.add(userId);
     voiceChannelOf.set(userId, channelId);
     broadcastState(ctx, channelId);
-  }
-}
-
-/** Empties a voice channel, e.g. when the channel is deleted. Ends the LiveKit sessions too, so media stops now. */
-export function clearVoiceChannel(ctx: Ctx, channelId: string): void {
-  for (const userId of [...(occupants.get(channelId) ?? [])]) {
-    leaveChannel(ctx, channelId, userId);
-    evictFromRoom(ctx, channelId, userId);
   }
 }
 

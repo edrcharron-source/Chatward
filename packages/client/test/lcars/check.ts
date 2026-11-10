@@ -1,8 +1,9 @@
 // Checks that the LCARS layout keeps every feature of the Tabs layout (docs/SKINS.md, "LCARS"). It runs the built app in
-// demo mode twice, once in the Tabs layout and once in the LCARS layout, walks the same screens in both (chat, the call,
+// demo mode in the Tabs layout and in the LCARS layout (twice, see below), walks the same screens in both (chat, the call,
 // the soundboard, watch together, vault, split view, server settings, settings), and fails if any control the Tabs
 // layout shows is missing in LCARS. It also uses the LCARS frame's own controls: split, pop-out, tab reorder, Join voice,
-// Leave, and switching back to the Tabs layout. Screenshots land in the out dir.
+// Leave, and switching back to the Tabs layout (which must leave the skin alone). It walks the frame twice, under its
+// own skin and under the Lebserver skin, since every skin works in every layout. Screenshots land in the out dir.
 // Needs xvfb on Linux. Run with: npm run lcars:check -w @chatward/client -- <out dir> [app dir]
 // With --layout=orbit (npm run orbit:check) it checks the Orbit layout the same way instead, plus the Orbit frame's own
 // behaviour (title bar replaced by the top bar, window buttons in it, the line drawing, switching layouts).
@@ -35,7 +36,7 @@ async function controls(page: Page): Promise<string[]> {
     }), CONTROLS);
 }
 
-// The harness pins the classic layout before every load; this runs after it and picks the layout under test instead.
+// The harness pins the tabs layout before every load; this runs after it and picks the layout under test instead.
 async function setLayout(page: Page, layout: string, skin: string) {
   await page.context().addInitScript(({ layout, skin }) => {
     const saved = JSON.parse(localStorage.getItem('chatward.settings') ?? '{}');
@@ -96,10 +97,11 @@ async function walk(page: Page, shoot: (name: string) => Promise<void>): Promise
   await snap('9-vault');
 
   await tab(page, 'Text').click();
-  await page.getByRole('button', { name: 'Split', exact: false }).first().click();
+  // Shift+click a tab shows it beside the open one; Shift+click it again closes that side.
+  await tab(page, 'Vault').click({ modifiers: ['Shift'] });
   await page.getByRole('separator').first().waitFor();
   await snap('10-split');
-  await page.getByRole('button', { name: 'Split', exact: false }).first().click();
+  await tab(page, 'Vault').click({ modifiers: ['Shift'] });
 
   await page.getByRole('button', { name: 'Server settings', exact: true }).click();
   await page.getByRole('dialog').first().waitFor();
@@ -127,8 +129,8 @@ function missingFrom(a: string[], b: string[]): string[] {
   return out;
 }
 
-async function run(layout: string, skin: string, appDir: string, outDir: string) {
-  const dir = path.join(outDir, layout);
+async function run(layout: string, skin: string, appDir: string, outDir: string, name = layout) {
+  const dir = path.join(outDir, name);
   fs.mkdirSync(dir, { recursive: true });
   const { app, page } = await launch('dark', appDir, skin, ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream']);
   try {
@@ -137,7 +139,7 @@ async function run(layout: string, skin: string, appDir: string, outDir: string)
     const screens = await walk(page, shoot);
     const problems: string[] = [];
     if (layout === 'lcars') problems.push(...await lcarsOnly(page, app, shoot));
-    if (layout === 'orbit') problems.push(...await orbitOnly(page, app, shoot));
+    if (layout === 'orbit') problems.push(...await orbitOnly(page, app, shoot, skin));
     return { screens, problems };
   } finally {
     await app.close();
@@ -180,6 +182,7 @@ async function lcarsOnly(page: Page, app: Awaited<ReturnType<typeof launch>>['ap
     await dock(page).getByRole('button', { name: 'Leave voice', exact: true }).waitFor();
   });
   await check('switching to the Tabs layout removes the frame and brings the title bar back', async () => {
+    const skinBefore = await page.evaluate(() => document.documentElement.dataset.skin ?? '');
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
     const dialog = page.getByRole('dialog', { name: 'Settings' });
     await dialog.getByRole('tab', { name: 'Appearance', exact: true }).click();
@@ -188,14 +191,15 @@ async function lcarsOnly(page: Page, app: Awaited<ReturnType<typeof launch>>['ap
     if (await page.locator('[data-layout="lcars"]').count()) throw new Error('frame still there');
     await dialog.getByRole('radio', { name: 'LCARS', exact: true }).check();
     await page.locator('[data-layout="lcars"]').waitFor();
-    const skin = await page.evaluate(() => document.documentElement.dataset.skin);
-    if (skin !== 'lcars') throw new Error(`skin is ${skin}`);
+    // Skin and layout are separate choices: switching layouts leaves the skin as it was.
+    const skin = await page.evaluate(() => document.documentElement.dataset.skin ?? '');
+    if (skin !== skinBefore) throw new Error(`switching layouts changed the skin from ${skinBefore || 'Original'} to ${skin || 'Original'}`);
   });
   return problems;
 }
 
 // The Orbit frame's own behaviour.
-async function orbitOnly(page: Page, app: Awaited<ReturnType<typeof launch>>['app'], shoot: (name: string) => Promise<void>): Promise<string[]> {
+async function orbitOnly(page: Page, app: Awaited<ReturnType<typeof launch>>['app'], shoot: (name: string) => Promise<void>, skin: string): Promise<string[]> {
   const problems: string[] = [];
   const check = async (what: string, step: () => Promise<unknown>) => {
     try { await step(); } catch (err) { problems.push(`${what}: ${(err as Error).message.split('\n')[0]}`); }
@@ -220,7 +224,7 @@ async function orbitOnly(page: Page, app: Awaited<ReturnType<typeof launch>>['ap
     }).length);
     if (blocked) throw new Error(`${blocked} tile(s) have their top corner covered`);
   });
-  await check('the Glyph icons show', async () => {
+  if (skin === 'orbit') await check('the Glyph icons show', async () => {
     const shown = await page.locator('.cw-tabs .cw-ic-glyph').first().evaluate((el) => getComputedStyle(el).display);
     if (shown === 'none') throw new Error('glyph icons hidden');
   });
@@ -240,6 +244,7 @@ async function orbitOnly(page: Page, app: Awaited<ReturnType<typeof launch>>['ap
     await page.getByRole('button', { name: 'Pop out Vault', exact: true }).waitFor();
   });
   await check('switching to the Tabs layout removes the frame and brings the title bar back', async () => {
+    const skinBefore = await page.evaluate(() => document.documentElement.dataset.skin ?? '');
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
     const dialog = page.getByRole('dialog', { name: 'Settings' });
     await dialog.getByRole('tab', { name: 'Appearance', exact: true }).click();
@@ -248,8 +253,9 @@ async function orbitOnly(page: Page, app: Awaited<ReturnType<typeof launch>>['ap
     if (await page.locator('[data-layout="orbit"]').count()) throw new Error('frame still there');
     await dialog.getByRole('radio', { name: 'Orbit', exact: true }).check();
     await page.locator('[data-layout="orbit"]').waitFor();
-    const skin = await page.evaluate(() => document.documentElement.dataset.skin);
-    if (skin !== 'orbit') throw new Error(`skin is ${skin}`);
+    // Skin and layout are separate choices: switching layouts leaves the skin as it was.
+    const skin = await page.evaluate(() => document.documentElement.dataset.skin ?? '');
+    if (skin !== skinBefore) throw new Error(`switching layouts changed the skin from ${skinBefore || 'Original'} to ${skin || 'Original'}`);
     await page.getByRole('button', { name: 'Close settings', exact: true }).click();
   });
   await check('light mode', async () => {
@@ -269,11 +275,16 @@ const outDir = path.resolve(outArg ?? `out/${layoutArg}`);
 const appDir = path.resolve(appArg ?? DEFAULT_APP_DIR);
 fs.rmSync(outDir, { recursive: true, force: true });
 
-const tabs = await run('tabs', 'lebserver', appDir, outDir);
+// Every skin works in every layout, so the frame is checked twice: under its own skin and under another one.
+const OTHER_SKIN = 'lebserver';
+const tabs = await run('tabs', OTHER_SKIN, appDir, outDir);
 const lcars = await run(layoutArg, layoutArg, appDir, outDir);
-const problems = [...tabs.problems.map((p) => `tabs: ${p}`), ...lcars.problems];
-for (const screen of Object.keys(tabs.screens)) {
-  for (const control of missingFrom(tabs.screens[screen], lcars.screens[screen] ?? [])) problems.push(`${screen}: missing in ${NAME}: ${control}`);
+const mixed = await run(layoutArg, OTHER_SKIN, appDir, outDir, `${layoutArg}-${OTHER_SKIN}`);
+const problems = [...tabs.problems.map((p) => `tabs: ${p}`), ...lcars.problems, ...mixed.problems.map((p) => `${OTHER_SKIN} skin: ${p}`)];
+for (const [label, result] of [[NAME, lcars], [`${NAME} with the ${OTHER_SKIN} skin`, mixed]] as const) {
+  for (const screen of Object.keys(tabs.screens)) {
+    for (const control of missingFrom(tabs.screens[screen], result.screens[screen] ?? [])) problems.push(`${screen}: missing in ${label}: ${control}`);
+  }
 }
 const added = Object.keys(lcars.screens).flatMap((s) => missingFrom(lcars.screens[s], tabs.screens[s] ?? []).map((c) => `${s}: ${c}`));
 fs.writeFileSync(path.join(outDir, 'report.json'), JSON.stringify({ problems, addedInLcars: added, screens: { tabs: tabs.screens, lcars: lcars.screens } }, null, 2));

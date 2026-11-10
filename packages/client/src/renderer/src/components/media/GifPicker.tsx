@@ -38,7 +38,7 @@ function hostOf(url: string): string {
   }
 }
 
-function GifPanel({ onPick }: { onPick: (gif: Gif) => void }) {
+export function GifPanel({ onPick }: { onPick: (gif: Gif) => void }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<GifResult[]>([]);
   const [next, setNext] = useState<string | undefined>();

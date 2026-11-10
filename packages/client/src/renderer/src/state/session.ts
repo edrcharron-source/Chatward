@@ -4,10 +4,20 @@ import { api } from '../api/http';
 
 /** The address a fresh install starts with. Test runs outside the app have no build info, so they get none. */
 function defaultServer(): string {
-  return typeof __CHATWARD_BUILD__ === 'undefined' ? '' : __CHATWARD_BUILD__.defaultServer;
+  if (typeof __CHATWARD_BUILD__ === 'undefined') return '';
+  return __CHATWARD_BUILD__.web ? location.origin : __CHATWARD_BUILD__.defaultServer;
+}
+
+function isWeb(): boolean {
+  return typeof __CHATWARD_BUILD__ !== 'undefined' && !!__CHATWARD_BUILD__.web;
 }
 
 export interface ServerBundle { server: Server; channels: Channel[]; members: Member[] }
+
+/** The voice chat always shows as "Voice", whatever name the server has stored. */
+function withVoiceName(b: ServerBundle): ServerBundle {
+  return { ...b, channels: b.channels.map((c) => (c.kind === 'voice' ? { ...c, name: 'Voice' } : c)) };
+}
 
 interface SessionState {
   serverUrl: string;
@@ -74,7 +84,8 @@ const saved = (() => { try { return JSON.parse(localStorage.getItem(LS) ?? '{}')
 let legacyToken: string | null = typeof saved.token === 'string' ? saved.token : null;
 
 export const useSession = create<SessionState>((set, get) => ({
-  serverUrl: saved.serverUrl ?? (defaultServer() || 'http://localhost:3000'),
+  // The web app only talks to the server that served it, whatever was saved.
+  serverUrl: (isWeb() ? defaultServer() : saved.serverUrl) ?? (defaultServer() || 'http://localhost:3000'),
   token: null,
   user: saved.user ?? null,
   servers: [], activeServerId: null, activeChannelId: null,
@@ -84,13 +95,14 @@ export const useSession = create<SessionState>((set, get) => ({
   setAuth: (token, user) => { set({ token, user }); persist(); saveToken(token); },
   setUser: (user) => { set({ user }); persist(); },
   logout: () => { set({ token: null, user: null, servers: [], activeServerId: null, activeChannelId: null, myStatus: 'online', presence: {}, voiceOccupants: {}, unread: {}, theaterChatId: null }); persist(); saveToken(null); },
-  setServers: (servers) => {
+  setServers: (list) => {
+    const servers = list.map(withVoiceName);
     const s = get();
     const active = servers.find((x) => x.server.id === s.activeServerId) ?? servers[0];
     set({ servers, activeServerId: active?.server.id ?? null,
       activeChannelId: s.activeChannelId && active?.channels.some((c) => c.id === s.activeChannelId) ? s.activeChannelId : active?.channels.find((c) => c.kind === 'text')?.id ?? null });
   },
-  upsertServer: (b) => set((s) => ({ servers: s.servers.some((x) => x.server.id === b.server.id) ? s.servers.map((x) => (x.server.id === b.server.id ? b : x)) : [...s.servers, b] })),
+  upsertServer: (bundle) => set((s) => { const b = withVoiceName(bundle); return { servers: s.servers.some((x) => x.server.id === b.server.id) ? s.servers.map((x) => (x.server.id === b.server.id ? b : x)) : [...s.servers, b] }; }),
   removeServer: (serverId) => set((s) => {
     const servers = s.servers.filter((b) => b.server.id !== serverId);
     if (s.activeServerId !== serverId) return { servers };

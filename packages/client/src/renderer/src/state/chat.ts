@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { LIMITS, type Attachment, type Message, type MessagePayload, type VaultRef } from '@chatward/shared';
+import { LIMITS, type Attachment, type Message, type MessagePayload, type ReplyRef, type VaultRef } from '@chatward/shared';
 import { ApiError, api } from '../api/http';
 import { onFrame, sendFrame } from '../api/ws';
 import { buildLinkPreviews, extractUrls, shrinkPreviewImage, uploadAttachment } from '../components/media';
@@ -7,6 +7,7 @@ import { resolveSpotifyJams } from '../components/spotify/JamCard';
 import { decryptMessage, encryptPayload, onKeysChanged } from '../crypto';
 import { fitPayload } from './fitPayload';
 import { parseMentions } from './mentions';
+import { withReplyPing } from './replies';
 import { isLiveChannel, onBeforeSignOut, refreshUnread, useSession } from './session';
 
 export type Gif = NonNullable<MessagePayload['gif']>;
@@ -35,6 +36,8 @@ interface ChatState {
   /** channelId -> unsent composer text, kept across channel switches */
   drafts: Record<string, string>;
   setDraft: (channelId: string, text: string) => void;
+  /** channelId -> the message the composer is replying to, if any. */
+  replying: Record<string, ReplyRef>;
 }
 
 const EMPTY: ChannelChat = { messages: [], loaded: false, hasMore: false, loading: false, error: null, olderError: null, loadingOlder: false };
@@ -47,11 +50,12 @@ export const useChat = create<ChatState>(() => ({
   payloads: {},
   typing: {},
   drafts: {},
+  replying: {},
   setDraft: (channelId, text) => useChat.setState((s) => ({ drafts: { ...s.drafts, [channelId]: text } })),
 }));
 
 function clearChatCache() {
-  useChat.setState({ channels: {}, payloads: {}, typing: {}, drafts: {} });
+  useChat.setState({ channels: {}, payloads: {}, typing: {}, drafts: {}, replying: {} });
   catchUpWanted.clear();
   catchUpRun.clear();
   olderWanted.clear();
@@ -337,13 +341,14 @@ function membersForChannel(channelId: string) {
   return useSession.getState().servers.find((b) => b.channels.some((c) => c.id === channelId))?.members ?? [];
 }
 
-async function buildPayload(channelId: string, text: string, attachments?: Attachment[], gif?: Gif, listenAlong?: boolean, vault?: VaultRef[]): Promise<MessagePayload> {
+async function buildPayload(channelId: string, text: string, attachments?: Attachment[], gif?: Gif, listenAlong?: boolean, vault?: VaultRef[], replyTo?: ReplyRef): Promise<MessagePayload> {
   const urls = extractUrls(text);
   const [linkPreviews, spotifyJams] = urls.length ? await Promise.all([buildLinkPreviews(urls), resolveSpotifyJams(urls)]) : [[], []];
-  const mentions = parseMentions(text, membersForChannel(channelId));
+  const mentions = withReplyPing(parseMentions(text, membersForChannel(channelId)), replyTo, requireMe());
   return {
     text,
     ...(mentions ? { mentions } : {}),
+    ...(replyTo ? { replyTo } : {}),
     ...(attachments?.length ? { attachments } : {}),
     ...(gif ? { gif } : {}),
     ...(vault?.length ? { vault } : {}),
@@ -353,10 +358,10 @@ async function buildPayload(channelId: string, text: string, attachments?: Attac
   };
 }
 
-export async function sendMessage(channelId: string, input: { text: string; files: File[]; gif?: Gif; listenAlong?: boolean; vault?: VaultRef[] }) {
+export async function sendMessage(channelId: string, input: { text: string; files: File[]; gif?: Gif; listenAlong?: boolean; vault?: VaultRef[]; replyTo?: ReplyRef }) {
   const me = requireMe();
   const attachments = input.files.length ? await Promise.all(input.files.map((f) => uploadAttachment(f))) : undefined;
-  const built = await buildPayload(channelId, input.text, attachments, input.gif, input.listenAlong, input.vault);
+  const built = await buildPayload(channelId, input.text, attachments, input.gif, input.listenAlong, input.vault, input.replyTo);
   const { payload, ciphertext, keyVersion } = await encryptWithinLimit(channelId, me, built);
   const attachmentIds = attachments?.map((a) => a.uploadId) ?? [];
   // One id for every try of this send, so the server returns the first copy instead of storing a second.
@@ -383,7 +388,8 @@ export async function sendMessage(channelId: string, input: { text: string; file
 
 export async function editMessage(m: Message, text: string) {
   const old = useChat.getState().payloads[m.id];
-  const built = await buildPayload(m.channelId, text, old?.attachments, old?.gif);
+  // An edit keeps what the message was replying to, so the quote and the ping stay.
+  const built = await buildPayload(m.channelId, text, old?.attachments, old?.gif, undefined, undefined, old?.replyTo ?? undefined);
   const { payload, ciphertext, keyVersion } = await encryptWithinLimit(m.channelId, m.authorId, built);
   const { message } = await api.patch<{ message: Message }>(`/api/messages/${m.id}`, { ciphertext, keyVersion });
   mergeMessages(m.channelId, [message]);
@@ -393,6 +399,20 @@ export async function editMessage(m: Message, text: string) {
 /** Link-preview images can push a message past the server's ciphertext cap; fitPayload trims them first. */
 function encryptWithinLimit(channelId: string, authorId: string, payload: MessagePayload) {
   return fitPayload(payload, (candidate) => encryptPayload(channelId, authorId, candidate), shrinkPreviewImage);
+}
+
+/** Start replying to a message: the composer shows "Replying to …" until it is sent or cancelled. */
+export function startReply(channelId: string, ref: ReplyRef) {
+  useChat.setState((s) => ({ replying: { ...s.replying, [channelId]: ref } }));
+}
+
+export function cancelReply(channelId: string) {
+  useChat.setState((s) => {
+    if (!s.replying[channelId]) return {};
+    const replying = { ...s.replying };
+    delete replying[channelId];
+    return { replying };
+  });
 }
 
 export async function deleteMessage(m: Message) {

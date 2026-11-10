@@ -1,0 +1,6 @@
+# The server image builds everything inside Docker, so local installs and builds are never copied in.
+**/node_modules
+**/out
+**/dist
+**/release
+.git

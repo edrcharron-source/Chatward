@@ -65,7 +65,7 @@ export function setFilters(channelId: string, patch: Partial<SearchFilters>) {
 }
 
 let jumpSeq = 0;
-export function jumpTo(message: Message) {
+export function jumpTo(message: Pick<Message, 'channelId' | 'id' | 'createdAt'>) {
   useSearch.setState({ jump: { channelId: message.channelId, messageId: message.id, createdAt: message.createdAt, seq: ++jumpSeq } });
 }
 

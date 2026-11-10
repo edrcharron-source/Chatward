@@ -1,7 +1,9 @@
 // Two-device end-to-end test of the real client crypto. Starts the built server, runs two device processes
 // (device.ts), and drives them over JSON lines. Run with: npm run test:e2e-client -w @chatward/client
 import assert from 'node:assert/strict';
+import Database from 'better-sqlite3';
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline';
@@ -57,6 +59,18 @@ async function startServer(): Promise<ChildProcess> {
 }
 
 const log = (msg: string) => console.log(`  ok  ${msg}`);
+
+/** The app has no route for adding a channel, so a test that needs another one writes it straight into the database. */
+function addChannel(serverId: string, name: string, kind: 'text' | 'voice'): string {
+  const db = new Database(path.join(dataDir, 'chatward.db'));
+  try {
+    const id = Date.now().toString(36).padStart(9, '0') + randomBytes(5).toString('hex');
+    db.prepare('INSERT INTO channels (id, server_id, name, kind, created_at) VALUES (?, ?, ?, ?, ?)').run(id, serverId, name, kind, Date.now());
+    return id;
+  } finally {
+    db.close();
+  }
+}
 
 /** Runs the chatward admin command against the test server. */
 const chatward = (...args: string[]): string =>
@@ -257,7 +271,7 @@ async function main() {
     // 5g. Alice adds a channel, and the Commit that creates its group is held back, so she gives up on it. No Welcome
     // will ever come for her own group. When the Commit reaches the server late, alice must adopt the group from the
     // step she kept instead of waiting forever.
-    const late = await alice.call('createChannel', { serverId, name: 'late' });
+    const late = { channelId: addChannel(serverId, 'late', 'text') };
     await alice.call('holdNextCommit');
     await alice.call('sync'); // the group-creating Commit gets no answer and is kept
     assert.equal((await alice.call('status', { channelId: late.channelId })).epoch, null, 'alice has no group while the create Commit is held');
@@ -271,7 +285,7 @@ async function main() {
 
     // Ten devices join a channel that already has a group. They are added four at a time, one Commit per batch, so no
     // Commit grows past the server's body limit. Alice's Commits go out in three batches.
-    const big = await alice.call('createChannel', { serverId, name: 'big' });
+    const big = { channelId: addChannel(serverId, 'big', 'text') };
     await alice.call('sync');
     const bigStart = (await alice.call('status', { channelId: big.channelId })).epoch as number;
     // Each crowd member is its own device process, so alice keeps her session token.

@@ -5,25 +5,27 @@
 
 :root[data-skin='lebserver'] {
   /* Surfaces. Panels are slightly see-through so the stars show under them; popovers and modals are solid. */
-  --bg-0: rgba(5, 5, 5, .92); --bg-1: rgba(10, 10, 10, .9); --bg-2: rgba(8, 8, 8, .86);
-  --bg-3: #161616; --bg-hover: #1c1c1c;
-  --text: #d6d6d6; --text-muted: #8a8a8a; --text-strong: #f0f0f0;
-  --accent: #8db8e6; --accent-hover: #a6c8ee; --accent-text: #050505;
-  --accent-tint: rgba(141, 184, 230, .12); --hover-tint: rgba(255, 255, 255, .04);
-  --danger: #f0857a; --ok: #9fdcb4; --warn: #f3d58c;
-  --border: #2e2e2e;
-  --shadow: 3px 3px 0 #141414; --shadow-popover: 4px 4px 0 #1a1a1a;
+  --bg-0: rgba(10, 10, 11, .92); --bg-1: rgba(17, 17, 19, .9); --bg-2: rgba(10, 10, 11, .86);
+  --bg-3: #18181b; --bg-hover: #1d1d21;
+  --text: #e6e3dc; --text-muted: #7c7d84; --text-strong: #fffaf0;
+  --accent: #9fc4e8; --accent-hover: #b5d3ee; --accent-text: #000;
+  --accent-tint: rgba(159, 196, 232, .12); --hover-tint: rgba(255, 255, 255, .04);
+  --danger: #f2a291; --ok: #a9dcbf; --warn: #f2dc8f;
+  --border: #26262a;
+  --shadow: 3px 3px 0 #2b2617; --shadow-popover: 4px 4px 0 #2b2617;
   --shadow-composer: none; --shadow-header: none;
   --radius: 0; --radius-sm: 0; --radius-modal: 0;
   --overlay-bg: rgba(5, 5, 5, .8); --backdrop: rgba(0, 0, 0, .78);
   --danger-text: #050505;
   /* The skin's own colours, so the light version (below) can swap them all in one place. */
-  --lb-ground: #030303; --lb-ink: #050505; --lb-panel: #0b0b0b; --lb-composer: #070707;
-  --lb-tab: #0a0a0a; --lb-tab-active: #0b1118; --lb-btn-text: #a8a8a8; --lb-btn-hover: #1c1c1c; --lb-titlebar-hover: #141414;
-  --lb-line: #3a3a3a; --lb-line-hover: #707070; --lb-disabled: #5a5a5a; --lb-hard-shadow: #1a1a1a; --lb-divider: #1e1e1e;
-  --lb-peach: #f2a48c; --lb-yellow: #f3d58c; --lb-time: #7a7a7a; --lb-role-line: #4a4128; --lb-danger-line: #6b3a33;
-  --lb-yellow-tint: rgba(243, 213, 140, .06); --lb-accent-soft: rgba(141, 184, 230, .25); --lb-danger-tint: rgba(240, 133, 122, .12);
-  --lb-fade: linear-gradient(180deg, #f6e4a4 0%, #f3b88e 55%, #f0907f 100%);
+  --lb-ground: #000; --lb-ink: #000; --lb-panel: #111113; --lb-composer: #0a0a0b;
+  --lb-tab: #0a0a0b; --lb-tab-active: #0d121a; --lb-btn-text: #b4b2ac; --lb-btn-hover: #1d1d21; --lb-titlebar-hover: #18181b;
+  --lb-line: #3a3a40; --lb-line-hover: #6e6f76; --lb-disabled: #55565c; --lb-hard-shadow: #2b2617; --lb-divider: #26262a;
+  --lb-peach: #f2a291; --lb-yellow: #f2dc8f; --lb-time: #7c7d84; --lb-role-line: #4a342e; --lb-danger-line: #6b3329;
+  --lb-yellow-tint: rgba(242, 220, 143, .06); --lb-accent-soft: rgba(159, 196, 232, .25); --lb-danger-tint: rgba(240, 133, 122, .12);
+  --lb-fade: linear-gradient(180deg, #fffaf0 0%, #f2dc8f 26%, #f4b98f 58%, #f2a291 90%, #e0968a 100%);
+  /* Long text (messages, hints) reads in a plain sans; names, labels, buttons and headings stay JetBrains Mono like lebai. */
+  --lb-read: 'Segoe UI Variable Text', 'Segoe UI', system-ui, -apple-system, sans-serif;
   --lb-star: #6a6a6a; --lb-star-dim: #4a4a4a;
   --font-body: 'JetBrains Mono', 'Cascadia Mono', Consolas, ui-monospace, monospace;
   --font-code: var(--font-body); --font-digits: var(--font-body);
@@ -88,7 +90,6 @@
 :root[data-skin='lebserver'] .media-popover,
 :root[data-skin='lebserver'] .setting-row,
 :root[data-skin='lebserver'] .cw-members,
-:root[data-skin='lebserver'] .cw-channels,
 :root[data-skin='lebserver'] .cv-composer { outline: 1px solid var(--border); outline-offset: -1px; }
 :root[data-skin='lebserver'] .modal,
 :root[data-skin='lebserver'] .cv-actions,
@@ -97,10 +98,8 @@
 
 /* Section labels read like lebserver's small lowercase captions, with dashed rules under headers. */
 :root[data-skin='lebserver'] .cw-members-title,
-:root[data-skin='lebserver'] .cw-section-title,
 :root[data-skin='lebserver'] .setting-section h3 { text-transform: lowercase; letter-spacing: .1em; color: var(--text-muted); font-weight: 400; }
 :root[data-skin='lebserver'] .cv-header,
-:root[data-skin='lebserver'] .cw-channels-head,
 :root[data-skin='lebserver'] .cw-tabs-bar { border-bottom-style: dashed; }
 :root[data-skin='lebserver'] .cw-me { border-top-style: dashed; }
 
@@ -112,7 +111,6 @@
 :root[data-skin='lebserver'] .cv-hash { color: var(--lb-yellow); }
 :root[data-skin='lebserver'] .cw-badge { background: var(--lb-yellow); color: var(--lb-ink); }
 :root[data-skin='lebserver'] .cw-role { background: transparent; color: var(--lb-yellow); box-shadow: inset 0 0 0 1px var(--lb-role-line); }
-:root[data-skin='lebserver'] .cw-channel.active { color: var(--lb-yellow); background: var(--lb-yellow-tint); }
 :root[data-skin='lebserver'] .cw-tab { background: var(--lb-tab); border-color: var(--lb-line); }
 :root[data-skin='lebserver'] .cw-tab.active { border-color: var(--accent); background: var(--lb-tab-active); box-shadow: inset 0 0 0 1px var(--lb-accent-soft); }
 :root[data-skin='lebserver'] .cw-tab .cw-tab-main,
@@ -124,8 +122,7 @@
 :root[data-skin='lebserver'] .cw-split-divider { background: var(--lb-divider); }
 
 /* The server name in the tab bar gets the lebserver banner's yellow to peach fade. */
-:root[data-skin='lebserver'] .cw-tabs-server,
-:root[data-skin='lebserver'] .cw-channels-head h2 {
+:root[data-skin='lebserver'] .cw-tabs-server {
   background: var(--lb-fade);
   -webkit-background-clip: text; background-clip: text; color: transparent;
   text-transform: uppercase; letter-spacing: .18em; font-weight: 800;
@@ -150,6 +147,13 @@
 :root[data-skin='lebserver'] .cw-titlebar .cw-titlebar-button::after { content: ']'; }
 :root[data-skin='lebserver'] .cw-titlebar .cw-titlebar-button:hover { background: var(--titlebar-button-hover); color: var(--titlebar-text-strong); box-shadow: none; }
 :root[data-skin='lebserver'] .cw-titlebar .cw-titlebar-button.close:hover { background: var(--titlebar-close-hover); color: var(--titlebar-close-hover-text); }
+
+/* Readable long text: message bodies, the composer and setting hints use the sans; the rest of the skin stays mono. */
+:root[data-skin='lebserver'] .cv-text,
+:root[data-skin='lebserver'] .cv-edit-input,
+:root[data-skin='lebserver'] .cv-composer textarea,
+:root[data-skin='lebserver'] .setting-text small,
+:root[data-skin='lebserver'] .cw-welcome-text p { font-family: var(--lb-read); }
 
 /* The light version, used when Settings > Appearance > Theme is Light (or Match system picks light). Same skin, same
    rules: monospace, square thin-ruled panels, hard offset shadows and the peach, yellow, mint and blue accents, now as

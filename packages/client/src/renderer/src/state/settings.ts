@@ -3,10 +3,15 @@ import { create } from 'zustand';
 export interface Settings {
   theme: 'dark' | 'light' | 'system';
   skin: string;             // id of the active skin (skins/index.ts); '' or an unknown id = no skin
+  /** skins with animated art (the Lebserver black hole) draw it; off = none. Reduced motion always draws one still frame. */
+  animatedBackgrounds: boolean;
+  /** the welcome card above the chat was closed with Got it */
+  welcomeDismissed: boolean;
   /**
-   * 'tabs': tab bar, one text and one voice chat (the default). 'classic': the channel sidebar layout. 'lcars': the tabs
-   * layout's views inside the LCARS frame (components/lcars), which comes with the LCARS skin. 'orbit': the tabs layout
-   * in the Orbit frame (components/orbit), which comes with the Orbit skin.
+   * 'tabs': tab bar, one text and one voice chat (the default). 'classic': the same views with the tabs
+   * down a sidebar on the left. 'lcars': the tabs
+   * layout's views inside the LCARS frame (components/lcars). 'orbit': the tabs layout in the Orbit frame
+   * (components/orbit). Separate from the skin: every skin works in every layout.
    */
   layout: 'tabs' | 'classic' | 'lcars' | 'orbit';
   /** tabs layout split view: share of the width the left tab takes, 0.2..0.8 */
@@ -21,7 +26,6 @@ export interface Settings {
   noiseSuppression: boolean;
   echoCancellation: boolean;
   messageSounds: boolean;   // notification sound for new chat messages
-  mutedChannels: string[];  // channelIds with silenced notification sound
   voiceJoinLeaveSounds: boolean;
   /** Silences every notification: message and ping sounds, join/leave sounds, and taskbar flashing. Chat highlights still show. */
   silenceAll: boolean;
@@ -41,9 +45,9 @@ export interface Settings {
 
 const LS = 'chatward.settings';
 const defaults = {
-  theme: 'dark' as const, skin: 'lebserver', layout: 'tabs' as Settings['layout'], splitRatio: 0.5, tabOrder: [] as string[], inputDeviceId: '', outputDeviceId: '', cameraDeviceId: '',
+  theme: 'dark' as const, skin: 'lebserver', animatedBackgrounds: true, welcomeDismissed: false, layout: 'tabs' as Settings['layout'], splitRatio: 0.5, tabOrder: [] as string[], inputDeviceId: '', outputDeviceId: '', cameraDeviceId: '',
   masterVolume: 1, micGain: 1, noiseSuppression: true, echoCancellation: true,
-  messageSounds: true, mutedChannels: [] as string[], voiceJoinLeaveSounds: true, silenceAll: false, soundVolume: 0.6,
+  messageSounds: true, voiceJoinLeaveSounds: true, silenceAll: false, soundVolume: 0.6,
   autoLoadEmbeds: false, linkPreviews: true, confirmDeleteMessages: true, userVolumes: {} as Record<string, number>, mutedUsers: {} as Record<string, boolean>,
 };
 const saved = (() => { try { return JSON.parse(localStorage.getItem(LS) ?? '{}'); } catch { return {}; } })();

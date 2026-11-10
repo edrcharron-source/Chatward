@@ -1,6 +1,6 @@
 import { playSound, type SoundKind } from '../../notify/notify';
-import { useSession } from '../../state/session';
 import { useSettings } from '../../state/settings';
+import { PushSwitch } from '../workouts/WorkoutsView';
 import { Section, Slider, Toggle } from './controls';
 
 const PREVIEWS: { kind: SoundKind; label: string }[] = [
@@ -15,16 +15,12 @@ export default function NotificationsTab() {
   const voiceJoinLeaveSounds = useSettings((s) => s.voiceJoinLeaveSounds);
   const soundVolume = useSettings((s) => s.soundVolume);
   const silenceAll = useSettings((s) => s.silenceAll);
-  const mutedChannels = useSettings((s) => s.mutedChannels);
   const set = useSettings((s) => s.set);
-  const servers = useSession((s) => s.servers);
-
-  function setMuted(channelId: string, muted: boolean) {
-    set({ mutedChannels: muted ? [...mutedChannels, channelId] : mutedChannels.filter((id) => id !== channelId) });
-  }
 
   return (
     <>
+      <PushSwitch title="Phone notifications" />
+
       <Section title="Silence">
         <Toggle label="Silence all notifications" hint="No sounds and no taskbar flashing for messages, pings or voice. Highlights in chat still show."
           checked={silenceAll} onChange={(on) => set({ silenceAll: on })} />
@@ -42,24 +38,6 @@ export default function NotificationsTab() {
             <button key={p.kind} type="button" onClick={() => playSound(p.kind)}>Test {p.label.toLowerCase()}</button>
           ))}
         </div>
-      </Section>
-
-      <Section title="Silence channels">
-        <p className="muted">A ping still sounds in a silenced channel.</p>
-        {servers.length === 0 && <p className="muted">Channels show here once you are in the server.</p>}
-        {servers.map((b) => {
-          const texts = b.channels.filter((c) => c.kind === 'text');
-          if (texts.length === 0) return null;
-          return (
-            <div key={b.server.id} className="channel-group">
-              <h4>{b.server.name}</h4>
-              {texts.map((c) => (
-                <Toggle key={c.id} label={`#${c.name}`} hint="No message sound for this channel."
-                  checked={mutedChannels.includes(c.id)} onChange={(on) => setMuted(c.id, on)} />
-              ))}
-            </div>
-          );
-        })}
       </Section>
     </>
   );
