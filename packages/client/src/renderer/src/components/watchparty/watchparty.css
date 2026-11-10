@@ -151,9 +151,62 @@
 }
 
 .watch-party-now { margin: 6px 0 0; font-size: 12px; opacity: 0.8; }
-.watch-party-queue { list-style: decimal inside; margin: 6px 0 0; padding: 0; font-size: 13px; display: flex; flex-direction: column; gap: 4px; }
-.watch-party-queue li { display: flex; align-items: center; gap: 8px; }
-.watch-party-queue li span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.watch-party-queue { list-style: none; margin: 6px 0 0; padding: 0; font-size: 13px; display: flex; flex-direction: column; gap: 4px; }
+.watch-party-queue li { position: relative; display: flex; align-items: center; gap: 8px; padding: 2px 0; border-radius: 8px; }
+.watch-party-queue-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.watch-party-queue-num { min-width: 1.5em; text-align: right; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+/* The grip: press and drag to move the item. It stays plain so it does not read as another action button. */
+.watch-party .watch-party-grip {
+  padding: 4px 2px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 16px;
+  line-height: 1;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.watch-party .watch-party-grip:hover { color: var(--text); }
+.watch-party-queue.sorting, .watch-party-queue.sorting .watch-party-grip { cursor: grabbing; }
+.watch-party-queue.sorting { user-select: none; }
+/* 16:9 for YouTube and files; the same height, narrower, for movie posters. */
+.watch-party-thumb {
+  flex: none;
+  width: 64px;
+  height: 36px;
+  border-radius: 4px;
+  object-fit: cover;
+  background: var(--bg-3);
+}
+.watch-party-thumb.poster { width: 24px; }
+.watch-party-thumb.empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+.watch-party-queue li.dragging {
+  z-index: 1;
+  background: var(--bg-3);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  opacity: 0.92;
+}
+/* Where the item will land: a bar in the accent colour on the gap. */
+.watch-party-queue li.drop-before::before,
+.watch-party-queue li.drop-after::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--accent);
+  pointer-events: none;
+}
+.watch-party-queue li.drop-before::before { top: -4px; }
+.watch-party-queue li.drop-after::after { bottom: -4px; }
 
 /* Corner preview: the watch party keeps playing here while another tab is open (TabsLayout's TabStage). Only the video
    shows, with a strip on top to drag it and a button back to the tab. Its place and size come from useFloatingBox

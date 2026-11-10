@@ -43,6 +43,18 @@ function parseQueueItem(raw: unknown): QueueItem | null {
   return null;
 }
 
+/**
+ * The queue with the item at `from` moved to index `to`. Returns null when nothing would change, or when the item at
+ * `from` is no longer `ref` (someone else changed the queue mid-drag), so a stale drag never moves the wrong thing.
+ */
+export function moveQueueItem(queue: QueueItem[], from: number, to: number, ref: string): QueueItem[] | null {
+  if (from === to || from < 0 || to < 0 || from >= queue.length || to >= queue.length || queue[from].ref !== ref) return null;
+  const next = queue.slice();
+  const [item] = next.splice(from, 1);
+  next.splice(to, 0, item);
+  return next;
+}
+
 /** The state that starts playing `item` from `position`, carrying the rest of the queue. */
 export function stateForItem(item: QueueItem, rest: QueueItem[], n: number, rate = 1, position = 0): WatchState {
   return {

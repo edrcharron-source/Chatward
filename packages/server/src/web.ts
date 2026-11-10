@@ -14,7 +14,7 @@ const WEB_CSP = [
   "default-src 'self'",
   "script-src 'self'",
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob: https://klipy.com https://*.klipy.com https://i.scdn.co",
+  "img-src 'self' data: blob: https://klipy.com https://*.klipy.com https://i.scdn.co https://i.ytimg.com",
   "media-src 'self' blob: data: https:",
   "connect-src 'self' wss: blob:",
   'frame-src https://www.youtube-nocookie.com https://platform.twitter.com https://twitframe.com https://*.twitter.com https://*.x.com',
