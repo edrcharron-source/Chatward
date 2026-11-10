@@ -112,13 +112,6 @@ export default function AccountTab() {
 
   return (
     <>
-      <Section title="Name">
-        <p className="setting-row">
-          You log in as <strong>{user.username}</strong>, and that never changes. Everyone sees you as <strong>{user.displayName}</strong>: to change it,
-          right-click your own name or picture and pick Change display name.
-        </p>
-      </Section>
-
       <Section title="Profile picture">
         <div className="setting-row">
           {current
