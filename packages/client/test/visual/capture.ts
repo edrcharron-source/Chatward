@@ -35,14 +35,6 @@ async function captureTheme(theme: string) {
     await page.getByRole('heading', { name: 'general' }).or(page.getByText('This is the start of #general')).first().waitFor();
     await shot(page, p('chat-general'));
 
-    for (const channel of ['memes', 'watch-party']) {
-      await page.getByRole('complementary', { name: 'Channels' }).getByText(channel, { exact: true }).click();
-      await page.getByText(`This is the start of #${channel}`).waitFor();
-      await shot(page, p(`chat-${channel}`));
-    }
-    await page.getByRole('complementary', { name: 'Channels' }).getByText('general', { exact: true }).click();
-    await page.getByText('This is the start of #general').waitFor();
-
     await page.getByRole('button', { name: 'Emoji', exact: true }).click();
     await page.getByRole('dialog', { name: 'Emoji picker' }).waitFor();
     await page.waitForTimeout(800);

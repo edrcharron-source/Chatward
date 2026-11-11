@@ -32,6 +32,14 @@ The full plan lives in the project's "Chatward skins plan" doc. This file is the
 - The choice is the `skin` setting: one skin at a time, `''` for none, and an unknown id counts as none. It is saved
   locally and never sent to the server. The watch-party popout follows it too.
 
+## Lebserver skin and lebai
+
+The Lebserver skin matches lebai on lebserver: its palette, hard offset shadows and JetBrains Mono for names, labels and
+buttons, with message text and hints in a plain sans (`--lb-read`) so long text stays easy to read. The sign-in screen
+shows lebai's LEBSERVER wordmark and its ASCII black hole (`components/lebai/LebaiBlackHole.tsx`, lebai's own photon
+tracer). It is decoration only (aria-hidden, no controls), shows only under this skin in the dark theme, stops while the
+window is hidden, holds still under reduced motion, and can be turned off with Settings > Appearance > Animated backgrounds.
+
 ## Proving a change is visual-only
 
 `npm run visual:capture -w @chatward/client -- <out dir> [app dir]` drives the built app in demo mode (under
@@ -55,18 +63,32 @@ the look gets the `visual-change` label; the check then passes and the screensho
 
 Skins that must pass are listed in `SKINS` in `test/skins/parity.ts`. Once the skin registry exists, the check reads it instead.
 
-## LCARS (a skin with its own layout)
+## Skins and layouts are separate
 
-The LCARS skin (`skins/lcars/skin.css`) comes with the LCARS layout (`components/lcars`). Picking the skin in Settings >
-Appearance also picks the layout, picking the LCARS layout also picks the skin, and picking another skin while the LCARS
-layout is on goes back to Tabs. A skin entry in `SKINS` names its layout with `layout`.
+The skin and the layout are two separate settings, and every skin works in every layout: picking a layout never changes
+the skin, and picking a skin never changes the layout. Settings > Appearance shows each layout as a small drawing
+(`components/settings/LayoutPreview.tsx`) made from the active skin's colour tokens, so it always shows that layout in
+the skin that is on now, light or dark.
+
+- A layout's frame reads the skin's tokens, never a skin by name. The LCARS frame's colours (`--lc-*`) take the active
+  skin's colours (`components/lcars/lcars.css`, with a small block per skin for the best fit); the Orbit frame reads the
+  Orbit skin's `--orb-*` colours and falls back to the shared tokens under any other skin.
+- A frame's rules start with `:root:root`, so a skin's general rules (every button, every corner) never repaint its blocks.
+  A skin's rules for the tabs layout skip the LCARS rail with `:not(.lcars-rail *)`.
+- A new skin should look right in all four layouts; `npm run lcars:check` and `npm run orbit:check` walk each frame under
+  its own skin and under the Lebserver skin.
+
+## LCARS (a layout and a skin)
+
+The LCARS layout (`components/lcars`) and the LCARS skin (`skins/lcars/skin.css`) were made together, but each works with
+any other choice.
 
 - **Same features as Tabs.** The LCARS layout is the tabs layout drawn in a different frame: `TabsLayout` with
   `frame="lcars"` hands its own tab bar, panes, member list, pop-out windows and dialogs to `LcarsLayout`, so a feature
   added to the tabs layout shows up in LCARS too. The call controls are `VoiceDock` with `bar`.
 - **The frame** is built from interlocking blocks: two elbows (top left, bottom left) that turn the thick left rail into
   the thin top and bottom bars, flat segments that are the buttons (4px black gaps, label bottom right), fillers, and
-  round caps on free ends only. The rail holds the tabs, Server settings and Settings; the top bar holds Split, the drag
+  round caps on free ends only. The rail holds the tabs, Server settings and Settings; the top bar holds the drag
   area, the server name, your status, Test and the window's Min/Max/Close (the usual title bar is hidden while the frame
   is up); the bottom bar holds the call controls or Join voice. The soundboard opens in a pop-up with a small frame.
 - **The window** (desktop app, not macOS) is see-through around the frame: picking the LCARS layout swaps the main
@@ -82,3 +104,25 @@ layout is on goes back to Tabs. A skin entry in `SKINS` names its layout with `l
   pop-out, tab reorder, Join voice, Leave, switching layouts) and saves screenshots of both. It keeps one window
   (`--chatward-keep-window`). `npm run lcars:shaped -w @chatward/client -- <out dir>` checks the see-through window:
   the swap, clear corners (also with a dialog open) and the usual window coming back.
+
+## Orbit (a layout and a skin)
+
+The Orbit layout (`components/orbit`) and the Orbit skin (`skins/orbit/skin.css`) were made together, like LCARS, but each
+works with any other choice.
+
+- **Same features as Tabs.** The Orbit layout is the tabs layout itself with `frame="orbit"`: every tab, tool, pane,
+  member list and call control stays where Tabs puts it. The frame adds a line drawing behind the panes
+  (`OrbitBackdrop`: circles, an eight-point and a six-point star, a ring of ticks, a soft glow and a stone grain, all
+  drawn in code), an emblem before the server's name, and minimize, maximize and close at the end of the tab bar. The
+  tab bar is the window's title bar (drag it to move the window), so the usual title bar is hidden while it is up. The
+  window stays the usual rectangle.
+- **Look:** square corners, 1px lines instead of filled boxes, spaced-out capitals in Barlow Condensed over Barlow
+  body text. The open tab is underlined with a gold diamond above it. White is text, gold is you and anything picked,
+  cyan is live (speaking, in the call, online), red is close, leave and alerts. The light version is the same drawing
+  in dark lines on pale grey stone. Both fonts are bundled under the SIL Open Font License (`skins/orbit/fonts/OFL.txt`).
+- **Icons:** the skin has its own set, Glyph (`components/icons/glyphIcons.ts`): thin 1.5px lines, square ends and
+  diamonds or hexagons where other sets use circles.
+- **Check:** `npm run orbit:check -w @chatward/client -- <out dir>` (under `xvfb-run` on Linux) walks the same screens
+  as the LCARS check in the Tabs and Orbit layouts, fails if Orbit is missing any control Tabs shows, checks the frame
+  (title bar hidden, window buttons in the bar, the drawing, Glyph icons, tab reorder, pop-out, switching layouts) and
+  saves screenshots, including one in light mode.

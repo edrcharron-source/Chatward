@@ -8,6 +8,11 @@ import { isPopoutWindow } from './components/watchparty/popout';
 import { restoreSession, useSession } from './state/session';
 import { DEMO_URL } from './demo';
 import { syncShapedWindow } from './components/lcars/shapedWindow';
+import { installWebBridge, registerServiceWorker } from './web/bridge';
+import { syncStatusBarColour } from './web/statusBar';
+
+// In the web app there is no Electron preload, so window.chatward is filled in from browser features first.
+if (__CHATWARD_BUILD__.web) { installWebBridge(); registerServiceWorker(); syncStatusBarColour(); }
 
 // The token comes from secureStore, so wait for it before the first request goes out.
 // The page's connection rules are fixed when it loads. If the saved server is not the one they were set for, reload once.
@@ -22,7 +27,15 @@ async function start() {
   } catch (err) {
     console.warn('[server]', err);
   }
-  if (!isPopoutWindow()) syncShapedWindow();
-  createRoot(document.getElementById('root')!).render(isPopoutWindow() ? <PopoutPlayer /> : <ConfirmProvider><App /></ConfirmProvider>);
+  syncShapedWindow();
+  createRoot(document.getElementById('root')!).render(<ConfirmProvider><App /></ConfirmProvider>);
 }
-void start();
+
+// The pop-out window (watch party, and picture in picture) is opened by the page with no preload, so window.chatward
+// does not exist there. It only needs the player, so it renders straight away and skips the session and server setup,
+// which would throw and leave the window blank.
+if (isPopoutWindow()) {
+  createRoot(document.getElementById('root')!).render(<PopoutPlayer />);
+} else {
+  void start();
+}

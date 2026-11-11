@@ -1,11 +1,14 @@
-import { useEffect, useRef, useState, type FormEvent, type ReactElement } from 'react';
+import { useEffect, useRef, useState, type DragEvent, type FormEvent, type ReactElement } from 'react';
 import type { Message, MessagePayload, ServerFrame } from '@chatward/shared';
 import { api } from '../../api/http';
 import { onFrame } from '../../api/ws';
 import { decryptMessage, encryptPayload, onKeysChanged } from '../../crypto';
 import { useSession } from '../../state/session';
-import { decodeState, DRIFT_SECONDS, encodeState, mediaKey, parseVideoUrl, playhead, QUEUE_MAX, SEEK_SECONDS, stateForItem, type QueueItem, type StampedState, type WatchState } from './sync';
+import { decodeState, DRIFT_SECONDS, encodeState, mediaKey, moveQueueItem, parseVideoUrl, playhead, QUEUE_MAX, SEEK_SECONDS, stateForItem, vaultItem, type QueueItem, type StampedState, type WatchState } from './sync';
 import { registerQueueHandler } from './bridge';
+import { QueueList } from './QueueList';
+import { VaultPicker, type VaultVideo } from './VaultPicker';
+import { fetchVaultFile, openDescriptor, uploadToVault, type VaultPage } from '../vault/vault';
 import { attachJellyfin, startJellyfinPlayback } from '../jellyfin/JellyfinBrowser';
 import { bindPlayer, embedSrc, parseYouTubeUrl, sendCommand, type PlayerEvent } from './youtube';
 import { popoutUrl, type PanelToPopout, type PopoutToPanel } from './popout';
@@ -50,9 +53,14 @@ const remotePlayhead = (s: StampedState, serverNow: number) =>
   playhead({ position: s.position, at: s.ts, playing: s.playing, rate: s.rate }, serverNow);
 
 /** Keeps what is playing and the queue when only the playhead changes. */
-const carry = (s: WatchState) => ({ videoId: s.videoId, url: s.url, jellyfinId: s.jellyfinId, title: s.title, queue: s.queue, n: s.n });
+const carry = (s: WatchState) => ({ videoId: s.videoId, url: s.url, jellyfinId: s.jellyfinId, vault: s.vault, title: s.title, queue: s.queue, n: s.n });
 
-const itemLabel = (it: QueueItem) => it.title ?? (it.kind === 'youtube' ? `YouTube ${it.ref}` : it.kind === 'url' ? new URL(it.ref).pathname.split('/').pop() || it.ref : 'Jellyfin item');
+const itemLabel = (it: QueueItem) => it.title ?? (it.kind === 'youtube' ? `YouTube ${it.ref}` : it.kind === 'url' ? new URL(it.ref).pathname.split('/').pop() || it.ref : it.kind === 'vault' ? 'Vault video' : 'Jellyfin item');
+
+const mb = (n: number) => `${Math.round(n / (1024 * 1024))} MB`;
+
+/** True when a drag carries files from outside the app (File Explorer), not text or a link. */
+const dragHasFiles = (e: DragEvent) => Array.from(e.dataTransfer.types).includes('Files');
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : 'Something went wrong.');
 
@@ -61,13 +69,26 @@ const errorText = (e: unknown) => (e instanceof Error ? e.message : 'Something w
  * in that call change it. Voice channels have no message key of their own, so the state is encrypted with the key of
  * `keyChannelId`, the call's server's first text channel, the same channel the call's media key comes from.
  */
-export function WatchPartyPanel({ callChannelId: channelId, keyChannelId }: { callChannelId: string; keyChannelId: string }): ReactElement {
+export function WatchPartyPanel({ callChannelId: channelId, keyChannelId, vaultServerId, onActiveChange, onLeave }: {
+  callChannelId: string;
+  keyChannelId: string;
+  /** the call's server; turns on "From Vault" and dropping a video file to upload it to that server's Vault */
+  vaultServerId?: string;
+  onActiveChange?: (active: boolean) => void;
+  onLeave?: () => void;
+}): ReactElement {
   const me = useSession((s) => s.user?.id ?? null);
   const [remote, setRemote] = useState<StampedState | null>(null);
   const [draft, setDraft] = useState('');
   const [error, setError] = useState<string | null>(null);
   /** true while the embed lives in the pop-out window instead of the panel */
   const [popped, setPopped] = useState(false);
+  const [vaultOpen, setVaultOpen] = useState(false);
+  /** "Uploading clip.mp4…" while a dropped file goes to the Vault */
+  const [uploading, setUploading] = useState<string | null>(null);
+  const [dropping, setDropping] = useState(false);
+  /** the decrypted Vault video, as a local object URL, once it has downloaded */
+  const [vaultSrc, setVaultSrc] = useState<string | null>(null);
 
   const frameRef = useRef<HTMLIFrameElement>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -138,7 +159,8 @@ export function WatchPartyPanel({ callChannelId: channelId, keyChannelId }: { ca
       stopping.current = false;
     } catch (e) {
       stopping.current = false;
-      setError(errorText(e));
+      // The whole queue travels in one encrypted note with a size cap; a long queue of Vault items can reach it.
+      setError(errorText(e) === 'invalid ciphertext' ? 'The queue is too long to add more. Remove something first.' : errorText(e));
     }
   };
 
@@ -158,7 +180,7 @@ export function WatchPartyPanel({ callChannelId: channelId, keyChannelId }: { ca
     if (!prev || !mediaKey(cur)) return;
     // Our own commands echo back as events for a moment after each sync. A file or Jellyfin play or pause that
     // disagrees with the shared state is the viewer's own click, so it still goes out even inside that window.
-    const ownClick = e.playing !== cur!.playing && Boolean(cur!.url || cur!.jellyfinId);
+    const ownClick = e.playing !== cur!.playing && Boolean(cur!.url || cur!.jellyfinId || cur!.vault);
     if (now < suppressUntil.current && !ownClick) return;
 
     const seeked = Math.abs(e.currentTime - playhead(prev, now)) > SEEK_SECONDS;
@@ -218,10 +240,15 @@ export function WatchPartyPanel({ callChannelId: channelId, keyChannelId }: { ca
   const videoId = remote?.videoId ?? null;
   const fileUrl = remote?.url ?? null;
   const jellyfinId = remote?.jellyfinId ?? null;
+  const vault = remote?.vault ?? null;
+  const vaultId = vault?.id ?? null;
   const queue = remote?.queue ?? [];
-  /** files and Jellyfin both play in a <video>; only YouTube uses the iframe */
-  const useVideo = Boolean(fileUrl || jellyfinId);
+  /** files, Jellyfin and the Vault all play in a <video>; only YouTube uses the iframe */
+  const useVideo = Boolean(fileUrl || jellyfinId || vaultId);
   const active = mediaKey(remote);
+  // Tells the tabs layout whether something is playing, so it can keep a corner preview while the tab is left.
+  useEffect(() => { onActiveChange?.(Boolean(active)); }, [active]);
+  useEffect(() => () => onActiveChange?.(false), []);
 
   // Re-bind whenever the embed is (re)mounted: a new video, or it moving between the panel and the pop-out window.
   useEffect(() => {
@@ -236,7 +263,7 @@ export function WatchPartyPanel({ callChannelId: channelId, keyChannelId }: { ca
     const frame = frameRef.current;
     if (!frame) return;
     return bindPlayer(frame, (e) => onPlayerEvent.current(e));
-  }, [videoId, fileUrl, jellyfinId, channelId, popped]);
+  }, [videoId, fileUrl, jellyfinId, vaultId, channelId, popped]);
 
   /** Reports a <video> element's state like the YouTube embed does, so the rest of the sync logic is shared. */
   const bindVideo = () => {
@@ -280,6 +307,18 @@ export function WatchPartyPanel({ callChannelId: channelId, keyChannelId }: { ca
       .catch((e: unknown) => { if (live) setError(errorText(e)); });
     return () => { live = false; detach(); };
   }, [jellyfinId]);
+
+  // Vault: the file is encrypted, so each viewer downloads it whole and decrypts it before it can play. Sync starts
+  // once it has loaded (the <video> reports ready then), and jumps straight to where everyone else is.
+  useEffect(() => {
+    setVaultSrc(null);
+    if (!vault) return;
+    let live = true; let made: string | null = null;
+    fetchVaultFile(vault.id, vault.key, vault.iv, vault.mime)
+      .then((u) => { if (live) { made = u; setVaultSrc(u); } else URL.revokeObjectURL(u); })
+      .catch((e: unknown) => { if (live) setError(`Couldn't load the Vault video: ${errorText(e)}`); });
+    return () => { live = false; if (made) URL.revokeObjectURL(made); };
+  }, [vaultId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // A remote change, or our own publish echoed back into state, is applied here.
   useEffect(() => {
@@ -337,11 +376,61 @@ export function WatchPartyPanel({ callChannelId: channelId, keyChannelId }: { ca
     addToQueue(link ? { kind: 'youtube', ref: link.videoId } : { kind: 'url', ref: file! });
   };
 
+  const pickVault = (v: VaultVideo) => {
+    setVaultOpen(false);
+    addToQueue(vaultItem({ id: v.item.id, key: v.d.key, iv: v.d.iv, mime: v.d.mime }, v.d.name));
+  };
+
+  /** Encrypts and uploads each video to the Vault, then queues it (or starts it when nothing is playing). */
+  const uploadAndQueue = async (files: File[]) => {
+    if (!vaultServerId || !me || uploading) return;
+    const videos = files.filter((f) => f.type.startsWith('video/'));
+    if (!videos.length) { setError('Only video files can be dropped here.'); return; }
+    setError(null);
+    let max = 0;
+    try { max = (await api.get<VaultPage>(`/api/servers/${vaultServerId}/vault`)).maxBytes; } catch { /* the upload itself will say */ }
+    for (const [i, file] of videos.entries()) {
+      if (max > 0 && file.size > max) { setError(`${file.name} is over the Vault's ${mb(max)} limit per file.`); continue; }
+      setUploading(`Encrypting and uploading ${file.name}${videos.length > 1 ? ` (${i + 1}/${videos.length})` : ''}…`);
+      try {
+        const item = await uploadToVault(vaultServerId, keyChannelId, me, file);
+        const d = await openDescriptor(item);
+        if (!d) throw new Error(`${file.name} is in the Vault, but couldn't be queued. Pick it with From Vault.`);
+        addRef.current(vaultItem({ id: item.id, key: d.key, iv: d.iv, mime: d.mime }, file.name));
+      } catch (e) {
+        setError(errorText(e));
+      }
+    }
+    setUploading(null);
+  };
+
+  const onDragOver = (e: DragEvent<HTMLFormElement>) => {
+    if (!vaultServerId || !dragHasFiles(e)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    setDropping(true);
+  };
+  const onDrop = (e: DragEvent<HTMLFormElement>) => {
+    setDropping(false);
+    if (!vaultServerId || !dragHasFiles(e)) return;
+    e.preventDefault();
+    void uploadAndQueue([...e.dataTransfer.files]);
+  };
+
   const removeQueued = (i: number) => {
     const cur = remoteRef.current;
     if (!cur?.queue) return;
     const position = local.current ? playhead(local.current, performance.now()) : cur.position;
     void publish({ ...carry(cur), queue: cur.queue.filter((_, j) => j !== i), playing: cur.playing, position, rate: cur.rate });
+  };
+
+  /** Drag-to-reorder: the new order goes out like any other change, so everyone's list updates. */
+  const moveQueued = (from: number, to: number, ref: string) => {
+    const cur = remoteRef.current;
+    const queue = cur?.queue && moveQueueItem(cur.queue, from, to, ref);
+    if (!cur || !queue) return;
+    const position = local.current ? playhead(local.current, performance.now()) : cur.position;
+    void publish({ ...carry(cur), queue, playing: cur.playing, position, rate: cur.rate });
   };
 
   const skip = () => {
@@ -359,12 +448,15 @@ export function WatchPartyPanel({ callChannelId: channelId, keyChannelId }: { ca
     setPopped(false);
   };
 
-  const popOut = () => {
+  /** Opens the embed in a separate window. Picture in picture is the same window, small and always on top (see main/index.ts). */
+  const popOut = (pip = false) => {
     if (popupRef.current && !popupRef.current.closed) {
       popupRef.current.focus();
       return;
     }
-    const win = window.open(popoutUrl(), 'chatward-watch-popout', 'width=960,height=540,resizable=yes');
+    const win = pip
+      ? window.open(popoutUrl(), 'chatward-watch-pip', 'width=480,height=300,resizable=yes')
+      : window.open(popoutUrl(), 'chatward-watch-popout', 'width=960,height=540,resizable=yes');
     if (!win) {
       setError('The pop-out window was blocked.');
       return;
@@ -428,10 +520,11 @@ export function WatchPartyPanel({ callChannelId: channelId, keyChannelId }: { ca
     <section className="watch-party" aria-label="Watch party">
       <header className="watch-party-head">
         <span>Watch party</span>
-        {active && (
+        {(active || onLeave) && (
           <span className="watch-party-head-actions">
-            {!useVideo && !popped && <button type="button" onClick={popOut}>Pop out</button>}
-            <button type="button" className="watch-party-stop" onClick={stop}>Stop</button>
+            {active && !useVideo && !popped && <button type="button" onClick={() => popOut(true)}>Picture in picture</button>}
+            {active && <button type="button" className="watch-party-stop" onClick={stop}>Stop</button>}
+            {onLeave && <button type="button" className="watch-party-stop" title="Leave the watch party and stay in the voice chat" onClick={onLeave}>Leave</button>}
           </span>
         )}
       </header>
@@ -446,7 +539,10 @@ export function WatchPartyPanel({ callChannelId: channelId, keyChannelId }: { ca
           ) : (
             <div className="watch-party-frame">
               {useVideo ? (
-                <video key={fileUrl ?? jellyfinId} ref={videoRef} src={fileUrl ?? undefined} controls playsInline preload="metadata" />
+                <>
+                  <video key={fileUrl ?? jellyfinId ?? vaultId} ref={videoRef} src={fileUrl ?? vaultSrc ?? undefined} controls playsInline preload="metadata" />
+                  {vaultId && !vaultSrc && <p className="watch-party-loading">Downloading and unlocking the video…</p>}
+                </>
               ) : (
               <iframe
                 key={videoId ?? ""}
@@ -465,32 +561,30 @@ export function WatchPartyPanel({ callChannelId: channelId, keyChannelId }: { ca
           </div>
         </>
       ) : (
-        <p className="watch-party-empty">Paste a YouTube link or an https video file (mp4/webm) link, or add a movie from 🍿 Movies, to watch together in sync.</p>
+        <p className="watch-party-empty">
+          Paste a YouTube link or an https video file (mp4/webm) link, add a movie from 🍿 Movies{vaultServerId ? ', pick a video from the Vault, or drop a video file on the box below' : ''}, to watch together in sync.
+        </p>
       )}
 
       {active && remote?.title && <p className="watch-party-now">Now playing: {remote.title}</p>}
-      {queue.length > 0 && (
-        <ol className="watch-party-queue" aria-label="Up next">
-          {queue.map((it, i) => (
-            <li key={`${i}-${it.ref}`}>
-              <span>{itemLabel(it)}</span>
-              <button type="button" aria-label={`Remove ${itemLabel(it)} from the queue`} onClick={() => removeQueued(i)}>Remove</button>
-            </li>
-          ))}
-        </ol>
-      )}
+      {queue.length > 0 && <QueueList queue={queue} label={itemLabel} onMove={moveQueued} onRemove={removeQueued} />}
 
-      <form className="watch-party-form" onSubmit={submit}>
+      <form className={`watch-party-form${dropping ? ' dropping' : ''}`} onSubmit={submit} onDragOver={onDragOver} onDragLeave={() => setDropping(false)} onDrop={onDrop}>
         <input
           type="url"
           aria-label="YouTube or video file link"
-          placeholder="https://www.youtube.com/watch?v=…"
+          placeholder={dropping ? 'Drop to upload to the Vault and queue it' : vaultServerId ? 'https://www.youtube.com/watch?v=…  or drop a video file here' : 'https://www.youtube.com/watch?v=…'}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
         />
         <button type="submit" disabled={!draft.trim()}>{active ? 'Play now' : 'Start'}</button>
         {active && <button type="button" disabled={!draft.trim()} onClick={addDraft}>Add to queue</button>}
+        {vaultServerId && <button type="button" aria-expanded={vaultOpen} onClick={() => setVaultOpen((o) => !o)}>From Vault</button>}
       </form>
+      {uploading && <p className="watch-party-hint" role="status">{uploading}</p>}
+      {vaultOpen && vaultServerId && (
+        <VaultPicker serverId={vaultServerId} uploading={uploading !== null} onPick={pickVault} onUpload={(files) => void uploadAndQueue(files)} onClose={() => setVaultOpen(false)} />
+      )}
       {error && <p role="alert" className="watch-party-error">{error}</p>}
     </section>
   );

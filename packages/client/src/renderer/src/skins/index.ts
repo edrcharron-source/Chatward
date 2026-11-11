@@ -1,6 +1,7 @@
 /**
  * Visual skins, see docs/SKINS.md. A skin is a CSS pack in skins/<id>/skin.css whose rules all sit under
- * :root[data-skin='<id>'], plus one entry in SKINS. Only the id the settings store holds is active.
+ * :root[data-skin='<id>'], plus one entry in SKINS. Only the id the settings store holds is active. Skins and layouts are
+ * separate choices: every skin works in every layout.
  */
 
 export interface SkinInfo {
@@ -8,15 +9,14 @@ export interface SkinInfo {
   label: string;
   /** Colour of the swatch in the Appearance tab. */
   swatch: string;
-  /** A layout that comes with the skin: picking the skin switches to it, and picking another skin switches back to Tabs. */
-  layout?: 'lcars';
 }
 
 /** The installed skins, in the order the Appearance tab lists them. */
 export const SKINS: SkinInfo[] = [
   { id: 'lebserver', label: 'Lebserver retro', swatch: '#f2a48c' },
   { id: 'retro-ascii', label: 'Retro ASCII', swatch: '#ffb000' },
-  { id: 'lcars', label: 'LCARS', swatch: '#f5a54a', layout: 'lcars' },
+  { id: 'lcars', label: 'LCARS', swatch: '#f5a54a' },
+  { id: 'orbit', label: 'Orbit', swatch: '#e9c46a' },
 ];
 
 /** No skin pack at all: the app's original look. Its id is the empty skin setting. */

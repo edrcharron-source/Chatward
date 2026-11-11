@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import express from 'express';
 import helmet from 'helmet';
+import { serveWebApp } from './web.js';
 import rateLimit from 'express-rate-limit';
 import type { Channel, DeviceKeys, Member, User } from '@chatward/shared';
 import { config } from './config.js';
@@ -23,6 +24,8 @@ import { register as watchparty } from './modules/watchparty.js';
 import { register as jellyfin } from './modules/jellyfin.js';
 import { register as vault } from './modules/vault.js';
 import { register as updates } from './modules/updates.js';
+import { register as workouts } from './modules/workouts.js';
+import { register as push } from './push.js';
 import { startDiskCheck } from './diskCheck.js';
 import { ensureSingleServer } from './singleServer.js';
 import { startAdminSocket } from './modules/admin.js';
@@ -125,9 +128,12 @@ app.post('/api/groups/:id/commits', express.json({ limit: '512kb' }));
 app.use(express.json({ limit: '64kb' }));
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
-for (const reg of [auth, servers, messages, uploads, soundboard, gifs, gifLibrary, linkpreview, voice, groups, watchparty, vault, jellyfin, updates]) reg(app, ctx);
+for (const reg of [auth, servers, messages, uploads, soundboard, gifs, gifLibrary, linkpreview, voice, groups, watchparty, vault, jellyfin, updates, push, workouts]) reg(app, ctx);
 // Runs after the modules, which add the columns it writes.
 ensureSingleServer(db);
+
+// The web app, when this server has a build of it (the Docker image does). Last, so it never shadows an API route.
+if (serveWebApp(app, config.webDir)) console.log(`Serving the web app from ${config.webDir}`);
 
 app.use((_req, res) => res.status(404).json({ error: 'not found' }));
 app.use((err: Error & { type?: string }, _req: express.Request, res: express.Response, _next: express.NextFunction) => {

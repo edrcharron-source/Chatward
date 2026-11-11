@@ -51,7 +51,8 @@ export function PopoutPlayer(): ReactElement {
   }, [videoId]);
 
   return (
-    <div className="watch-popout">
+    // The picture-in-picture window is opened under its own name (see WatchPartyPanel's popOut), so it can look smaller.
+    <div className={window.name === 'chatward-watch-pip' ? 'watch-popout pip' : 'watch-popout'}>
       <TitleBar title="Chatward · Watch party" />
       {videoId ? (
         <iframe

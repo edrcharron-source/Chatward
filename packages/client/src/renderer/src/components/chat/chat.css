@@ -76,6 +76,51 @@
 }
 .cv-msg:hover .cv-actions, .cv-actions:focus-within { display: flex; }
 
+.cv-actions button.icon { display: inline-grid; place-items: center; }
+
+/* Replies. The quote of the original sits on its own line above the reply, joined to the avatar by a curved line,
+   and clicking it scrolls back to the original. Colours come from the skin's own tokens. */
+.cv-msg.cv-is-reply { flex-wrap: wrap; row-gap: 2px; }
+.cv-reply-quote {
+  position: relative; flex: 0 0 100%; min-width: 0; display: flex; align-items: center; gap: 6px;
+  padding: 0 0 0 50px; height: 20px; color: var(--text-muted); font-size: 13px; cursor: pointer; user-select: none;
+}
+.cv-reply-spine {
+  position: absolute; left: 17px; top: 9px; width: 26px; height: 12px;
+  border-left: 2px solid var(--text-muted); border-top: 2px solid var(--text-muted);
+  border-top-left-radius: 6px; opacity: .6;
+}
+.cv-reply-quote .cv-avatar { width: 16px; height: 16px; font-size: 9px; flex: none; }
+.cv-reply-name { font-weight: 600; color: var(--text-strong); opacity: .85; white-space: nowrap; flex: none; }
+.cv-reply-me .cv-reply-name { color: var(--accent); opacity: 1; }
+.cv-reply-snippet { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: .9; }
+.cv-reply-quote:hover .cv-reply-snippet, .cv-reply-quote:focus-visible .cv-reply-snippet { color: var(--text-strong); opacity: 1; }
+.cv-reply-quote:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.cv-reply-icon { display: block; }
+
+/* Phones: a message follows the finger when swiped left, and a reply arrow shows at the edge; past the line it lights. */
+.cv-msg { touch-action: pan-y; }
+.cv-msg.cv-swiping { transition: none; user-select: none; }
+.cv-msg:not(.cv-swiping) { transition: transform .18s ease-out; }
+.cv-swipe-reply {
+  position: absolute; top: 50%; width: 28px; height: 28px; margin: -14px 0 0; display: grid; place-items: center;
+  border-radius: 50%; background: var(--bg-3); color: var(--text-muted); pointer-events: none;
+}
+.cv-swipe-reply.cv-swipe-ready { background: var(--accent); color: var(--accent-text); }
+
+/* The message right-click menu reuses the picture menu's look (.media-menu). */
+.cv-msg-menu .cv-msg-menu-danger { color: var(--danger); }
+
+/* "Replying to Name" above the message box. */
+.cv-replybar {
+  display: flex; align-items: center; gap: 8px; margin: -2px -4px 6px; padding: 4px 4px 4px 10px;
+  border-radius: var(--radius-sm); background: var(--bg-1); font-size: 13px; color: var(--text-muted); min-width: 0;
+}
+.cv-replybar-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cv-replybar strong { color: var(--text-strong); }
+.cv-replybar-snippet { opacity: .8; }
+.cv-replybar-x { flex: none; padding: 0 6px; font-size: 16px; line-height: 1; }
+
 .cv-edit { display: flex; flex-direction: column; gap: 4px; }
 .cv-edit-input { width: 100%; resize: vertical; }
 .cv-edit-hint { font-size: 11px; }
@@ -142,7 +187,14 @@
 .cv-input:focus { border-color: transparent; }
 .cv-send { padding: 8px 14px; }
 /* In a narrow chat (split view, small window) the message box takes a full row of its own above the buttons. */
+/* In a narrow chat (phone, split view) everything stays on one row: the box takes what the buttons leave. Only a very
+   narrow chat gives the box a row of its own above the buttons. */
 @container cv-composer (max-width: 460px) {
+  .cv-row { gap: 2px; }
+  .cv-input { min-width: 0; }
+  .cv-send { padding: 8px 10px; }
+}
+@container cv-composer (max-width: 260px) {
   .cv-row { flex-wrap: wrap; }
   .cv-input { flex: 1 0 100%; order: -1; min-height: calc(3lh + 16px); }
   .cv-send { margin-left: auto; }
@@ -153,3 +205,22 @@
   .cv-composer { margin: 0 8px 8px; }
 }
 .cv-retry { margin-left: 8px; padding: 2px 10px; font-size: 13px; }
+
+/* Phone (web app): the message box is one rounded bar, like a phone messaging app: + to attach, the box, then GIF,
+   emoji and a round send arrow, all on the one line. Rounding follows the skin (square skins stay square). */
+.cv-composer.cv-composer-phone {
+  margin: 0 8px 8px; padding: 3px 4px 3px 6px; border-radius: min(calc(var(--radius) * 2), 26px);
+}
+.cv-composer-phone .cv-row { --cv-h: 40px; gap: 2px; align-items: flex-end; }
+.cv-composer-phone .cv-row > button.icon { width: 38px; padding: 0; color: var(--text-muted); }
+.cv-composer-phone .cv-input { padding: 9px 4px; line-height: 1.35; max-height: 132px; }
+.cv-composer-phone .media-gif-btn { width: auto; min-width: 38px; }
+.cv-composer-phone .media-gif-btn:not(:has(svg)) { font-size: 10px; padding: 1px 4px; height: 22px; min-height: 0; align-self: center; margin: 0 4px; width: auto; min-width: 0; }
+.cv-composer-phone .cv-send-icon {
+  width: 34px; height: 34px; min-height: 0; padding: 0; margin: 3px 0 3px 2px; flex: none;
+  border-radius: min(var(--radius), 17px);
+}
+.cv-composer-phone .cv-send-icon:disabled { opacity: .35; }
+/* The bar itself is the field on a phone, so the box inside it drops any well or rule a skin gives text fields. */
+:root .cv-composer.cv-composer-phone textarea.cv-input,
+:root .cv-composer.cv-composer-phone textarea.cv-input:focus { background: transparent; border-color: transparent; box-shadow: none; outline: none; }

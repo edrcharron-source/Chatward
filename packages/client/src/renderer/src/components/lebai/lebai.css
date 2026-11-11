@@ -1,0 +1,8 @@
+/* The lebai black hole and wordmark (Lebserver skin only; see LebaiBlackHole.tsx). */
+.cw-lebai-hole { display: block; max-width: 100%; }
+.cw-lebai-logo { display: block; width: min(440px, 100%); height: auto; }
+
+/* ASCII ring and meter (AsciiArt.tsx). Colours are lebai's: dim, coral, peach, butter, mint. */
+.lb-ascii { margin: 0; font: 600 11px/11px 'JetBrains Mono', Consolas, ui-monospace, monospace; white-space: pre; user-select: none; pointer-events: none; }
+.lb-a0 { color: #4b4c52; } .lb-a1 { color: #f2a291; } .lb-a2 { color: #f4b98f; } .lb-a3 { color: #f2dc8f; } .lb-a4 { color: #a9dcbf; }
+.lb-meter { font-size: 10px; line-height: 10px; }

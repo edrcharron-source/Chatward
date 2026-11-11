@@ -1,6 +1,6 @@
 {
   "name": "@chatward/server",
-  "version": "0.2.0",
+  "version": "1.0.1",
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
@@ -8,7 +8,7 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test:e2e": "npm run build && esbuild test/activity.ts --bundle --platform=node --format=esm --outfile=out/activity.mjs --packages=external --log-level=warning && node out/activity.mjs && esbuild test/single-server.ts --bundle --platform=node --format=esm --outfile=out/single-server.mjs --external:better-sqlite3 --log-level=warning && node out/single-server.mjs && esbuild test/vault.ts --bundle --platform=node --format=esm --outfile=out/vault.mjs --packages=external --log-level=warning && node out/vault.mjs && esbuild test/gif-library.ts --bundle --platform=node --format=esm --outfile=out/gif-library.mjs --packages=external --log-level=warning && node out/gif-library.mjs && esbuild test/jellyfin.ts --bundle --platform=node --format=esm --outfile=out/jellyfin.mjs --packages=external --log-level=warning && node out/jellyfin.mjs && esbuild test/e2e-mls.ts --bundle --platform=node --format=esm --outfile=out/e2e-mls.mjs --external:better-sqlite3 --external:jsonwebtoken --log-level=warning && node out/e2e-mls.mjs"
+    "test:e2e": "npm run build && esbuild test/activity.ts --bundle --platform=node --format=esm --outfile=out/activity.mjs --packages=external --log-level=warning && node out/activity.mjs && esbuild test/single-server.ts --bundle --platform=node --format=esm --outfile=out/single-server.mjs --external:better-sqlite3 --log-level=warning && node out/single-server.mjs && esbuild test/vault.ts --bundle --platform=node --format=esm --outfile=out/vault.mjs --packages=external --log-level=warning && node out/vault.mjs && esbuild test/gif-library.ts --bundle --platform=node --format=esm --outfile=out/gif-library.mjs --packages=external --log-level=warning && node out/gif-library.mjs && esbuild test/jellyfin.ts --bundle --platform=node --format=esm --outfile=out/jellyfin.mjs --packages=external --log-level=warning && node out/jellyfin.mjs && esbuild test/workouts.ts --bundle --platform=node --format=esm --outfile=out/workouts.mjs --packages=external --log-level=warning && node out/workouts.mjs && esbuild test/e2e-mls.ts --bundle --platform=node --format=esm --outfile=out/e2e-mls.mjs --external:better-sqlite3 --external:jsonwebtoken --log-level=warning && node out/e2e-mls.mjs"
   },
   "dependencies": {
     "@chatward/shared": "*",
@@ -19,6 +19,7 @@
     "helmet": "^8.0.0",
     "jsonwebtoken": "^9.0.2",
     "livekit-server-sdk": "^2.7.0",
+    "web-push": "^3.6.7",
     "ws": "^8.18.0"
   },
   "devDependencies": {
@@ -26,6 +27,7 @@
     "@types/express": "^4.17.21",
     "@types/jsonwebtoken": "^9.0.7",
     "@types/node": "^22.7.0",
+    "@types/web-push": "^3.6.4",
     "@types/ws": "^8.5.12",
     "tsx": "^4.19.0",
     "typescript": "^5.6.0"

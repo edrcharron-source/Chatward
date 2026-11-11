@@ -3,6 +3,9 @@ import { isDemo } from '../../demo';
 import { useVoice } from '../../state/voice';
 import PixelIcon from '../icons/PixelIcon';
 import ScreenPicker from './ScreenPicker';
+import { canShareScreen } from '../../web/bridge';
+
+const canShare = !__CHATWARD_BUILD__.web || canShareScreen();
 import { setScreenShareOptions, type ScreenShareOptions } from './media';
 
 type Pending = 'camera' | 'screen' | null;
@@ -12,7 +15,8 @@ function message(e: unknown): string {
 }
 
 /** `labelled` (the LCARS bottom bar) shows each button's name instead of its icon, and lays the buttons out flat. */
-export default function ShareControls({ labelled = false }: { labelled?: boolean } = {}): ReactElement {
+/** `words` keeps the icon and adds the button's name beside it. */
+export default function ShareControls({ labelled = false, words = false }: { labelled?: boolean; words?: boolean } = {}): ReactElement {
   const cameraOn = useVoice((s) => s.cameraOn);
   const screenOn = useVoice((s) => s.screenOn);
   const connected = useVoice((s) => s.status === 'connected' && (s.room !== null || isDemo()));
@@ -58,17 +62,21 @@ export default function ShareControls({ labelled = false }: { labelled?: boolean
           onClick={() => void run('camera', () => setCamera(!cameraOn))}
         >
           {labelled ? <span className="lcars-label">{cameraOn ? 'Camera on' : 'Camera'}</span> : <PixelIcon name={cameraOn ? 'camera' : 'cameraoff'} size={18} />}
+          {words && <span className="cw-call-word">{cameraOn ? 'Camera on' : 'Camera'}</span>}
         </button>
         <button
           type="button"
           aria-pressed={screenOn}
           aria-label={screenOn ? 'Stop sharing' : 'Share screen'}
+          // iPhone Safari cannot share a screen, so the web app hides the button there.
+          style={canShare ? undefined : { display: 'none' }}
           title={screenOn ? 'Stop sharing' : 'Share screen'}
           disabled={disabled}
           className={[labelled ? 'lcars-seg' : '', screenOn ? 'danger' : ''].filter(Boolean).join(' ') || undefined}
           onClick={() => (screenOn ? void run('screen', () => setScreen(false)) : setPickerOpen(true))}
         >
           {labelled ? <span className="lcars-label">{screenOn ? 'Stop stream' : 'Stream'}</span> : <PixelIcon name={screenOn ? 'shareoff' : 'share'} size={18} />}
+          {words && <span className="cw-call-word">{screenOn ? 'Stop share' : 'Share'}</span>}
         </button>
       </div>
       {error && <p role="alert" className={labelled ? 'muted lcars-alert' : 'muted'} style={{ margin: 0, color: 'var(--danger)', fontSize: 12 }}>{error}</p>}

@@ -1,0 +1,83 @@
+/* The Orbit layout (OrbitFrame.tsx, TabsLayout with frame="orbit"): the tabs layout with a clean sci-fi menu frame.
+   A thin top bar holds the emblem and server name, the tabs in spaced-out capitals (the open one underlined, with a
+   small gold diamond above it), the tools and the window buttons. The member list and your card sit on the right, and
+   a faint line drawing fills the ground behind everything. Colours come from theme tokens and the Orbit skin's
+   --orb-* variables, with fallbacks so the frame still reads under another skin. */
+
+/* The top bar is the window's title bar while this layout is on screen. */
+.cw-app:has(> .cw-app-body [data-layout='orbit']) > .cw-titlebar { display: none; }
+
+.orbit-shell {
+  --orb-line: var(--orb-rule, color-mix(in srgb, var(--text-strong) 14%, transparent));
+  --orb-mark: var(--orb-gold, var(--accent));
+  position: relative; isolation: isolate; background: var(--bg-2);
+}
+.orbit-backdrop {
+  position: absolute; inset: 0; width: 100%; height: 100%; z-index: -1; pointer-events: none;
+  color: var(--orb-ink, var(--text-strong));
+}
+.orbit-backdrop .orbit-glow-stop { stop-color: var(--orb-glow, var(--text-muted)); }
+.orbit-backdrop .orbit-glow { opacity: var(--orb-glow-strength, .08); }
+.orbit-backdrop .orbit-grain { opacity: var(--orb-grain, 1); }
+
+/* The top bar: drag anywhere that is not a control. */
+.orbit-shell > .cw-tabs-bar {
+  min-height: 56px; padding: 0 0 0 18px; gap: 18px; flex-wrap: nowrap;
+  background: transparent; border-bottom: 1px solid var(--orb-line);
+  -webkit-app-region: drag; user-select: none;
+}
+.orbit-shell > .cw-tabs-bar :is(button, select, input, a, [draggable='true']) { -webkit-app-region: no-drag; }
+.orbit-shell .orbit-brand { display: flex; align-items: center; gap: 10px; color: var(--text-strong); padding-right: 18px; border-right: 1px solid var(--orb-line); }
+.orbit-shell .cw-tabs-server { font-family: var(--orb-display, inherit); font-weight: 600; font-size: 16px; letter-spacing: .2em; text-transform: uppercase; }
+
+/* Tabs: words, not boxes. The open tab is white, underlined, with a gold diamond above it. */
+.orbit-shell .cw-tabs { margin: 0; gap: 10px; align-self: stretch; flex-wrap: nowrap; }
+.orbit-shell .cw-tab { border: 0; border-radius: 0; background: transparent; align-items: center; border-bottom: 2px solid transparent; }
+.orbit-shell .cw-tab.active { background: transparent; border-bottom-color: var(--text-strong); }
+.orbit-shell .cw-tab-main {
+  min-height: 44px; padding: 0 6px; gap: 8px; border-radius: 0;
+  font-family: var(--orb-display, inherit); font-weight: 600; font-size: 14px; letter-spacing: .2em; text-transform: uppercase; white-space: nowrap;
+}
+.orbit-shell .cw-tab-main:hover { background: transparent; }
+.orbit-shell .cw-tab-main > span[aria-hidden='true'] { display: none; }
+.orbit-shell .cw-tab.active .cw-tab-main::before {
+  content: ''; position: absolute; left: 50%; top: 4px; width: 7px; height: 7px; margin-left: -4px;
+  background: var(--orb-mark); transform: rotate(45deg);
+}
+.orbit-shell .cw-tab-pop { border: 0; padding: 0 4px; background: transparent; border-radius: 0; opacity: .6; }
+.orbit-shell .cw-tab-pop:hover { opacity: 1; background: transparent; }
+.orbit-shell .cw-tab-live { width: 7px; height: 7px; border-radius: 0; transform: rotate(45deg); background: var(--orb-live, var(--ok)); }
+.orbit-shell .cw-badge { border-radius: 0; }
+
+/* Tools: thin outlined boxes in the same capitals. */
+.orbit-shell .cw-tabs-tools { margin-left: auto; gap: 8px; }
+.orbit-shell .cw-tool, .orbit-shell .cw-tool-icon {
+  min-height: 36px; border-radius: 0; background: transparent; border: 1px solid var(--orb-line-strong, color-mix(in srgb, var(--text-strong) 22%, transparent));
+  color: var(--text-strong); font-family: var(--orb-display, inherit); font-weight: 600; font-size: 12px; letter-spacing: .16em; text-transform: uppercase;
+}
+.orbit-shell .cw-tool:hover, .orbit-shell .cw-tool-icon:hover { background: var(--hover-tint); }
+.orbit-shell .cw-tool[aria-pressed='true'] { background: var(--text-strong); color: var(--bg-2); border-color: var(--text-strong); }
+
+.orbit-window { display: flex; align-self: stretch; border-left: 1px solid var(--orb-line); padding-left: 4px; }
+.orbit-shell .orbit-win {
+  width: 44px; height: 100%; padding: 0; display: grid; place-items: center; border-radius: 0;
+  background: transparent; color: var(--text-muted); box-shadow: none; border: 0;
+}
+.orbit-shell .orbit-win svg { fill: none; stroke: currentColor; stroke-width: 1.5; }
+.orbit-shell .orbit-win:hover { background: var(--hover-tint); color: var(--text-strong); }
+.orbit-shell .orbit-win.close:hover { background: var(--danger); color: #fff; }
+
+/* The content floats on the drawing; the right column is a quiet strip with your card boxed at the bottom. */
+/* .cv-root is the chat view; it is not always inside .cw-tabs-main (a popped-out chat sits directly in the pop-out window),
+   so it is named on its own to let the backdrop show through in both places. */
+.orbit-shell .cw-tabs-main,
+.orbit-shell .cv-root { background: transparent; }
+.orbit-shell .cw-tabs-side {
+  width: 300px; background: var(--orb-side, color-mix(in srgb, var(--text-strong) 2%, transparent)); border-left: 1px solid var(--orb-line);
+}
+.orbit-shell .cw-tabs-side .cw-members { background: transparent; }
+.orbit-shell .cw-me {
+  margin: 0 14px 14px; padding: 12px; border: 1px solid var(--orb-line-strong, color-mix(in srgb, var(--text-strong) 22%, transparent));
+  background: var(--orb-panel, var(--bg-2));
+}
+.orbit-shell .cw-split-divider { background: var(--orb-line); }

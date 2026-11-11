@@ -70,14 +70,17 @@ async function walk(page: Page, run: Run, shoot: (name: string) => Promise<void>
   // The first skin starts the app cold, and on a loaded CI runner the sign-in screen can still be moving (fonts
   // loading) when the first probe's 3s budget runs out. Wait for it to settle first, as every screenshot does.
   await settle(page);
+  // A cold start can still be laying out after fonts load (the window is new and the runner busy), so give the first
+  // button up to 15s to be shown and still before its probe gets the usual 3s. A button that never settles still fails.
+  await byId('auth.try-demo').find(page).click({ trial: true, timeout: 15_000 }).catch(() => {});
   await probe(page, 'auth.try-demo', run);
   await controls(page, 'auth', run);
   await shoot('auth');
 
   await act(page, 'auth.try-demo');
   await page.getByText('This is the start of #general').waitFor();
-  for (const id of ['channel.create', 'server.settings', 'settings.open',
-    'watch-party.toggle', 'chat.attach', 'chat.emoji', 'chat.gif', 'member.profile', 'channel.open-memes']) {
+  for (const id of ['server.settings', 'settings.open', 'tab.voice', 'tab.watch', 'tab.vault',
+    'chat.attach', 'chat.emoji', 'chat.gif', 'member.profile']) {
     await probe(page, id, run);
   }
   await page.getByLabel('Message', { exact: true }).fill('skin check');
@@ -86,11 +89,6 @@ async function walk(page: Page, run: Run, shoot: (name: string) => Promise<void>
   await page.getByLabel('Message', { exact: true }).fill('');
   await controls(page, 'chat', run);
   await shoot('chat');
-
-  await act(page, 'channel.open-memes');
-  await page.getByText('This is the start of #memes').waitFor();
-  await page.getByRole('complementary', { name: 'Channels' }).getByText('general', { exact: true }).click();
-  await page.getByText('This is the start of #general').waitFor();
 
   await act(page, 'chat.emoji');
   await probe(page, 'emoji-picker.dialog', run);

@@ -65,4 +65,25 @@ function dropSocket(ws: WebSocket) {
   ws.close();
   if (wanted) scheduleReconnect();
 }
+/**
+ * A phone freezes the app while it is in the background, and its socket usually dies there without telling us.
+ * When the app comes back, check at once instead of waiting for the next ping: a socket that has gone quiet is
+ * replaced, and a reconnect that is waiting out its delay runs now. The reconnect's catch-up then fetches what was missed.
+ */
+function wake() {
+  if (!wanted || document.hidden) return;
+  if (socket) {
+    if (socket.readyState === WebSocket.OPEN && Date.now() - lastHeard > PING_MS + 5_000) dropSocket(socket);
+    else return;
+  }
+  clearTimeout(timer);
+  retry = 0;
+  connectWs();
+}
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', wake);
+  window.addEventListener('pageshow', wake);
+  window.addEventListener('online', wake);
+}
+
 export function disconnectWs() { wanted = false; clearTimeout(timer); clearInterval(pingTimer); socket?.close(); socket = null; }

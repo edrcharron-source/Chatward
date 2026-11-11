@@ -56,6 +56,7 @@ jobs:
     needs: [windows-app, server-bundle]
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with: { path: dist }
       - name: Create release
@@ -63,8 +64,11 @@ jobs:
         run: |
           cd dist
           cp win/Chatward-Setup.exe Chatward-Setup.exe
-          gh release create "${{ inputs.tag }}" --repo "${{ github.repository }}" \
-            --title "Chatward ${{ inputs.tag }}" --notes "Test build. Download Chatward-Setup.exe and install it. To try the app with no server, click Try demo on the login screen. chatward-server.zip is only needed for a real server (needs Docker Desktop)." \
+          # Release notes come from release-notes/<tag>.md when that file exists.
+          notes="../release-notes/${{ inputs.tag }}.md"
+          if [ -f "$notes" ]; then notes_args=(--notes-file "$notes"); else notes_args=(--notes "Download Chatward-Setup.exe and install it."); fi
+          gh release create "${{ inputs.tag }}" --repo "${{ github.repository }}" --target "${{ github.sha }}" \
+            --title "Chatward ${{ inputs.tag }}" "${notes_args[@]}" \
             Chatward-Setup.exe server/chatward-server.zip
       - name: Publish update feed to the server
         env:

@@ -3,14 +3,11 @@
    amber #f5a54a  selected and live (the open tab, a pressed toggle, the call you are in, Send)
    red   #e5484d  close, leave and alerts
    lilac #cdd6ff  text
-   Buttons are pills, fields are outlined pills, headings and labels are upper case. It comes with the LCARS layout
-   (components/lcars), which draws the frame; this file dresses the content, the dialogs and the screens outside the
-   frame (sign-in, settings). Every rule sits under :root[data-skin='lcars']. The Antonio font files are under the SIL
-   Open Font License (fonts/OFL.txt). */
-
-@font-face { font-family: 'Antonio'; font-style: normal; font-weight: 400; font-display: swap; src: url('./fonts/antonio-latin-400-normal.woff2') format('woff2'); }
-@font-face { font-family: 'Antonio'; font-style: normal; font-weight: 600; font-display: swap; src: url('./fonts/antonio-latin-600-normal.woff2') format('woff2'); }
-@font-face { font-family: 'Antonio'; font-style: normal; font-weight: 700; font-display: swap; src: url('./fonts/antonio-latin-700-normal.woff2') format('woff2'); }
+   Buttons are pills, fields are outlined pills, headings and labels are upper case. It works in every layout. In the
+   LCARS layout (components/lcars) the frame takes these colours; this file dresses the content, the dialogs and the
+   screens outside the frame (sign-in, settings). Every rule sits under :root[data-skin='lcars']. The Antonio font files are under the SIL
+   Open Font License (fonts/OFL.txt); they are declared in components/lcars/lcars.css, so the LCARS layout has them
+   under any skin. */
 
 :root[data-skin='lcars'] {
   --bg-0: #000; --bg-1: #000; --bg-2: #000; --bg-3: #0f1b2c; --bg-hover: #16273d;
@@ -85,7 +82,6 @@
 :root[data-skin='lcars'] h2,
 :root[data-skin='lcars'] h3,
 :root[data-skin='lcars'] .cw-members-title,
-:root[data-skin='lcars'] .cw-section-title,
 :root[data-skin='lcars'] .setting-section h3 { text-transform: uppercase; letter-spacing: .06em; }
 :root[data-skin='lcars'] .cw-members-title { color: var(--lcs-text); font-size: 17px; font-weight: 600; }
 :root[data-skin='lcars'] .cv-title,
@@ -98,12 +94,11 @@
 :root[data-skin='lcars'] .cw-split-divider { background: var(--lcs-frame); }
 :root[data-skin='lcars'] .cw-split-divider:hover { background: var(--lcs-live); }
 
-/* The tabs and classic layouts under this skin: blue segments, the open one amber. */
-:root[data-skin='lcars'] .cw-tab { background: var(--lcs-frame); border-color: var(--lcs-frame); }
-:root[data-skin='lcars'] .cw-tab .cw-tab-main,
-:root[data-skin='lcars'] .cw-tab .cw-tab-pop { background: transparent; color: var(--lcs-ink); }
-:root[data-skin='lcars'] .cw-tab.active { background: var(--lcs-live); border-color: var(--lcs-live); }
-:root[data-skin='lcars'] .cw-channel.active { color: var(--lcs-live); background: var(--lcs-live-tint); }
+/* The tabs, classic and Orbit layouts under this skin: blue segments, the open one amber. The LCARS frame's rail
+   draws its own tabs (components/lcars/lcars.css), so these leave it alone. */
+:root[data-skin='lcars'] .cw-tab:not(.lcars-rail *) { background: var(--lcs-frame); border-color: var(--lcs-frame); }
+:root[data-skin='lcars'] .cw-tab:not(.lcars-rail *) :is(.cw-tab-main, .cw-tab-pop) { background: transparent; color: var(--lcs-ink); }
+:root[data-skin='lcars'] .cw-tab.active:not(.lcars-rail *) { background: var(--lcs-live); border-color: var(--lcs-live); }
 :root[data-skin='lcars'] .cw-tool.active,
 :root[data-skin='lcars'] .cw-tool[aria-pressed='true'] { background: var(--lcs-live); color: var(--lcs-ink); }
 
@@ -132,11 +127,10 @@
 :root[data-skin='lcars'][data-theme='light'] ::placeholder,
 :root[data-skin='lcars'][data-theme='light'] button.icon { color: #2c6fb5; }
 :root[data-skin='lcars'][data-theme='light'] button.icon:hover { color: #0d1530; }
-:root[data-skin='lcars'][data-theme='light'] .cw-channel.active,
 :root[data-skin='lcars'][data-theme='light'] .cw-role { color: #b8650a; }
 /* The LCARS frame (components/lcars) keeps its shapes; only its colours follow. The status readout and the In call
    chip stay dark, like a display cut into the frame. */
-:root[data-skin='lcars'][data-theme='light'] .lcars-shell {
+:root[data-skin='lcars'][data-theme='light'] {
   --lc-frame: #3a85d0; --lc-live: #ec9330; --lc-alert: #d93e44; --lc-text: #1b2440;
   --lc-ground: #e6ebf3; --lc-ink: #0b1020; --lc-chip: #0b1020; --lc-off: #a9bfd9;
 }

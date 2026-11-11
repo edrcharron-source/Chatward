@@ -112,12 +112,6 @@ export default function AccountTab() {
 
   return (
     <>
-      <Section title="Name">
-        <p className="setting-row">
-          You are <strong>{user.username}</strong> to everyone here, and it is also what you log in with. Names can't be changed yet.
-        </p>
-      </Section>
-
       <Section title="Profile picture">
         <div className="setting-row">
           {current

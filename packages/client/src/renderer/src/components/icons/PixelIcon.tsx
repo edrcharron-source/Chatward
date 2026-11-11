@@ -1,9 +1,10 @@
-// The app's icons. Each skin has its own set: solid shapes for the Original look, sharp "blueprint" lines for Lebserver
-// and chunky 16 x 16 pixel art for Retro ASCII. Every icon carries all three and icons.css shows the active skin's one,
+// The app's icons. Each skin has its own set: solid shapes for the Original look, sharp "blueprint" lines for Lebserver,
+// chunky 16 x 16 pixel art for Retro ASCII and thin "glyph" lines for Orbit. Every icon carries all three and icons.css shows the active skin's one,
 // so a skin change (and a popped-out window, which copies the skin) needs no re-render. Icons take the current text colour.
 import './icons.css';
 import { BLUEPRINT } from './blueprintIcons';
 import { CHUNKY } from './chunkyIcons';
+import { GLYPH } from './glyphIcons';
 import { SOLID } from './solidIcons';
 import type { IconName, VectorIcon } from './iconTypes';
 
@@ -28,7 +29,7 @@ function pixelPaths(rows: string[]): { full: string; half: string } {
   return { full, half };
 }
 
-const markup = new Map<IconName, { solid: string; blueprint: string; chunky: { full: string; half: string } }>();
+const markup = new Map<IconName, { solid: string; blueprint: string; glyph: string; chunky: { full: string; half: string } }>();
 
 function iconMarkup(name: IconName) {
   let m = markup.get(name);
@@ -36,6 +37,7 @@ function iconMarkup(name: IconName) {
     m = {
       solid: vectorMarkup(SOLID[name], `cw-ic-s-${name}`),
       blueprint: vectorMarkup(BLUEPRINT[name], `cw-ic-b-${name}`),
+      glyph: vectorMarkup(GLYPH[name], `cw-ic-g-${name}`),
       chunky: pixelPaths(CHUNKY[name]),
     };
     markup.set(name, m);
@@ -50,6 +52,7 @@ export default function PixelIcon({ name, size = 16 }: { name: PixelIconName; si
     <svg className="cw-pixel-icon" viewBox="0 0 24 24" width={size} height={size} aria-hidden="true" focusable="false">
       <g className="cw-ic-solid" dangerouslySetInnerHTML={{ __html: m.solid }} />
       <g className="cw-ic-blueprint" dangerouslySetInnerHTML={{ __html: m.blueprint }} />
+      <g className="cw-ic-glyph" dangerouslySetInnerHTML={{ __html: m.glyph }} />
       <svg className="cw-ic-chunky" viewBox="0 0 16 16" width="24" height="24" shapeRendering="crispEdges">
         <path d={m.chunky.full} fill="currentColor" />
         {m.chunky.half && <path d={m.chunky.half} fill="currentColor" opacity={0.42} />}

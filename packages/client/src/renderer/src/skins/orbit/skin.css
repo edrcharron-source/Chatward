@@ -1,0 +1,227 @@
+/* Orbit skin: clean sci-fi menus. A deep navy ground with a faint line drawing behind it (drawn by the Orbit layout),
+   thin 1px lines instead of filled boxes, square corners, and labels in spaced-out capitals. Colours with fixed meanings:
+   white  #e8ecf2  text and the open tab
+   grey   #a9b4c6  quiet labels, times
+   gold   #e9c46a  you, the open tab's marker, owner/admin tags, a pressed toggle
+   cyan   #7fd1e0  live: speaking, in the call, online
+   red    #e5484d  close, leave and alerts
+   It works in every layout; the Orbit layout (components/orbit) reads its --orb-* colours. It has its own icon set,
+   Glyph (components/icons/glyphIcons.ts). Every rule sits under
+   :root[data-skin='orbit']. The Barlow fonts are under the SIL Open Font License (fonts/OFL.txt). */
+
+@font-face { font-family: 'Barlow'; font-style: normal; font-weight: 400; font-display: swap; src: url('./fonts/barlow-latin-400-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Barlow'; font-style: normal; font-weight: 500; font-display: swap; src: url('./fonts/barlow-latin-500-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Barlow'; font-style: normal; font-weight: 600; font-display: swap; src: url('./fonts/barlow-latin-600-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Barlow Condensed'; font-style: normal; font-weight: 500; font-display: swap; src: url('./fonts/barlow-condensed-latin-500-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Barlow Condensed'; font-style: normal; font-weight: 600; font-display: swap; src: url('./fonts/barlow-condensed-latin-600-normal.woff2') format('woff2'); }
+
+:root[data-skin='orbit'] {
+  --bg-0: #070c16; --bg-1: #0d1422; --bg-2: #0a101c; --bg-3: #18223a; --bg-hover: #1d2944;
+  --text: #e8ecf2; --text-muted: #a9b4c6; --text-strong: #ffffff;
+  --accent: #e9c46a; --accent-hover: #f2d48a; --accent-text: #0a101c;
+  --accent-tint: rgba(233, 196, 106, .12); --hover-tint: rgba(232, 236, 242, .06);
+  --danger: #e5484d; --ok: #7fd1e0; --warn: #e9c46a; --border: #1c2536;
+  --shadow: none; --shadow-popover: 0 0 0 1px rgba(232, 236, 242, .3), 0 16px 40px rgba(0, 0, 0, .5);
+  --shadow-composer: none; --shadow-header: none;
+  --radius: 0px; --radius-sm: 0px; --radius-modal: 0px;
+  --backdrop: rgba(4, 7, 13, .75); --overlay-bg: rgba(10, 16, 28, .8);
+  --danger-text: #fff;
+  --font-body: 'Barlow', 'Bahnschrift', 'Segoe UI', sans-serif; --font-size: 15px; --line-height: 1.45;
+  /* The skin's own colours, so the light version (below) can swap them in one place. The Orbit layout reads these. */
+  --orb-display: 'Barlow Condensed', 'Bahnschrift SemiCondensed', 'Arial Narrow', sans-serif;
+  --orb-rule: rgba(232, 236, 242, .14); --orb-line-strong: rgba(232, 236, 242, .22);
+  --orb-gold: #e9c46a; --orb-live: #7fd1e0; --orb-ink: #e8ecf2; --orb-glow: #c9d6ea; --orb-glow-strength: .08; --orb-grain: 1;
+  --orb-side: rgba(232, 236, 242, .02); --orb-panel: rgba(10, 16, 28, .9); --orb-leave-text: #ffb4b6;
+  /* The usual title bar shows only outside the Orbit frame (sign-in, loading); it gets the frame's look. */
+  --titlebar-height: 34px; --titlebar-bg: #0a101c; --titlebar-border: rgba(232, 236, 242, .14);
+  --titlebar-text: #a9b4c6; --titlebar-text-strong: #ffffff; --titlebar-mark: #e9c46a;
+  --titlebar-font: var(--orb-display); --titlebar-font-size: 13px; --titlebar-letter-spacing: .2em;
+  --titlebar-button-hover: #1d2944; --titlebar-close-hover: #e5484d; --titlebar-close-hover-text: #fff;
+}
+:root[data-skin='orbit'] .cw-titlebar-title { text-transform: uppercase; }
+:root[data-skin='orbit'] .cw-titlebar-mark { border-radius: 0; transform: rotate(45deg); width: 7px; height: 7px; }
+:root[data-skin='orbit'] ::selection { background: var(--orb-gold); color: #0a101c; }
+:root[data-skin='orbit'] ::-webkit-scrollbar-thumb { background: var(--orb-line-strong); border-radius: 0; }
+
+/* Buttons are thin outlined boxes with spaced capitals. Send and other main actions are solid white; pressed toggles
+   turn gold; leave and delete are red. */
+:root[data-skin='orbit'] button {
+  background: rgba(232, 236, 242, .04); color: var(--text); border: 1px solid var(--orb-line-strong); box-shadow: none;
+  font-family: var(--orb-display); font-weight: 600; letter-spacing: .14em; text-transform: uppercase;
+}
+:root[data-skin='orbit'] button:hover { background: var(--hover-tint); border-color: var(--text-muted); }
+:root[data-skin='orbit'] button.primary { background: var(--text); color: var(--bg-2); border-color: var(--text); }
+:root[data-skin='orbit'] button.primary:hover { background: var(--text-strong); }
+:root[data-skin='orbit'] button[aria-pressed='true'] { color: var(--orb-gold); border-color: var(--orb-gold); background: var(--accent-tint); }
+:root[data-skin='orbit'] button.danger { background: rgba(229, 72, 77, .12); color: var(--orb-leave-text); border-color: var(--danger); }
+:root[data-skin='orbit'] button.danger:hover { background: rgba(229, 72, 77, .22); }
+/* Icon buttons stay quiet: a line glyph with no box until hovered. */
+:root[data-skin='orbit'] button.icon { background: transparent; border-color: transparent; color: var(--text-muted); }
+:root[data-skin='orbit'] button.icon:hover { background: var(--hover-tint); color: var(--text-strong); }
+/* Names and avatars that open a profile are buttons too, but read as text. */
+:root[data-skin='orbit'] button.profile-trigger,
+:root[data-skin='orbit'] button.profile-trigger:hover {
+  background: transparent; border: 0; color: inherit; text-transform: none; letter-spacing: normal; font-family: inherit; font-weight: inherit;
+}
+:root[data-skin='orbit'] .cw-titlebar .cw-titlebar-button { background: transparent; border: 0; color: var(--titlebar-text); }
+:root[data-skin='orbit'] .cw-titlebar .cw-titlebar-button:hover { background: var(--titlebar-button-hover); color: var(--titlebar-text-strong); }
+:root[data-skin='orbit'] .cw-titlebar .cw-titlebar-button.close:hover { background: var(--titlebar-close-hover); color: #fff; }
+
+/* The Orbit layout's tabs and window buttons are bare words and lines, not boxes. */
+:root[data-skin='orbit'] .cw-tab-main,
+:root[data-skin='orbit'] .cw-tab-pop,
+:root[data-skin='orbit'] .orbit-win { border: 0; background: transparent; }
+:root[data-skin='orbit'] .cw-tab-main:hover,
+:root[data-skin='orbit'] .cw-tab-pop:hover { background: transparent; color: var(--text-strong); }
+:root[data-skin='orbit'] .orbit-win:hover { background: var(--hover-tint); color: var(--text-strong); }
+:root[data-skin='orbit'] .orbit-win.close:hover { background: var(--danger); color: #fff; }
+
+/* Fields: a thin line box on a dark ground; gold when focused. */
+:root[data-skin='orbit'] input:not([type='checkbox']):not([type='radio']):not([type='range']),
+:root[data-skin='orbit'] textarea,
+:root[data-skin='orbit'] select { background: rgba(7, 12, 22, .75); color: var(--text); border: 1px solid var(--orb-line-strong); border-radius: 0; }
+:root[data-skin='orbit'] input:focus,
+:root[data-skin='orbit'] textarea:focus,
+:root[data-skin='orbit'] select:focus { border-color: var(--orb-gold); }
+:root[data-skin='orbit'] input[type='checkbox'],
+:root[data-skin='orbit'] input[type='radio'],
+:root[data-skin='orbit'] input[type='range'] { accent-color: var(--orb-gold); }
+:root[data-skin='orbit'] select { font-family: var(--orb-display); font-weight: 600; letter-spacing: .1em; text-transform: uppercase; }
+
+/* Panels: the ground with a thin line round them. */
+:root[data-skin='orbit'] .modal,
+:root[data-skin='orbit'] .media-popover { background: var(--bg-2); box-shadow: var(--shadow-popover); }
+:root[data-skin='orbit'] .card { background: rgba(232, 236, 242, .03); box-shadow: inset 0 0 0 1px var(--orb-rule); }
+:root[data-skin='orbit'] .cv-composer { background: transparent; box-shadow: none; }
+
+/* Headings and labels: condensed, upper case, spaced out. */
+:root[data-skin='orbit'] h1,
+:root[data-skin='orbit'] h2,
+:root[data-skin='orbit'] h3,
+:root[data-skin='orbit'] .setting-section h3 { font-family: var(--orb-display); font-weight: 600; text-transform: uppercase; letter-spacing: .18em; }
+:root[data-skin='orbit'] .cw-members-title {
+  font-family: var(--orb-display); font-weight: 600; font-size: 12px; letter-spacing: .24em; text-transform: uppercase;
+  color: var(--text-muted); padding-bottom: 6px; border-bottom: 1px solid var(--orb-rule);
+}
+:root[data-skin='orbit'] .cv-header { border-bottom: 1px solid var(--orb-rule); background: transparent; box-shadow: none; }
+:root[data-skin='orbit'] .cv-title { font-family: var(--orb-display); font-weight: 600; font-size: 22px; letter-spacing: .18em; text-transform: uppercase; color: var(--text-strong); }
+:root[data-skin='orbit'] .cv-hash { font-family: var(--orb-display); color: var(--text-muted); }
+:root[data-skin='orbit'] .cv-time { color: var(--text-muted); }
+
+/* Avatars are squares; status dots are small diamonds. */
+:root[data-skin='orbit'] .avatar { border-radius: 0; }
+/* Avatars are squares everywhere, and diamonds on the voice tiles (scaled up so the cut corners don't shrink the face). */
+:root[data-skin='orbit'] .profile-trigger:has(> .avatar:only-child) { border-radius: 0; }
+:root[data-skin='orbit'] .card > div > .avatar,
+:root[data-skin='orbit'] .card > div > .profile-trigger > .avatar {
+  clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%); transform: scale(1.3);
+}
+:root[data-skin='orbit'] .cw-dot { border-radius: 0; transform: rotate(45deg); }
+:root[data-skin='orbit'] .cw-dot.online { background: var(--orb-live); }
+:root[data-skin='orbit'] .cw-badge { background: var(--orb-gold); color: #0a101c; border-radius: 0; }
+:root[data-skin='orbit'] .cw-role {
+  background: transparent; color: var(--orb-gold); box-shadow: inset 0 0 0 1px var(--orb-gold); border-radius: 0;
+  font-family: var(--orb-display); font-weight: 600; letter-spacing: .16em; text-transform: uppercase;
+}
+:root[data-skin='orbit'] .cw-member-voice { color: var(--orb-live); }
+:root[data-skin='orbit'] .cw-split-divider:hover { background: var(--orb-gold); }
+/* Someone talking in a call gets a cyan frame. */
+:root[data-skin='orbit'] .card[data-speaking] { box-shadow: inset 0 0 0 1px var(--orb-live), 0 0 18px rgba(127, 209, 224, .3); }
+
+/* The tabs and classic layouts under this skin (the Orbit layout restyles its own bar in components/orbit). */
+:root[data-skin='orbit'] .cw-tabs-shell:not(.orbit-shell) .cw-tab { border-radius: 0; background: transparent; border-color: var(--orb-rule); }
+:root[data-skin='orbit'] .cw-tabs-shell:not(.orbit-shell) .cw-tab.active { border-color: var(--text-strong); background: transparent; }
+
+/* The light version, used when Settings > Appearance > Theme is Light (or Match system picks light): the same line
+   drawing in dark ink on pale grey stone, navy words, and the gold and cyan deepened so they read on the light ground. */
+:root[data-skin='orbit'][data-theme='light'] {
+  --bg-0: #e4e5e7; --bg-1: #d6d8db; --bg-2: #cdcfd1; --bg-3: #bfc3c8; --bg-hover: #b7bcc2;
+  --text: #141a26; --text-muted: #46505f; --text-strong: #0a101c;
+  --accent: #8f6208; --accent-hover: #7a5306; --accent-text: #ffffff;
+  --accent-tint: rgba(143, 98, 8, .12); --hover-tint: rgba(20, 26, 38, .06);
+  --danger: #b4232a; --ok: #0b6e80; --warn: #8f6208; --border: #b2b7be;
+  --shadow-popover: 0 0 0 1px rgba(20, 26, 38, .3), 0 16px 40px rgba(20, 26, 38, .2);
+  --backdrop: rgba(40, 44, 52, .45); --overlay-bg: rgba(205, 207, 209, .85);
+  --orb-rule: rgba(20, 26, 38, .16); --orb-line-strong: rgba(20, 26, 38, .3);
+  --orb-gold: #8f6208; --orb-live: #0b6e80; --orb-ink: #2a2e35; --orb-glow: #ffffff; --orb-glow-strength: .25; --orb-grain: .5;
+  --orb-side: rgba(255, 255, 255, .12); --orb-panel: rgba(236, 237, 238, .85); --orb-leave-text: #b4232a;
+  --titlebar-bg: #cdcfd1; --titlebar-border: rgba(20, 26, 38, .16); --titlebar-text: #46505f; --titlebar-text-strong: #0a101c;
+  --titlebar-mark: #8f6208; --titlebar-button-hover: #bfc3c8; --titlebar-close-hover: #b4232a;
+}
+:root[data-skin='orbit'][data-theme='light'] input:not([type='checkbox']):not([type='radio']):not([type='range']),
+:root[data-skin='orbit'][data-theme='light'] textarea,
+:root[data-skin='orbit'][data-theme='light'] select { background: rgba(236, 237, 238, .7); }
+:root[data-skin='orbit'][data-theme='light'] button:not(.icon, .profile-trigger, .cw-tab-main, .cw-tab-pop, .orbit-win) { background: rgba(255, 255, 255, .25); }
+:root[data-skin='orbit'][data-theme='light'] button.primary { background: var(--text); color: #eef0f3; }
+:root[data-skin='orbit'][data-theme='light'] button.danger { background: rgba(180, 35, 42, .1); }
+:root[data-skin='orbit'][data-theme='light'] .cw-badge { color: #fff; }
+:root[data-skin='orbit'][data-theme='light'] .card[data-speaking] { box-shadow: inset 0 0 0 1px var(--orb-live), 0 0 14px rgba(11, 110, 128, .25); }
+
+/* ---- Closer to the mockup ---- */
+
+/* Every corner is sharp in this skin, cards, chips and pop-ups included. */
+:root[data-skin='orbit'] *:not(.cw-dot) { border-radius: 0 !important; }
+
+/* Pictures get a thin frame. */
+:root[data-skin='orbit'] .avatar { outline: 1px solid var(--orb-line-strong, rgba(232, 236, 242, .22)); outline-offset: -1px; }
+
+/* Member rows: name on the left, the in-voice mark and the role tag pushed to the right. */
+:root[data-skin='orbit'] .cw-member-profile { flex: 1 1 auto; min-width: 0; }
+:root[data-skin='orbit'] .cw-member-name { font-weight: 600; color: var(--text-strong); }
+
+/* Text tab: the search button and the message bar's buttons are boxed; @mentions are gold tags. */
+:root[data-skin='orbit'] button.cv-search-btn,
+:root[data-skin='orbit'] .cv-row button.icon {
+  width: 40px; height: 40px; border: 1px solid var(--orb-line-strong, rgba(232, 236, 242, .22)); color: var(--text);
+}
+:root[data-skin='orbit'] .cv-row { align-items: stretch; gap: 8px; }
+:root[data-skin='orbit'] .cv-input { border: 1px solid var(--orb-line-strong, rgba(232, 236, 242, .22)); }
+:root[data-skin='orbit'] .cv-msg-head .cv-name { font-weight: 600; color: var(--text-strong); }
+:root[data-skin='orbit'] .cv-mention { background: rgba(233, 196, 106, .14); color: var(--orb-gold); box-shadow: inset 0 0 0 1px rgba(233, 196, 106, .5); }
+
+/* Voice tab: a big spaced title, then see-through tiles with corner brackets and a name bar along the bottom. */
+:root[data-skin='orbit'] .cv-voice-head { border-bottom-color: var(--orb-rule, var(--border)) !important; padding: 16px 24px !important; }
+:root[data-skin='orbit'] .cv-voice-title { font-family: var(--orb-display); font-weight: 600; font-size: 22px; letter-spacing: .18em; text-transform: uppercase; }
+:root[data-skin='orbit'] .cv-voice-count { font-size: 12px !important; letter-spacing: .16em; text-transform: uppercase; }
+:root[data-skin='orbit'] .card.cv-tile {
+  --orb-corner: rgba(232, 236, 242, .6);
+  position: relative; padding: 0 !important; gap: 0 !important;
+  background: rgba(232, 236, 242, .03); border: 1px solid var(--orb-line-strong, rgba(232, 236, 242, .22)); box-shadow: none;
+}
+:root[data-skin='orbit'] .card.cv-tile[data-local] { --orb-corner: var(--orb-gold); }
+/* The brackets are drawn over the tile, so clicks must pass through to its fullscreen and theater buttons. */
+:root[data-skin='orbit'] .card.cv-tile[data-speaking] { --orb-corner: var(--orb-live); border-color: var(--orb-live); }
+:root[data-skin='orbit'] .card.cv-tile::after {
+  content: ''; position: absolute; inset: -2px; z-index: 2; pointer-events: none;
+  background:
+    linear-gradient(var(--orb-corner), var(--orb-corner)) top left / 10px 2px no-repeat,
+    linear-gradient(var(--orb-corner), var(--orb-corner)) top left / 2px 10px no-repeat,
+    linear-gradient(var(--orb-corner), var(--orb-corner)) top right / 10px 2px no-repeat,
+    linear-gradient(var(--orb-corner), var(--orb-corner)) top right / 2px 10px no-repeat,
+    linear-gradient(var(--orb-corner), var(--orb-corner)) bottom left / 10px 2px no-repeat,
+    linear-gradient(var(--orb-corner), var(--orb-corner)) bottom left / 2px 10px no-repeat,
+    linear-gradient(var(--orb-corner), var(--orb-corner)) bottom right / 10px 2px no-repeat,
+    linear-gradient(var(--orb-corner), var(--orb-corner)) bottom right / 2px 10px no-repeat;
+}
+:root[data-skin='orbit'] .cv-tile-frame { background: transparent !important; box-shadow: none !important; }
+:root[data-skin='orbit'] .cv-tile-frame:fullscreen { background: #000 !important; }
+:root[data-skin='orbit'] .cv-tile-name {
+  left: 0 !important; right: 0; bottom: 0 !important; height: 34px; padding: 0 12px; box-sizing: border-box;
+  display: flex; align-items: center; gap: 8px;
+  background: rgba(10, 16, 28, .6); border-top: 1px solid var(--orb-rule);
+  text-shadow: none !important; color: var(--orb-muted, #a9b4c6) !important; font-size: 11px !important; letter-spacing: .14em; text-transform: uppercase;
+}
+:root[data-skin='orbit'] .cv-tile-who { font-family: var(--orb-display); font-weight: 600; font-size: 14px; letter-spacing: .18em; color: var(--text-strong); }
+:root[data-skin='orbit'] .cv-tile[data-local] .cv-tile-who { color: var(--orb-gold); }
+:root[data-skin='orbit'] .cv-tile[data-speaking] .cv-tile-who { color: var(--orb-live); }
+
+/* The call card: each button has its name beside its icon, and the status line is a spaced cyan caption. */
+:root[data-skin='orbit'] .cw-call-stack { gap: 8px; }
+:root[data-skin='orbit'] .cw-call-stack button.cw-signal-btn { background: transparent; border: 0; padding: 0; }
+:root[data-skin='orbit'] .cw-call-stack button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 9px 8px; }
+:root[data-skin='orbit'] .cw-call-word { font-family: var(--orb-display); font-weight: 600; font-size: 13px; letter-spacing: .16em; text-transform: uppercase; white-space: nowrap; }
+:root[data-skin='orbit'] .cw-call-status { font-family: var(--orb-display); font-size: 13px; letter-spacing: .16em; text-transform: uppercase; color: var(--orb-live) !important; }
+
+/* Whoever is talking in your call: cyan name with "Speaking" under it (the member list shows this only in the Orbit layout). */
+:root[data-skin='orbit'] .cw-member[data-speaking] .cw-member-name { color: var(--orb-live); }
+:root[data-skin='orbit'] .cw-member-speaking { font-size: 12px; color: var(--text-muted); line-height: 1.3; }

@@ -17,7 +17,8 @@ const ICON = 18;
  * `bar` (the LCARS frame's bottom bar) lays the controls out in one row of labelled segments, with the call's status and
  * Leave at the right end. Out of a call it offers Join voice there instead.
  */
-export default function VoiceDock({ stacked = false, bar }: { stacked?: boolean; bar?: { onJoin: (() => void) | null } }) {
+/** `words` (the Orbit layout's corner card) puts each button's name next to its icon. */
+export default function VoiceDock({ stacked = false, words = false, bar }: { stacked?: boolean; words?: boolean; bar?: { onJoin: (() => void) | null } }) {
   const channelId = useVoice((s) => s.channelId);
   const status = useVoice((s) => s.status);
   const error = useVoice((s) => s.error);
@@ -39,7 +40,9 @@ export default function VoiceDock({ stacked = false, bar }: { stacked?: boolean;
   const cls = (...names: Array<string | false | undefined>) => names.filter(Boolean).join(' ') || undefined;
   // In the bar each button shows its name; elsewhere its pixel icon.
   const face = (word: string, icon: PixelIconName) =>
-    bar ? <span className="lcars-label">{word}</span> : <PixelIcon name={icon} size={ICON} />;
+    bar ? <span className="lcars-label">{word}</span>
+      : words ? <><PixelIcon name={icon} size={ICON} /><span className="cw-call-word">{word}</span></>
+        : <PixelIcon name={icon} size={ICON} />;
   const dismiss = (
     <button type="button" className={cls(seg)} onClick={() => useVoice.setState({ notice: null })}>
       {bar ? <span className="lcars-label">Dismiss</span> : 'Dismiss'}
@@ -110,11 +113,11 @@ export default function VoiceDock({ stacked = false, bar }: { stacked?: boolean;
     </button>
   );
   const soundboardButton = channel && (
-    <SoundboardButton serverId={channel.serverId} channelId={channel.id} labelled={!!bar} className={cls(seg)} />
+    <SoundboardButton serverId={channel.serverId} channelId={channel.id} labelled={!!bar} words={words} className={cls(seg)} />
   );
   const leaveButton = (
     <button className={cls(seg, 'danger', bar && 'lcars-end')} aria-label="Leave voice" title="Leave voice" onClick={() => void leave()}>
-      {face('Leave', 'leave')}
+      {face(words ? 'Leave voice' : 'Leave', 'leave')}
     </button>
   );
   const notices = (
@@ -161,12 +164,12 @@ export default function VoiceDock({ stacked = false, bar }: { stacked?: boolean;
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, minHeight: 20 }}>
           {signalButton}
           <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', minHeight: 20 }}>
-            <div style={{ fontWeight: 600, color: 'var(--text-strong)', lineHeight: '20px' }}>Voice chat · {short}</div>
+            <div className="cw-call-status" style={{ fontWeight: 600, color: 'var(--text-strong)', lineHeight: '20px' }}>Voice chat · {short}</div>
           </div>
         </div>
         {notices}
         <div className="cw-call-pair">{muteButton}{deafenButton}</div>
-        <ShareControls />
+        <ShareControls words={words} />
         <div className="cw-call-pair">{soundboardButton}{loopbackButton}</div>
         {leaveButton}
       </div>

@@ -11,10 +11,12 @@ const GAP = 8;
  * The call controls' Soundboard button. The sounds open in a pop-up above it and close on a click outside or Escape.
  * `labelled` shows the word instead of the icon (the LCARS bottom bar), and the pop-up then wears the LCARS frame.
  */
-export default function SoundboardButton({ serverId, channelId, labelled = false, className }: {
+export default function SoundboardButton({ serverId, channelId, labelled = false, words = false, className }: {
   serverId: string;
   channelId: string;
   labelled?: boolean;
+  /** keep the icon and add the word beside it (the Orbit layout's call card) */
+  words?: boolean;
   className?: string;
 }) {
   const { open, setOpen, ref } = usePopover();
@@ -38,6 +40,7 @@ export default function SoundboardButton({ serverId, channelId, labelled = false
     <div ref={ref} className="media-anchor">
       <button ref={button} className={className} aria-label="Soundboard" title="Soundboard" aria-haspopup="dialog" aria-expanded={open} onClick={toggle}>
         {labelled ? <span className="lcars-label">Soundboard</span> : <PixelIcon name="sounds" size={18} />}
+        {words && <span className="cw-call-word">Soundboard</span>}
       </button>
       {open && (
         <div

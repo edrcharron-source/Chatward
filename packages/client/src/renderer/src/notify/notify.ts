@@ -52,16 +52,15 @@ export function playSound(kind: SoundKind) {
 }
 
 function onNewMessage(m: Message, payload: MessagePayload | null) {
-  const { messageSounds, mutedChannels, silenceAll } = useSettings.getState();
+  const { messageSounds, silenceAll } = useSettings.getState();
   const { user, activeChannelId, theaterChatId, myStatus } = useSession.getState();
   if (m.authorId === user?.id) return;
   // Silence all: nothing sounds and nothing flashes.
   if (silenceAll) return;
   // Do Not Disturb: the user asked not to be interrupted, so stay silent and don't flash either.
   if (myStatus === 'dnd') return;
-  // Someone pinged this user (by name or @everyone). A ping still gets through a muted channel.
+  // Someone pinged this user (by name or @everyone): it plays the ping tone.
   const pinged = pings(payload?.mentions, user?.id);
-  if (!pinged && mutedChannels.includes(m.channelId)) return;
   // Flash the taskbar when the app is in the background, even if sounds are off. A popped-out tab counts as the app.
   const focused = document.hasFocus() || popoutHasFocus();
   if (!focused) window.chatward?.flashWindow();

@@ -4,6 +4,8 @@
 export const LIMITS = {
   USERNAME_MIN: 3,
   USERNAME_MAX: 24,
+  /** The name everyone sees. Only for show: signing in and stored keys use the username. */
+  DISPLAY_NAME_MAX: 32,
   PASSWORD_MIN: 8,
   MESSAGE_CIPHERTEXT_MAX: 16_000,
   UPLOAD_MAX_BYTES: 12 * 1024 * 1024, // encrypted image/file blob
@@ -106,6 +108,8 @@ export interface MessagePayload {
   /** A library GIF carries `libraryId` and empty urls; the file is fetched from the server's GIF library. */
   gif?: { url: string; previewUrl: string; title: string; provider: 'klipy' | 'tenor' | 'library'; libraryId?: string };
   linkPreviews?: LinkPreview[];
+  /** Vault photos or videos shared into the chat. Each carries its own keys, so readers need no Vault access to the descriptor. */
+  vault?: VaultRef[];
   /** Set on demo chatter guest messages (client state/guests.ts). Absent on everything people write. */
   chatter?: ChatterTag;
   /** Who the message pings: @everyone, and/or specific members by user id. Absent when nobody is pinged. Client-only meaning. */
@@ -117,6 +121,20 @@ export interface MessagePayload {
   spotifyJams?: { link: string; url: string }[];
   /** An "Invite to Listen Along" card. The host is always the message's author; the card shows their live activity. */
   listenAlong?: true;
+  /** The message this one replies to. The original's author is also in `mentions`, so the reply pings them. */
+  replyTo?: ReplyRef;
+}
+
+/**
+ * A reply's link back to the message it answers. It travels inside the encrypted payload, so the server never learns
+ * who replied to whom. `snippet` is a short copy of the original, shown when the original isn't loaded (or is gone).
+ */
+export interface ReplyRef {
+  messageId: string;
+  authorId: string;
+  /** The original's time, so the app knows how far back to load when jumping to it. */
+  createdAt: number;
+  snippet: string;
 }
 
 /**
@@ -174,10 +192,33 @@ export interface VaultDescriptor {
   width?: number;
   height?: number;
   durationSec?: number;
+  /** When the photo or video was taken (file's last-modified time, ms epoch). Absent on older uploads. */
+  takenAt?: number;
   key: string;
   iv: string;
   thumbKey: string;
   thumbIv: string;
+}
+
+/** A Vault item shared in a message: the item id plus its decrypted descriptor (which holds the file keys). */
+export type VaultRef = VaultDescriptor & { itemId: string };
+
+/** One person's sealed tags for a Vault item. `ciphertext` seals VaultNotes with the item's anchor channel key; the author is part of the seal. */
+export interface VaultAnnotation {
+  itemId: string;
+  serverId: string;
+  authorId: string;
+  channelId: string;
+  keyVersion: number;
+  ciphertext: string;
+  updatedAt: number;
+}
+
+/** Decrypted tags (only ever exists on clients). `people` are user ids. */
+export interface VaultNotes {
+  tags: string[];
+  people: string[];
+  caption?: string;
 }
 
 export interface SoundboardSound {
@@ -262,6 +303,8 @@ export type ServerFrame =
   | { t: 'gif.delete'; serverId: string; gifId: string }
   | { t: 'vault.new'; item: VaultItem }
   | { t: 'vault.delete'; serverId: string; itemId: string }
+  | { t: 'vault.annotation'; annotation: VaultAnnotation }
+  | { t: 'vault.annotation.delete'; serverId: string; itemId: string; authorId: string }
   | { t: 'sound.play'; serverId: string; channelId: string; soundId: string; userId: string }
   | { t: 'voice.state'; serverId: string; channelId: string; userIds: string[] }
   | { t: 'voice.kicked'; channelId: string }
@@ -360,4 +403,49 @@ export interface JellyfinPlayback {
   durationSeconds: number | null;
   /** Epoch ms when the ticket stops working. Ask again to continue. */
   expiresAt: number;
+}
+
+// ---------- Workouts (the crew check-in tracker, formerly the separate DOSS app) ----------
+// Workout data is not end-to-end encrypted: the server works out streaks, standings and PRs, so it reads it, like DOSS did.
+
+export const WORKOUT_KINDS = ['Cardio', 'Strength', 'Long', 'Skill', 'Mobility', 'Rest'] as const;
+export type WorkoutKind = (typeof WORKOUT_KINDS)[number];
+export const WORKOUT_GOAL_TYPES = ['Endurance', 'Strength', 'Body comp', 'Consistency', 'Sport', 'Other'] as const;
+export type WorkoutGoalType = (typeof WORKOUT_GOAL_TYPES)[number];
+export const WORKOUT_LIMITS = {
+  TITLE: 14, GOAL: 80, WHY: 200, WORKOUT: 60, METRICS: 12, METRIC_NAME: 30, METRIC_UNIT: 10,
+  MILESTONES: 20, MILESTONE: 60, COMMENT: 280, NOTE: 140, CHEERS_PER_DAY: 5, LOG_BACK_DAYS: 6,
+} as const;
+
+/** One day of the weekly plan. dow 0 = Monday. */
+export interface WorkoutSplitDay { dow: number; day: string; workout: string; kind: WorkoutKind }
+export type WorkoutDayStatus = 'done' | 'missed' | 'rest' | 'today' | 'up' | 'pre';
+export interface WorkoutWeekDay { date: string; day: string; workout: string; kind: WorkoutKind; status: WorkoutDayStatus; isToday: boolean }
+export interface WorkoutWeek {
+  monday: string; sunday: string; today: string; days: WorkoutWeekDay[];
+  planned: number; done: number; pct: number;
+  todayWorkout: string; todayPlanned: boolean; todayLogged: boolean; streak: number;
+}
+export interface WorkoutMetric { id: string; name: string; unit: string; better: 'up' | 'down'; entries: Array<{ id: string; value: number; date: string }> }
+export interface WorkoutMilestone { id: string; label: string; due: string; done: boolean }
+/** A member's public card. name and avatar come from their Chatward account. */
+export interface WorkoutCard {
+  userId: string; name: string; avatarUrl: string | null; title: string; color: string;
+  goal: string; goalType: WorkoutGoalType; startDate: string; goalDate: string; why: string;
+}
+export interface WorkoutMe extends WorkoutCard {
+  tz: string; remindTime: string; showNumbers: boolean; allowNudges: boolean; notifyCrew: boolean;
+  split: WorkoutSplitDay[]; metrics: WorkoutMetric[]; milestones: WorkoutMilestone[];
+}
+export interface WorkoutCrewMember extends WorkoutCard { week: WorkoutWeek; pos: number }
+export interface WorkoutCrew {
+  monday: string; sunday: string; today: string; daysLeft: number;
+  members: WorkoutCrewMember[]; totals: { planned: number; done: number }; meId: string;
+}
+export type WorkoutEventType = 'log' | 'pr' | 'milestone' | 'nudge' | 'cheer';
+export interface WorkoutEvent { id: string; type: WorkoutEventType; text: string; actorId: string; actorName: string; actorAvatarUrl: string | null; actorColor: string; targetId: string | null; createdAt: number }
+export interface WorkoutComment { id: string; body: string; authorId: string; authorName: string; authorAvatarUrl: string | null; authorColor: string; createdAt: number }
+export interface WorkoutMemberPage extends WorkoutCard {
+  self: boolean; allowNudges: boolean; week: WorkoutWeek;
+  metrics: WorkoutMetric[]; numbersHidden: boolean; milestones: WorkoutMilestone[]; comments: WorkoutComment[];
 }

@@ -9,6 +9,8 @@ declare const __CHATWARD_BUILD__: {
   builtAt: string;
   /** Server address a fresh install starts with, or empty for the local dev server. */
   defaultServer: string;
+  /** True in the web app build (vite.web.config.ts): the page is served by the Chatward server and runs in a browser. */
+  web?: boolean;
 };
 /** The Spotify app's client ID (SPOTIFY_CLIENT_ID at build time), or empty. Main process only. */
 declare const __SPOTIFY_CLIENT_ID__: string;

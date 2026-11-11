@@ -1,30 +1,23 @@
 import { useEffect, useState } from 'react';
-import type { Channel, Member } from '@chatward/shared';
+import type { Channel } from '@chatward/shared';
 import { api, ApiError } from './api/http';
 import { connectWs, disconnectWs, onFrame, sendFrame } from './api/ws';
 import { keepTokenFresh } from './api/token';
 import { isLiveChannel, refreshUnread, signOut, useSession, type ServerBundle } from './state/session';
 import { useSettings, applyTheme } from './state/settings';
 import { applySkin } from './skins';
-import { useVoice, rekeyActiveCall, resumeVoiceSlot, clearLeftoverVoiceSlot, leaveCallOnExit } from './state/voice';
+import { useVoice, rekeyActiveCall, resumeVoiceSlot, clearLeftoverVoiceSlot, leaveCallOnExit, resumeCarriedCall } from './state/voice';
 import { forgetChatChannels, useChat } from './state/chat';
 import { installGuestKeys } from './state/guests';
 import { accountKey, adoptLegacyIfOwned, initDevice, syncChannelKeys, handleEnvelope, handleMemberLeave, forgetChannels } from './crypto';
 import { installNotifications } from './notify/notify';
 import { installSpotifyActivity } from './state/spotify';
 import AuthScreen from './components/auth/AuthScreen';
-import ChannelList from './components/servers/ChannelList';
-import MemberList from './components/servers/MemberList';
-import ChatView from './components/chat/ChatView';
-import VoiceChannelView from './components/voice/VoiceChannelView';
-import TheaterSplit from './components/voice/TheaterSplit';
-import VaultView from './components/vault/VaultView';
-import { WatchPartyPanel } from './components/watchparty';
-import SettingsModal from './components/settings/SettingsModal';
+import SettingsModal, { type SettingsTabId } from './components/settings/SettingsModal';
 import { JellyfinBrowser, useJellyfinEnabled } from './components/jellyfin/JellyfinBrowser';
 import TestConsole from './components/testconsole/TestConsole';
-import MysteryButton from './components/mystery/MysteryButton';
 import TabsLayout from './components/tabs/TabsLayout';
+import { usePhone } from './web/usePhone';
 import DemoBanner from './demo/DemoBanner';
 import UpdateBanner from './components/updates/UpdateBanner';
 import DeviceAlertBanner from './components/devices/DeviceAlertBanner';
@@ -79,36 +72,22 @@ function syncAfterLowKeyPackages(): void {
 }
 
 function Shell() {
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState<SettingsTabId | false>(false);
   const [ready, setReady] = useState(false);
   const [unreachable, setUnreachable] = useState(false);
-  const [watchOpen, setWatchOpen] = useState(false);
   const [testOpen, setTestOpen] = useState(false);
   const [moviesOpen, setMoviesOpen] = useState(false);
   const jellyfinEnabled = useJellyfinEnabled();
-  const [vaultOpen, setVaultOpen] = useState(false);
-  const layout = useSettings((s) => s.layout);
-  const { servers, activeServerId, activeChannelId } = useSession();
+  // Phones always get the tabs layout, which has a phone form (components/tabs/phone.css); the other layouts need a wide window.
+  const phone = usePhone();
+  const chosenLayout = useSettings((s) => s.layout);
+  const layout = phone ? 'tabs' : chosenLayout;
+  const { servers, activeServerId } = useSession();
   const bundle = servers.find((s) => s.server.id === activeServerId);
-  const channel = bundle?.channels.find((c) => c.id === activeChannelId);
-  const voiceChannelId = useVoice((s) => s.channelId);
-  // A watch party belongs to the call: the server keeps one snapshot per voice channel and only people in it can change it.
-  const callServer = servers.find((b) => b.channels.some((c) => c.id === voiceChannelId));
-  const watchKeyChannelId = callServer?.channels.find((c) => c.kind === 'text')?.id;
   const theaterKey = useVoice((s) => s.theaterKey);
   const setTheater = useVoice((s) => s.setTheater);
-  // the text chat shown below the share in theater mode; follows the last text channel opened
-  const [chatChannelId, setChatChannelId] = useState<string | null>(null);
-  const [sidebarsCollapsed, setSidebarsCollapsed] = useState(false);
-  const openTextId = channel?.kind === 'text' ? channel.id : undefined;
   useEffect(() => {
-    if (openTextId) setChatChannelId(openTextId);
-  }, [openTextId]);
-  useEffect(() => {
-    if (!theaterKey) {
-      setSidebarsCollapsed(false);
-      return;
-    }
+    if (!theaterKey) return;
     // Esc leaves theater mode unless the browser is handling it as a fullscreen exit
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && !document.fullscreenElement) setTheater(null);
@@ -116,21 +95,6 @@ function Shell() {
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, [theaterKey, setTheater]);
-
-  // theater mode keeps the call's share on top and a text chat below, so the chat stays usable while a share is featured
-  const callChannel = bundle?.channels.find((c) => c.id === voiceChannelId);
-  const textChannels = bundle?.channels.filter((c) => c.kind === 'text') ?? [];
-  const chatChannel = channel?.kind === 'text' ? channel : textChannels.find((c) => c.id === chatChannelId) ?? textChannels[0];
-  const theaterWithChat = theaterKey !== null && callChannel !== undefined && chatChannel !== undefined;
-  const hideSidebars = theaterKey !== null && sidebarsCollapsed;
-  // The chat under the share is on screen, so its new messages should not count as unread.
-  const theaterChatId = theaterWithChat && chatChannel ? chatChannel.id : null;
-  // The tabs layout says which chat is on screen itself.
-  useEffect(() => {
-    if (layout !== 'classic') return;
-    useSession.getState().setTheaterChatId(theaterChatId);
-    return () => useSession.getState().setTheaterChatId(null);
-  }, [theaterChatId, layout]);
 
   useEffect(() => {
     let off: (() => void) | undefined;
@@ -167,7 +131,8 @@ function Shell() {
               retryWithBackoff(() => loadServers(stillWanted), stillWanted)
                 .catch((e) => console.error('Could not refresh after reconnect', e));
               resumeVoiceSlot();
-            } else {
+            } else if (!resumeCarriedCall()) {
+              // a window swapped for a layout change carries its call over; otherwise clear the old slot as usual
               clearLeftoverVoiceSlot();
             }
             seenReady = true;
@@ -354,88 +319,19 @@ function Shell() {
   const modals = (
     <>
       {moviesOpen && <JellyfinBrowser onClose={() => setMoviesOpen(false)} />}
-      {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
+      {settingsOpen && <SettingsModal initialTab={settingsOpen} onClose={() => setSettingsOpen(false)} />}
     </>
   );
-  // The modals sit after the layout in both branches, so switching the layout in settings keeps the settings open.
-  if (layout !== 'classic') {
-    return (
-      <>
-        {testOpen
-          ? <div className="cw-shell" data-region="shell"><main className="cw-main" data-region="main"><TestConsole onClose={() => setTestOpen(false)} /></main></div>
-          : <TabsLayout bundle={bundle} onOpenSettings={() => setSettingsOpen(true)} onReload={loadServers}
-              onOpenTest={() => setTestOpen(true)} onOpenMovies={jellyfinEnabled ? () => setMoviesOpen(true) : null}
-              frame={layout === 'lcars' ? 'lcars' : undefined} />}
-        {modals}
-      </>
-    );
-  }
+  // The modals sit after the layout, so switching the layout in settings keeps the settings open.
+  // Classic is the tabs layout with its tabs down a sidebar on the left; Tabs keeps them in a bar along the top.
   return (
     <>
-    <div className="cw-shell" data-region="shell">
-      {!hideSidebars && <ChannelList onOpenSettings={() => setSettingsOpen(true)} onReload={loadServers} />}
-      <main className="cw-main" data-region="main">
-        {testOpen ? <TestConsole onClose={() => setTestOpen(false)} /> : <>
-          <div className="cw-main-bar" data-region="main-bar">
-            {theaterKey !== null && (
-              <button className="icon" onClick={() => setSidebarsCollapsed((c) => !c)} aria-pressed={sidebarsCollapsed}>
-                {sidebarsCollapsed ? 'Show sidebars' : 'Hide sidebars'}
-              </button>
-            )}
-            <MysteryButton>🔪 Mystery</MysteryButton>
-            <button className="icon" onClick={() => setTestOpen(true)} title="Feature test console (Ctrl+Shift+T)">🧪 Test</button>
-            {jellyfinEnabled && <button className="icon" onClick={() => setMoviesOpen(true)} title="Browse the Jellyfin library">🍿 Movies</button>}
-            {bundle && (
-              <button className="icon" onClick={() => setVaultOpen((o) => !o)} aria-pressed={vaultOpen} title="Shared photos and videos">
-                🖼 {vaultOpen ? 'Close Vault' : 'Vault'}
-              </button>
-            )}
-            {channel && (
-              <button className="icon" onClick={() => setWatchOpen((o) => !o)} aria-pressed={watchOpen} title="Watch YouTube together">
-                🎬 {watchOpen ? 'Close watch party' : 'Watch together'}
-              </button>
-            )}
-          </div>
-        {/* Voice channels have no message key of their own, so their watch party rides the server's first text channel. */}
-        {watchOpen && (voiceChannelId && watchKeyChannelId
-          ? <WatchPartyPanel key={`watch-${voiceChannelId}`} callChannelId={voiceChannelId} keyChannelId={watchKeyChannelId} />
-          : <div className="cw-main-note muted">Join a voice channel to start a watch party.</div>)}
-        {vaultOpen && bundle
-          ? <VaultView key={bundle.server.id} serverId={bundle.server.id} keyChannelId={textChannels[0]?.id}
-              canModerate={['owner', 'admin'].includes((bundle.members as Member[]).find((m) => m.user.id === useSession.getState().user?.id)?.role ?? '')} />
-          : theaterWithChat && callChannel && chatChannel
-          ? (
-            <TheaterSplit
-              top={<VoiceChannelView key={callChannel.id} channel={callChannel} theaterOnly />}
-              bottom={(
-                <>
-                  {channel?.kind === 'voice' && (
-                    <div className="cw-chat-picker">
-                      <span className="muted">Chat</span>
-                      <select value={chatChannel.id} onChange={(e) => setChatChannelId(e.target.value)} aria-label="Text channel for chat">
-                        {textChannels.map((c) => <option key={c.id} value={c.id}>#{c.name}</option>)}
-                      </select>
-                    </div>
-                  )}
-                  <div className="cw-fill">
-                    <ChatView key={chatChannel.id} channel={chatChannel} />
-                  </div>
-                </>
-              )}
-            />
-          )
-          : channel?.kind === 'voice'
-            ? <VoiceChannelView key={channel.id} channel={channel} />
-            : channel
-              ? <ChatView key={channel.id} channel={channel} />
-              : <div className="cw-main-empty muted">{bundle ? 'Select a channel' : 'Waiting for the server…'}</div>}
-        </>}
-      </main>
-      {bundle && !hideSidebars && <MemberList serverId={bundle.server.id} members={bundle.members as Member[]} />}
-      {/* keep voice room mounted even when browsing text channels */}
-      {voiceChannelId && null}
-    </div>
-    {modals}
+      {testOpen
+        ? <div className="cw-shell" data-region="shell"><main className="cw-main" data-region="main"><TestConsole onClose={() => setTestOpen(false)} /></main></div>
+        : <TabsLayout bundle={bundle} onOpenSettings={(tab) => setSettingsOpen(tab ?? 'account')} onReload={loadServers}
+            onOpenMovies={jellyfinEnabled ? () => setMoviesOpen(true) : null}
+            frame={layout === 'lcars' || layout === 'orbit' ? layout : undefined} rail={layout === 'classic'} />}
+      {modals}
     </>
   );
 }

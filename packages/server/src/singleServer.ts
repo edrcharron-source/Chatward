@@ -28,11 +28,9 @@ export function createMainServer(db: DB, ownerId: string, name = 'Chatward'): st
  * - Several servers: the oldest is the server. The others are left untouched and no longer listed.
  * - Anyone banned from the server is turned off instead, and the ban is dropped.
  * - Every other live account becomes a member.
- * - Display names follow the account name, which is the only name now.
  */
 export function ensureSingleServer(db: DB): void {
   db.transaction(() => {
-    db.prepare("UPDATE users SET display_name=username WHERE deleted_at IS NULL AND display_name<>username").run();
     let serverId = mainServerId(db);
     if (!serverId) {
       const owner = db.prepare('SELECT id FROM users WHERE deleted_at IS NULL ORDER BY created_at, rowid LIMIT 1').get() as

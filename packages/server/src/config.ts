@@ -77,6 +77,8 @@ export const config = {
    * X-Forwarded-For header and dodge the login rate limit.
    */
   trustProxy: process.env.TRUST_PROXY === '1',
+  /** The built web app (packages/client/out/web). When set and present, the server serves it at /, for browsers and the iPhone home-screen app. */
+  webDir: process.env.CHATWARD_WEB_DIR ? path.resolve(process.env.CHATWARD_WEB_DIR) : '',
   jwtSecret: jwtSecret(),
   klipyApiKey: process.env.KLIPY_API_KEY ?? '',
   /** Jellyfin library for the movie browser. All three must be set to turn it on; see docs/HOME_SERVER.md. */

@@ -47,11 +47,6 @@ const handlers: Record<string, (args: any) => Promise<unknown>> = {
     return { serverId: servers[0].server.id, channelId: general.id };
   },
 
-  async createChannel({ serverId, name }) {
-    const r = await api.post<{ channel: { id: string } }>(`/api/servers/${serverId}/channels`, { name, kind: 'text' });
-    return { channelId: r.channel.id };
-  },
-
   async sync() {
     const { servers } = await api.get<{ servers: ServerBundle[] }>('/api/servers');
     useSession.getState().setServers(servers);
