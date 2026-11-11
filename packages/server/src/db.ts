@@ -120,6 +120,21 @@ export function openDb(): DB {
     PRIMARY KEY (item_id, author_id)
   );
   CREATE INDEX IF NOT EXISTS idx_vault_notes_server ON vault_annotations(server_id);
+  CREATE TABLE IF NOT EXISTS vault_uploads (
+    id TEXT PRIMARY KEY,
+    server_id TEXT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+    owner_id TEXT NOT NULL REFERENCES users(id),
+    channel_id TEXT NOT NULL,
+    key_version INTEGER NOT NULL,
+    ciphertext TEXT NOT NULL,
+    size INTEGER NOT NULL,
+    thumb_size INTEGER NOT NULL,
+    prev_size INTEGER NOT NULL,
+    received INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_vault_uploads_owner ON vault_uploads(owner_id);
   CREATE TABLE IF NOT EXISTS sounds (
     id TEXT PRIMARY KEY,
     server_id TEXT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
@@ -285,6 +300,9 @@ export function openDb(): DB {
     if (!uploadCols.has(col)) db.exec(`ALTER TABLE uploads ADD COLUMN ${col} ${def}`);
   }
   // When a device last had a socket open. Devices added after this are replayed to it on its next connect.
+  // Vault items can carry a mid-size preview next to the original and the thumbnail. Older items have none.
+  const vaultCols = new Set((db.pragma('table_info(vault_items)') as { name: string }[]).map((c) => c.name));
+  if (!vaultCols.has('prev_size')) db.exec('ALTER TABLE vault_items ADD COLUMN prev_size INTEGER NOT NULL DEFAULT 0');
   const deviceCols = new Set((db.pragma('table_info(devices)') as { name: string }[]).map((c) => c.name));
   if (!deviceCols.has('last_seen')) db.exec('ALTER TABLE devices ADD COLUMN last_seen INTEGER');
   // The id a client chose for a message it sends. A repeat of the same id from the same author returns the first copy.
