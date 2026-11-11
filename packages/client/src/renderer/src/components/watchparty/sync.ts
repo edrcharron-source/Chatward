@@ -125,15 +125,49 @@ export function parseVideoUrl(input: string): string | null {
 
 export const RATE_MIN = 0.25;
 export const RATE_MAX = 2;
-/** Drift beyond this is corrected with a seek. Smaller drift is not visible, and seeking costs a rebuffer. */
+/** Drift beyond this is corrected with a seek when someone seeks, and in the YouTube embed. */
 export const DRIFT_SECONDS = 0.5;
 /** A local jump this big that we did not cause is treated as the user seeking. */
 export const SEEK_SECONDS = 1.5;
+
+/*
+ * A <video> (files, Jellyfin, Vault) is kept in step gently. A Jellyfin seek restarts the server's live transcode, which
+ * stalls for seconds and leaves the viewer further behind, so small drift is closed by playing slightly fast or slow.
+ */
+/** Start nudging the playback rate once a <video> is this far off. */
+export const NUDGE_START_SECONDS = 0.3;
+/** Stop nudging once back within this. */
+export const NUDGE_STOP_SECONDS = 0.2;
+/** Only drift beyond this is corrected with a seek. */
+export const HARD_DRIFT_SECONDS = 2;
+/** How much faster or slower a nudged video plays (5%, barely audible). */
+const NUDGE = 0.05;
+
+/**
+ * How to correct a <video> that is `drift` seconds off the shared playhead (positive means ahead): 'seek', or the
+ * playback rate to use now. `nudging` says a nudge is already running, so it carries on down to NUDGE_STOP_SECONDS.
+ */
+export function correctDrift(drift: number, baseRate: number, nudging: boolean): 'seek' | number {
+  const off = Math.abs(drift);
+  if (off > HARD_DRIFT_SECONDS) return 'seek';
+  if (off <= NUDGE_STOP_SECONDS || (!nudging && off <= NUDGE_START_SECONDS)) return baseRate;
+  return baseRate * (drift > 0 ? 1 - NUDGE : 1 + NUDGE);
+}
 
 /** Where playback should be at `now` (same clock as `anchor.at`). */
 export function playhead(anchor: { position: number; at: number; playing: boolean; rate: number }, now: number): number {
   if (!anchor.playing) return anchor.position;
   return anchor.position + (Math.max(0, now - anchor.at) / 1000) * anchor.rate;
+}
+
+/**
+ * True when `next` moved the playhead rather than only pausing, playing or changing speed: a seek by someone in the room,
+ * or a different video. Those apply exactly; anything else leaves small drift to the gentle correction.
+ */
+export function isJump(prev: StampedState | null, next: StampedState): boolean {
+  if (!prev || mediaKey(prev) !== mediaKey(next)) return true;
+  const expected = playhead({ position: prev.position, at: prev.ts, playing: prev.playing, rate: prev.rate }, next.ts);
+  return Math.abs(next.position - expected) > SEEK_SECONDS;
 }
 
 export function encodeState(state: WatchState): MessagePayload {
