@@ -27,7 +27,7 @@ jobs:
           CHATWARD_DEFAULT_SERVER: ${{ vars.CHATWARD_DEFAULT_SERVER || 'https://chat.lebserver.com' }}
           # The Spotify app for "listening to". Empty (no secret) builds an app that says Spotify isn't set up.
           SPOTIFY_CLIENT_ID: ${{ secrets.SPOTIFY_CLIENT_ID }}
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: win
           # Only handed to the publish job; the GitHub Release keeps the real copy.
@@ -50,7 +50,7 @@ jobs:
           cp packages/client/package.json $d/packages/client/
           rm -rf $d/packages/*/node_modules $d/packages/*/dist
           zip -qr chatward-server.zip $d
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with: { name: server, path: chatward-server.zip, retention-days: 1 }
   publish:
     needs: [windows-app, server-bundle]
