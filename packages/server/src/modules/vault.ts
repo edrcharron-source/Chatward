@@ -1,4 +1,6 @@
 import fs from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { createReadStream } from 'node:fs';
 import path from 'node:path';
 import express, { type Express, type NextFunction, type Request, type Response } from 'express';
 import type { VaultAnnotation, VaultItem } from '@chatward/shared';
@@ -356,6 +358,28 @@ export function register(app: Express, ctx: Ctx): void {
       if (err && !res.headersSent) res.status(404).json({ error: 'not found' });
     });
   };
+  // The photo sorter's model file. Sorting happens on people's devices; the server only serves the file. Its hash is
+  // worked out once, so clients can keep it cached under that name.
+  let modelInfo: Promise<{ available: boolean; sha256?: string; bytes?: number }> | null = null;
+  const sortModelInfo = () => (modelInfo ??= (async () => {
+    try {
+      const { size } = await fs.stat(ctx.config.vaultSortModel);
+      const hash = createHash('sha256');
+      await new Promise<void>((resolve, reject) => createReadStream(ctx.config.vaultSortModel).on('data', (c) => hash.update(c)).on('end', resolve).on('error', reject));
+      return { available: true, sha256: hash.digest('hex'), bytes: size };
+    } catch {
+      modelInfo = null; // look again next time, in case the file is added later
+      return { available: false };
+    }
+  })());
+  app.get('/api/vault/sort-model/info', ctx.requireAuth, async (_req, res) => { res.json(await sortModelInfo()); });
+  app.get('/api/vault/sort-model', ctx.requireAuth, async (_req, res) => {
+    const info = await sortModelInfo();
+    if (!info.available) { res.status(404).json({ error: 'no sorter model on this server' }); return; }
+    res.type('application/octet-stream');
+    res.setHeader('Cache-Control', 'private, max-age=604800');
+    res.sendFile(ctx.config.vaultSortModel, (err) => { if (err && !res.headersSent) res.status(404).json({ error: 'not found' }); });
+  });
   app.get('/api/vault/:id/thumb', ctx.requireAuth, send('thumb'));
   app.get('/api/vault/:id/preview', ctx.requireAuth, send('prev'));
   app.get('/api/vault/:id/file', ctx.requireAuth, send('file'));

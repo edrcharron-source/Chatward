@@ -220,13 +220,16 @@ export async function openNotes(a: VaultAnnotation): Promise<VaultNotes | null> 
   if (!msg) return null;
   try {
     const n = JSON.parse(msg.text) as Partial<VaultNotes>;
-    return { tags: Array.isArray(n.tags) ? n.tags.filter((t) => typeof t === 'string') : [], people: Array.isArray(n.people) ? n.people.filter((p) => typeof p === 'string') : [], ...(n.caption ? { caption: n.caption } : {}) };
+    const a = n.auto;
+    const auto = a && (a.category === null || a.category === 'photo' || a.category === 'meme' || a.category === 'screenshot') && typeof a.score === 'number' && typeof a.by === 'string' && typeof a.v === 'number'
+      ? { category: a.category, score: a.score, by: a.by, v: a.v } : undefined;
+    return { tags: Array.isArray(n.tags) ? n.tags.filter((t) => typeof t === 'string') : [], people: Array.isArray(n.people) ? n.people.filter((p) => typeof p === 'string') : [], ...(n.caption ? { caption: n.caption } : {}), ...(auto ? { auto } : {}) };
   } catch { return null; }
 }
 
 /** Saves my tags for an item, or removes them when there are none. */
 export async function saveNotes(item: VaultItem, me: string, notes: VaultNotes): Promise<void> {
-  if (!notes.tags.length && !notes.people.length && !notes.caption) { await api.del(`/api/vault/${item.id}/annotation`); return; }
+  if (!notes.tags.length && !notes.people.length && !notes.caption && !notes.auto) { await api.del(`/api/vault/${item.id}/annotation`); return; }
   const { ciphertext, keyVersion } = await encryptPayload(item.channelId, me, { text: JSON.stringify(notes) });
   await api.post(`/api/vault/${item.id}/annotation`, { keyVersion, ciphertext });
 }

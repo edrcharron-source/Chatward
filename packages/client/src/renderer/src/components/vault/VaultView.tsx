@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { ServerFrame, VaultAlbum, VaultAnnotation, VaultDescriptor, VaultItem, VaultNotes } from '@chatward/shared';
+import type { ServerFrame, VaultAlbum, VaultCategory, VaultAnnotation, VaultDescriptor, VaultItem, VaultNotes } from '@chatward/shared';
 import { api } from '../../api/http';
 import { onFrame } from '../../api/ws';
 import { onKeysChanged } from '../../crypto';
@@ -9,6 +9,8 @@ import { buildAlbums } from './albums';
 import AlbumStrip, { type AlbumCard } from './AlbumStrip';
 import { albumsApi, fetchVaultUrl, fetchVaultViewUrl, openAlbumMeta, mergedNotes, normalizeTag, openDescriptor, openNotes, readForVault, saveNotes, uploadToVault, type NotesByItem, type VaultPage } from './vault';
 import { loadVaultIndex } from './vaultIndex';
+import { CATEGORY_TAG, categoryOf } from './sort/clues';
+import { needsSort, sortItem } from './sort/sorter';
 import { canQueueToWatchParty, queueToWatchParty } from '../watchparty/bridge';
 import { vaultItem } from '../watchparty/sync';
 import './vault.css';
@@ -66,7 +68,43 @@ export default function VaultView({ serverId, keyChannelId, canModerate, chatCha
       setManual((cur) => cur.map((a) => (a.itemIds.includes(f.itemId) ? { ...a, itemIds: a.itemIds.filter((i) => i !== f.itemId), coverItemId: a.coverItemId === f.itemId ? null : a.coverItemId } : a)));
     }
   }), [serverId, putAlbum]);
-  const smartAlbums = [...(albums.onThisDay ? [albums.onThisDay] : []), ...albums.kinds, ...albums.events, ...albums.people];
+  // The photo sorter: what each item is, from manual #photo/#meme/#screenshot tags or the on-device sort.
+  const catOf = (id: string) => categoryOf(Object.values(notes[id] ?? {}));
+  const sortedAlbums = (() => {
+    const by: Record<VaultCategory | 'unsorted', string[]> = { meme: [], screenshot: [], photo: [], unsorted: [] };
+    for (const i of items) { const c = catOf(i.id); by[c.category ?? 'unsorted'].push(i.id); }
+    const anySorted = by.meme.length + by.screenshot.length + by.photo.length > 0;
+    return [
+      { key: 'sort:meme', label: 'Memes', ids: by.meme },
+      { key: 'sort:screenshot', label: 'Screenshots', ids: by.screenshot },
+      { key: 'sort:photo', label: 'Real photos', ids: by.photo },
+      ...(anySorted ? [{ key: 'sort:unsorted', label: 'Unsorted', ids: by.unsorted }] : []),
+    ].filter((a) => a.ids.length);
+  })();
+  const smartAlbums = [...sortedAlbums, ...(albums.onThisDay ? [albums.onThisDay] : []), ...albums.kinds, ...albums.events, ...albums.people];
+
+  // Sorting the rest of the Vault on this device: items nobody has sorted yet (or only by clues, once the model is here).
+  const [modelReady, setModelReady] = useState<boolean | null>(null);
+  useEffect(() => { api.get<{ available: boolean }>('/api/vault/sort-model/info').then((r) => setModelReady(r.available)).catch(() => setModelReady(false)); }, [serverId]);
+  const toSort = items.filter((i) => descs[i.id] && needsSort(Object.values(notes[i.id] ?? {}).map((n) => n.auto), catOf(i.id).manual, !!modelReady));
+  const sortRun = useRef<{ stop: boolean } | null>(null);
+  const [sorting, setSorting] = useState<string | null>(null);
+  async function sortVault() {
+    const run = { stop: false };
+    sortRun.current = run;
+    const list = [...toSort];
+    let done = 0;
+    for (const item of list) {
+      if (run.stop) break;
+      setSorting(`Sorting ${done + 1} of ${list.length}…`);
+      try { await sortItem(item, descs[item.id], me, notes[item.id]?.[me], (m) => setSorting(m)); }
+      catch (e) { setError(`Sorting stopped: ${(e as Error).message}`); break; }
+      done++;
+      await new Promise((r) => setTimeout(r, 0)); // let the page breathe between pictures
+    }
+    sortRun.current = null;
+    setSorting(null);
+  }
   const activeManual = filter?.kind === 'album' && filter.value.startsWith('manual:') ? manual.find((a) => `manual:${a.id}` === filter.value) : undefined;
   const activeSmart = filter?.kind === 'album' && !activeManual ? smartAlbums.find((a) => a.key === filter.value) : undefined;
   const albumIds = (key: string) => key.startsWith('manual:') ? manual.find((a) => `manual:${a.id}` === key)?.itemIds ?? [] : smartAlbums.find((a) => a.key === key)?.ids ?? [];
@@ -201,6 +239,8 @@ export default function VaultView({ serverId, keyChannelId, canModerate, chatCha
         setUsage((u) => ({ ...u, used: u.used + item.size }));
         // Adding while an album is open puts the new items in that album too.
         if (activeManual) await albumsApi.change(activeManual.id, [item.id]).then(putAlbum).catch(() => {});
+        // Sort it on this device in the background; a failure just leaves it unsorted.
+        void openDescriptor(item).then((d) => (d ? sortItem(item, d, me, undefined) : null)).catch(() => {});
       } catch (e) { setError((e as Error).message); }
     }
     setStatus(null);
@@ -237,6 +277,9 @@ export default function VaultView({ serverId, keyChannelId, canModerate, chatCha
         <span className="muted">
           {usage.quota > 0 ? `${mb(usage.used)} of ${mb(usage.quota)} used by you` : `${mb(usage.used)} used by you`}
         </span>
+        {sorting
+          ? <button type="button" title="Stop sorting" onClick={() => { if (sortRun.current) sortRun.current.stop = true; }}>{sorting} Stop</button>
+          : toSort.length > 0 && <button type="button" title="Sort photos into Memes, Screenshots and Real photos on this device. Nothing is sent to the server." onClick={() => void sortVault()}>Sort {toSort.length} into albums</button>}
         {items.length > 0 && <button type="button" aria-pressed={selecting} onClick={() => { setSelecting((v) => !v); setSelected(new Set()); }}>{selecting ? 'Done' : 'Select'}</button>}
         <button type="button" className="primary" disabled={!keyChannelId || (status !== null && !status.startsWith('Added to'))} onClick={() => fileInput.current?.click()}>Add photos or videos</button>
         <input ref={fileInput} type="file" multiple accept="image/*,video/*" hidden onChange={(e) => void upload(e.target.files)} />
@@ -300,7 +343,7 @@ export default function VaultView({ serverId, keyChannelId, canModerate, chatCha
       {shown.length > visible && <button type="button" className="cw-vault-more" onClick={() => setVisible((n) => n + TILE_STEP)}>Show more ({shown.length - visible} left)</button>}
       {shown.length <= visible && hasMore && <button type="button" className="cw-vault-more" onClick={() => void loadMore()}>Load older</button>}
       {open && <Viewer item={open.item} d={open.d} canDelete={open.item.ownerId === me || canModerate} onDelete={() => void remove(open.item)} onClose={() => setOpen(null)}
-        panel={<NotesEditor item={open.item} me={me} mine={notes[open.item.id]?.[me]} merged={mergedNotes(notes[open.item.id])} people={people} onError={setError} />}
+        panel={<NotesEditor item={open.item} me={me} mine={notes[open.item.id]?.[me]} merged={mergedNotes(notes[open.item.id])} people={people} onError={setError} sorted={catOf(open.item.id)} />}
         extra={<>
           {open.d.kind === 'video' && canQueueToWatchParty() && <button type="button" title="Queue this for everyone in your call" onClick={() => watchTogether(open.item, open.d)}>Watch together</button>}
           {chatChannelId && <button type="button" disabled={sending} onClick={() => void sendToChat(open.item, open.d)}>{sending ? 'Sending…' : 'Send to chat'}</button>}
@@ -390,9 +433,10 @@ export function Viewer({ item, d, canDelete, onDelete, onClose, extra, panel }: 
   );
 }
 
-function NotesEditor({ item, me, mine, merged, people, onError }: {
+function NotesEditor({ item, me, mine, merged, people, onError, sorted }: {
   item: VaultItem; me: string; mine: VaultNotes | undefined; merged: { tags: string[]; people: string[] };
   people: { id: string; name: string }[]; onError: (m: string) => void;
+  sorted: { category: VaultCategory | null; manual: boolean; score?: number; sorted: boolean };
 }) {
   const [draft, setDraft] = useState('');
   const save = (next: VaultNotes) => saveNotes(item, me, next).catch((e: Error) => onError(e.message));
@@ -405,8 +449,22 @@ function NotesEditor({ item, me, mine, merged, people, onError }: {
   const togglePerson = (id: string) =>
     void save({ ...cur, people: cur.people.includes(id) ? cur.people.filter((p) => p !== id) : [...cur.people, id] });
   const others = merged.tags.filter((t) => !cur.tags.includes(t));
+  // Picking a category is a tag of mine, which beats the automatic sort for everyone. Picking it again takes it back.
+  const categoryTags = Object.values(CATEGORY_TAG);
+  const pick = (c: VaultCategory) => {
+    const mineNow = cur.tags.includes(CATEGORY_TAG[c]);
+    void save({ ...cur, tags: [...cur.tags.filter((t) => !categoryTags.includes(t)), ...(mineNow ? [] : [CATEGORY_TAG[c]])] });
+  };
   return (
     <div className="cw-vault-notes" onClick={(e) => e.stopPropagation()}>
+      <div className="cw-vault-chips" role="group" aria-label="What this is">
+        <span className="muted">{sorted.category ? (sorted.manual ? 'Sorted as:' : `Sorted as (auto${sorted.score ? `, ${Math.round(sorted.score * 100)}%` : ''}):`) : sorted.sorted ? 'Not sure what this is:' : 'Not sorted yet:'}</span>
+        {(['photo', 'meme', 'screenshot'] as VaultCategory[]).map((c) => (
+          <button key={c} type="button" className={sorted.category === c ? 'on' : ''} aria-pressed={cur.tags.includes(CATEGORY_TAG[c])} onClick={() => pick(c)}>
+            {c === 'photo' ? 'Real photo' : c === 'meme' ? 'Meme' : 'Screenshot'}
+          </button>
+        ))}
+      </div>
       <div className="cw-vault-chips">
         {cur.tags.map((t) => <button key={t} type="button" title="Remove your tag" onClick={() => void save({ ...cur, tags: cur.tags.filter((x) => x !== t) })}>#{t} ×</button>)}
         {others.map((t) => <span key={t} className="muted">#{t}</span>)}

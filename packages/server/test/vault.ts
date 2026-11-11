@@ -9,6 +9,7 @@ fs.mkdirSync(dataDir, { recursive: true });
 process.env.DATA_DIR = dataDir;
 process.env.VAULT_QUOTA_MB = '1';
 process.env.VAULT_MAX_MB = '2';
+process.env.VAULT_SORT_MODEL = path.join(dataDir, 'sorter.onnx');
 const { default: express } = await import('express');
 const { openDb } = await import('../src/db.js');
 const { config } = await import('../src/config.js');
@@ -171,6 +172,15 @@ try {
   assert.equal(await (await call('u1', 'GET', `/api/vault/${legacy}/thumb`)).text(), 'ab');
   assert.equal(await migrateFlatVault(config.vaultDir), 0, 'running it again moves nothing');
   log('old flat files are served and moved into the sharded folders');
+  let info = await (await call('u1', 'GET', '/api/vault/sort-model/info')).json() as { available: boolean; sha256?: string };
+  assert.equal(info.available, false);
+  assert.equal((await call('u1', 'GET', '/api/vault/sort-model')).status, 404);
+  fs.writeFileSync(path.join(dataDir, 'sorter.onnx'), 'model-bytes');
+  info = await (await call('u1', 'GET', '/api/vault/sort-model/info')).json() as { available: boolean; sha256?: string };
+  assert.equal(info.available, true, 'a model added later is found');
+  assert.equal(info.sha256, (await import('node:crypto')).createHash('sha256').update('model-bytes').digest('hex'));
+  assert.equal(await (await call('u1', 'GET', '/api/vault/sort-model')).text(), 'model-bytes');
+  log('the sorter model is served with its hash once it is there');
   console.log('\nVault: all checks passed');
 } catch (err) {
   console.error('\nVault FAILED:', err);

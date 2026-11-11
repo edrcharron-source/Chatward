@@ -33,7 +33,7 @@ export function buildCsp(origin: string | null): string {
   }
   return [
     "default-src 'self'",
-    "script-src 'self'",
+    "script-src 'self' 'wasm-unsafe-eval'", // WebAssembly only (the Vault's on-device photo sorter); still no eval of JavaScript
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob: https://klipy.com https://*.klipy.com https://i.scdn.co https://i.ytimg.com",
     "media-src 'self' blob: data: https:",
