@@ -1,7 +1,7 @@
 // Run with: npm run test:watch -w @chatward/client
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { decodeState, encodeState, mediaKey, moveQueueItem, QUEUE_MAX, stateForItem, vaultItem, type QueueItem } from './sync';
+import { correctDrift, decodeState, encodeState, isJump, mediaKey, moveQueueItem, QUEUE_MAX, stateForItem, vaultItem, type QueueItem } from './sync';
 
 const JF = 'a'.repeat(32);
 
@@ -69,4 +69,27 @@ test('rejects a Vault item that is not a video or has a bad id', () => {
   assert.equal(bad({ id: '../etc' }), null);
   assert.equal(bad({ key: 'x'.repeat(200) }), null);
   assert.ok(bad({}));
+});
+
+test('small drift nudges the rate, large drift seeks, and a nudge runs until close again', () => {
+  assert.equal(correctDrift(0.1, 1, false), 1);
+  assert.equal(correctDrift(0.25, 1, false), 1);
+  assert.equal(correctDrift(-0.5, 1, false), 1.05);
+  assert.equal(correctDrift(0.5, 1, false), 0.95);
+  assert.equal(correctDrift(-0.25, 1, true), 1.05);
+  assert.equal(correctDrift(-0.15, 1, true), 1);
+  assert.equal(correctDrift(1, 1.5, false), 1.5 * 0.95);
+  assert.equal(correctDrift(-1.9, 1, false), 1.05);
+  assert.equal(correctDrift(2.5, 1, true), 'seek');
+  assert.equal(correctDrift(-3, 1, false), 'seek');
+});
+
+test('tells a seek or a new video from a play, pause or speed change', () => {
+  const s = { ...stateForItem({ kind: 'jellyfin', ref: JF }, [], 1), position: 100, ts: 10_000 };
+  assert.equal(isJump(null, s), true);
+  // paused 5 s later at where playback had got to
+  assert.equal(isJump(s, { ...s, playing: false, position: 105.2, ts: 15_000 }), false);
+  assert.equal(isJump(s, { ...s, rate: 1.5, position: 104.8, ts: 15_000 }), false);
+  assert.equal(isJump(s, { ...s, position: 300, ts: 15_000 }), true);
+  assert.equal(isJump(s, { ...s, jellyfinId: 'b'.repeat(32), position: 105, ts: 15_000 }), true);
 });

@@ -4,7 +4,7 @@ import { api } from '../../api/http';
 import { onFrame } from '../../api/ws';
 import { decryptMessage, encryptPayload, onKeysChanged } from '../../crypto';
 import { useSession } from '../../state/session';
-import { decodeState, DRIFT_SECONDS, encodeState, mediaKey, moveQueueItem, parseVideoUrl, playhead, QUEUE_MAX, SEEK_SECONDS, stateForItem, vaultItem, type QueueItem, type StampedState, type WatchState } from './sync';
+import { correctDrift, decodeState, DRIFT_SECONDS, encodeState, HARD_DRIFT_SECONDS, isJump, mediaKey, moveQueueItem, parseVideoUrl, playhead, QUEUE_MAX, SEEK_SECONDS, stateForItem, vaultItem, type QueueItem, type StampedState, type WatchState } from './sync';
 import { registerQueueHandler } from './bridge';
 import { QueueList } from './QueueList';
 import { VaultPicker, type VaultVideo } from './VaultPicker';
@@ -32,6 +32,8 @@ interface LocalPlayhead {
 
 /** Ignore player events for this long after we apply a remote change, so our own commands do not echo back as user actions. */
 const SUPPRESS_MS = 2000;
+/** After a seek, automatic drift correction waits this long for the stream (a Jellyfin transcode) to restart. */
+const SEEK_COOLDOWN_MS = 3000;
 
 async function openSnapshot(channelId: string, snap: Snapshot): Promise<StampedState | null> {
   const msg: Message = {
@@ -105,6 +107,14 @@ export function WatchPartyPanel({ callChannelId: channelId, keyChannelId, vaultS
   const stopping = useRef(false);
   /** true when the last snapshot we were sent could not be decrypted yet, so new keys should retry it */
   const undecrypted = useRef(false);
+  /** the shared state last applied to the player, to tell someone's seek from a play, pause or speed change */
+  const lastApplied = useRef<StampedState | null>(null);
+  /** set while a <video> plays a little fast or slow to catch up: the rate we set and the shared rate it stands in for */
+  const nudge = useRef<{ rate: number; base: number } | null>(null);
+  /** true from a <video>'s 'waiting' until it plays again */
+  const buffering = useRef(false);
+  /** no automatic seek before this (performance.now ms), so a restarting Jellyfin transcode is not seeked again */
+  const seekCooldownUntil = useRef(0);
 
   const serverNow = () => Date.now() + clockOffset.current;
 
@@ -133,17 +143,28 @@ export function WatchPartyPanel({ callChannelId: channelId, keyChannelId, vaultS
     const now = performance.now();
     command('seekTo', [position, true]);
     suppressUntil.current = now + SUPPRESS_MS;
+    seekCooldownUntil.current = now + SEEK_COOLDOWN_MS;
     local.current = { position, at: now, playing: local.current?.playing ?? false, rate: local.current?.rate ?? 1 };
   };
 
   const applyRemote = (s: StampedState | null) => {
     if (!s || !mediaKey(s) || !readyRef.current) return;
+    const jumped = isJump(lastApplied.current, s);
+    lastApplied.current = s;
     const now = performance.now();
     const target = remotePlayhead(s, serverNow());
-    const current = local.current ? playhead(local.current, now) : target;
+    const video = videoRef.current;
+    const current = video ? video.currentTime : local.current ? playhead(local.current, now) : target;
     suppressUntil.current = now + SUPPRESS_MS;
-    if (Math.abs(current - target) > DRIFT_SECONDS) command('seekTo', [target, true]);
+    // Someone's seek (or a new video) lands exactly. A play, pause or speed change on a <video> only seeks when far off;
+    // smaller drift is left to the gentle correction below, so it does not restart a Jellyfin transcode.
+    const limit = jumped || !video ? DRIFT_SECONDS : HARD_DRIFT_SECONDS;
+    if (Math.abs(current - target) > limit) {
+      command('seekTo', [target, true]);
+      seekCooldownUntil.current = now + SEEK_COOLDOWN_MS;
+    }
     command(s.playing ? 'playVideo' : 'pauseVideo');
+    nudge.current = null;
     command('setPlaybackRate', [s.rate]);
     local.current = { position: target, at: now, playing: s.playing, rate: s.rate };
   };
@@ -254,6 +275,9 @@ export function WatchPartyPanel({ callChannelId: channelId, keyChannelId, vaultS
   useEffect(() => {
     readyRef.current = false;
     local.current = null;
+    lastApplied.current = null;
+    nudge.current = null;
+    buffering.current = false;
     if (useVideo) return bindVideo();
     if (!videoId) return;
     if (popped) {
@@ -269,16 +293,26 @@ export function WatchPartyPanel({ callChannelId: channelId, keyChannelId, vaultS
   const bindVideo = () => {
     const video = videoRef.current;
     if (!video) return;
+    // A catch-up nudge is reported as the shared rate, so it is never published as someone changing the speed.
+    const rate = () => (nudge.current && video.playbackRate === nudge.current.rate ? nudge.current.base : video.playbackRate);
     const info = () =>
-      onPlayerEvent.current({ kind: 'info', currentTime: video.currentTime, playing: !video.paused && !video.ended, rate: video.playbackRate });
+      onPlayerEvent.current({ kind: 'info', currentTime: video.currentTime, playing: !video.paused && !video.ended, rate: rate() });
     const ready = () => onPlayerEvent.current({ kind: 'ready' });
     const events = ['play', 'pause', 'seeked', 'ratechange'] as const;
     events.forEach((n) => video.addEventListener(n, info));
+    const waiting = () => { buffering.current = true; };
+    const resumed = () => { buffering.current = false; };
+    video.addEventListener('waiting', waiting);
+    video.addEventListener('playing', resumed);
+    video.addEventListener('canplay', resumed);
     video.addEventListener('ended', onEnded);
     video.addEventListener('loadedmetadata', ready);
     if (video.readyState >= 1) ready();
     return () => {
       events.forEach((n) => video.removeEventListener(n, info));
+      video.removeEventListener('waiting', waiting);
+      video.removeEventListener('playing', resumed);
+      video.removeEventListener('canplay', resumed);
       video.removeEventListener('loadedmetadata', ready);
       video.removeEventListener('ended', onEnded);
     };
@@ -325,7 +359,9 @@ export function WatchPartyPanel({ callChannelId: channelId, keyChannelId, vaultS
     applyRemote(remote);
   }, [remote]);
 
-  // Drift correction: seek only when the projected playhead is off by more than the tolerance.
+  // Drift correction. The YouTube embed seeks when its projected playhead is off by more than the tolerance. A <video>
+  // is measured directly, nudged a little faster or slower, and only seeks when far off. It is left alone while it
+  // buffers or seeks and for a few seconds after a seek, so a restarting Jellyfin transcode is not seeked over and over.
   useEffect(() => {
     const timer = setInterval(() => {
       const s = remoteRef.current;
@@ -334,7 +370,21 @@ export function WatchPartyPanel({ callChannelId: channelId, keyChannelId, vaultS
       const now = performance.now();
       if (now < suppressUntil.current) return;
       const expected = remotePlayhead(s, serverNow());
-      if (Math.abs(playhead(l, now) - expected) > DRIFT_SECONDS) seekTo(expected);
+      const video = videoRef.current;
+      if (!video) {
+        if (Math.abs(playhead(l, now) - expected) > DRIFT_SECONDS) seekTo(expected);
+        return;
+      }
+      if (video.seeking || buffering.current || video.readyState < HTMLMediaElement.HAVE_FUTURE_DATA || now < seekCooldownUntil.current) return;
+      const fix = correctDrift(video.currentTime - expected, s.rate, nudge.current !== null);
+      if (fix === 'seek') {
+        nudge.current = null;
+        video.playbackRate = s.rate;
+        seekTo(expected);
+        return;
+      }
+      nudge.current = fix === s.rate ? null : { rate: fix, base: s.rate };
+      if (video.playbackRate !== fix) video.playbackRate = fix;
     }, 1000);
     return () => clearInterval(timer);
   }, []);
