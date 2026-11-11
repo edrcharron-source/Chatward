@@ -1,5 +1,6 @@
 import type { VaultAnnotation, VaultDescriptor, VaultItem, VaultNotes } from '@chatward/shared';
-import { api } from '../../api/http';
+import { api, ApiError } from '../../api/http';
+import { readPhotoFacts, stripGps } from './exif';
 import { decryptBlob, decryptMessage, encryptBlob, encryptPayload } from '../../crypto';
 
 const THUMB_EDGE = 320;
@@ -41,31 +42,146 @@ async function videoInfo(file: File): Promise<{ w: number; h: number; durationSe
 
 const bytesOf = async (b: Blob) => new Uint8Array(await b.arrayBuffer());
 
-export async function uploadToVault(serverId: string, channelId: string, authorId: string, file: File): Promise<VaultItem> {
+/** Longest edge of the preview shown in the viewer. The original is only downloaded for Save. */
+const PREVIEW_EDGE = 1600;
+const PREVIEW_QUALITY = 0.82;
+/** Below this size and edge, the original is already light enough to show as it is. */
+const PREVIEW_SKIP_BYTES = 600 * 1024;
+
+const hex = (b: ArrayBuffer) => [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, '0')).join('');
+
+/** A file read and cleaned up for the Vault, before anything is encrypted or sent. */
+export interface VaultReady {
+  file: File;
+  /** The bytes that will be stored: the file itself, minus location data for JPEG photos. */
+  bytes: Uint8Array;
+  sha256: string;
+  takenAt?: number;
+  takenAtSource?: 'exif' | 'file';
+  camera?: string;
+  gpsRemoved: boolean;
+}
+
+/** Reads a photo or video, removes location from JPEGs, and fingerprints it so repeats can be spotted. */
+export async function readForVault(file: File): Promise<VaultReady> {
+  if (!file.type.startsWith('video/') && !file.type.startsWith('image/')) throw new Error(`${file.name} is not a photo or video.`);
+  let bytes: Uint8Array = await bytesOf(file);
+  let gpsRemoved = false;
+  let facts: { takenAt?: number; camera?: string } = {};
+  if (file.type === 'image/jpeg') {
+    facts = readPhotoFacts(bytes);
+    const clean = stripGps(bytes);
+    bytes = clean.bytes;
+    gpsRemoved = clean.removed;
+  }
+  const sha256 = hex(await crypto.subtle.digest('SHA-256', bytes as Uint8Array<ArrayBuffer>));
+  const fromFile = file.lastModified || undefined;
+  return {
+    file, bytes, sha256, camera: facts.camera, gpsRemoved,
+    takenAt: facts.takenAt ?? fromFile,
+    takenAtSource: facts.takenAt ? 'exif' : fromFile ? 'file' : undefined,
+  };
+}
+
+/** The larger copy shown in the viewer, or null when the original is small enough or is animated. */
+async function makePreview(bitmap: ImageBitmap, file: File): Promise<Blob | null> {
+  if (file.type === 'image/gif') return null;
+  if (Math.max(bitmap.width, bitmap.height) <= PREVIEW_EDGE && file.size <= PREVIEW_SKIP_BYTES) return null;
+  const scale = Math.min(1, PREVIEW_EDGE / Math.max(bitmap.width, bitmap.height));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+  canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+  canvas.getContext('2d')!.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  return new Promise<Blob>((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("Couldn't make a preview"))), 'image/webp', PREVIEW_QUALITY));
+}
+
+const RETRIES = 5;
+const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Sends the encrypted file in pieces after the first request, resuming from what the server has after a failure. */
+async function sendInPieces(uploadId: string, blob: Uint8Array, from: number, chunk: number, onProgress?: (sent: number, total: number) => void): Promise<VaultItem> {
+  let offset = from;
+  let failures = 0;
+  for (;;) {
+    onProgress?.(offset, blob.length);
+    try {
+      const piece = blob.subarray(offset, Math.min(blob.length, offset + chunk));
+      const r = await api.putRaw<{ item?: VaultItem; received?: number }>('PUT', `/api/vault/uploads/${uploadId}?offset=${offset}`, piece as Uint8Array<ArrayBuffer>, 'application/octet-stream');
+      if (r.item) { onProgress?.(blob.length, blob.length); return r.item; }
+      offset = r.received ?? offset + piece.length;
+      failures = 0;
+    } catch (err) {
+      const status = err instanceof ApiError ? err.status : 0;
+      // Refusals other than "wrong offset" or a busy upload will not get better by trying again.
+      if (status && status !== 409 && status < 500) throw err;
+      if (++failures > RETRIES) throw err;
+      await pause(1000 * 2 ** (failures - 1));
+      const at = await api.get<{ received: number }>(`/api/vault/uploads/${uploadId}`);
+      offset = at.received;
+    }
+  }
+}
+
+export async function uploadToVault(serverId: string, channelId: string, authorId: string, file: File, opts: { ready?: VaultReady; onProgress?: (sent: number, total: number) => void } = {}): Promise<VaultItem> {
+  const ready = opts.ready ?? await readForVault(file);
   const isVideo = file.type.startsWith('video/');
-  if (!isVideo && !file.type.startsWith('image/')) throw new Error(`${file.name} is not a photo or video.`);
-  let thumb: Blob; let width: number; let height: number; let durationSec: number | undefined;
+  let thumb: Blob; let preview: Blob | null = null; let width: number; let height: number; let durationSec: number | undefined;
   if (isVideo) {
     const info = await videoInfo(file);
     ({ thumb, w: width, h: height, durationSec } = info);
   } else {
     const bitmap = await createImageBitmap(file).catch(() => { throw new Error(`Couldn't read ${file.name}.`); });
-    try { thumb = await drawThumb(bitmap, bitmap.width, bitmap.height); width = bitmap.width; height = bitmap.height; }
-    finally { bitmap.close(); }
+    try {
+      thumb = await drawThumb(bitmap, bitmap.width, bitmap.height);
+      preview = await makePreview(bitmap, file).catch(() => null);
+      width = bitmap.width; height = bitmap.height;
+    } finally { bitmap.close(); }
   }
-  const full = await encryptBlob(await bytesOf(file));
+  const full = await encryptBlob(ready.bytes);
   const small = await encryptBlob(await bytesOf(thumb));
+  const mid = preview ? await encryptBlob(await bytesOf(preview)) : null;
   const descriptor: VaultDescriptor = {
-    name: file.name.slice(0, 255), mime: file.type, kind: isVideo ? 'video' : 'image', size: file.size,
-    width, height, durationSec, takenAt: file.lastModified || undefined, key: full.key, iv: full.iv, thumbKey: small.key, thumbIv: small.iv,
+    name: file.name.slice(0, 255), mime: file.type, kind: isVideo ? 'video' : 'image', size: ready.bytes.length,
+    width, height, durationSec, takenAt: ready.takenAt, takenAtSource: ready.takenAtSource,
+    ...(ready.camera ? { camera: ready.camera.slice(0, 80) } : {}),
+    sha256: ready.sha256, ...(ready.gpsRemoved ? { gpsRemoved: true } : {}),
+    key: full.key, iv: full.iv, thumbKey: small.key, thumbIv: small.iv,
+    ...(mid ? { prevKey: mid.key, prevIv: mid.iv } : {}),
   };
   const { ciphertext, keyVersion } = await encryptPayload(channelId, authorId, { text: JSON.stringify(descriptor) });
 
-  const body = new Uint8Array(4 + small.blob.length + full.blob.length);
-  new DataView(body.buffer).setUint32(0, small.blob.length);
+  const prev = mid?.blob ?? new Uint8Array(0);
+  const first = Math.min(full.blob.length, FIRST_PIECE_BYTES);
+  const body = new Uint8Array(8 + small.blob.length + prev.length + first);
+  const view = new DataView(body.buffer);
+  view.setUint32(0, small.blob.length);
   body.set(small.blob, 4);
-  body.set(full.blob, 4 + small.blob.length);
-  const q = new URLSearchParams({ channelId, keyVersion: String(keyVersion), meta: ciphertext });
+  view.setUint32(4 + small.blob.length, prev.length);
+  body.set(prev, 8 + small.blob.length);
+  body.set(full.blob.subarray(0, first), 8 + small.blob.length + prev.length);
+  const q = new URLSearchParams({ channelId, keyVersion: String(keyVersion), meta: ciphertext, size: String(full.blob.length) });
+  opts.onProgress?.(0, full.blob.length);
+  let started: { item?: VaultItem; uploadId?: string; received?: number; chunkBytes?: number };
+  try {
+    started = await api.putRaw('POST', `/api/servers/${serverId}/vault/uploads?${q}`, body as Uint8Array<ArrayBuffer>, 'application/octet-stream');
+  } catch (err) {
+    // A server from before resumable uploads: send it the old single-request way, without the preview.
+    if (err instanceof ApiError && err.status === 404 && err.message !== 'server not found') return legacyUpload(serverId, channelId, keyVersion, ciphertext, small.blob, full.blob);
+    throw err;
+  }
+  if (started.item) { opts.onProgress?.(full.blob.length, full.blob.length); return started.item; }
+  return sendInPieces(started.uploadId!, full.blob, started.received ?? first, started.chunkBytes ?? FIRST_PIECE_BYTES, opts.onProgress);
+}
+
+/** The first request carries up to this much of the file, so most photos need only one request. */
+const FIRST_PIECE_BYTES = 8 * 1024 * 1024;
+
+async function legacyUpload(serverId: string, channelId: string, keyVersion: number, meta: string, thumb: Uint8Array, file: Uint8Array): Promise<VaultItem> {
+  const body = new Uint8Array(4 + thumb.length + file.length);
+  new DataView(body.buffer).setUint32(0, thumb.length);
+  body.set(thumb, 4);
+  body.set(file, 4 + thumb.length);
+  const q = new URLSearchParams({ channelId, keyVersion: String(keyVersion), meta });
   const { item } = await api.putRaw<{ item: VaultItem }>('POST', `/api/servers/${serverId}/vault?${q}`, body as Uint8Array<ArrayBuffer>, 'application/octet-stream');
   return item;
 }
@@ -81,9 +197,19 @@ export async function fetchVaultUrl(item: Pick<VaultItem, 'id'>, d: VaultDescrip
   return thumb ? fetchVaultFile(item.id, d.thumbKey, d.thumbIv, 'image/webp', true) : fetchVaultFile(item.id, d.key, d.iv, d.mime);
 }
 
+/** The best copy for looking at: the preview when there is one (falling back to the file if it fails), else the file. */
+export async function fetchVaultViewUrl(item: Pick<VaultItem, 'id'>, d: VaultDescriptor): Promise<{ url: string; original: boolean }> {
+  if (d.prevKey && d.prevIv) {
+    try { return { url: await fetchVaultFile(item.id, d.prevKey, d.prevIv, 'image/webp', 'preview'), original: false }; }
+    catch { /* fall through to the original */ }
+  }
+  return { url: await fetchVaultUrl(item, d, false), original: true };
+}
+
 /** Downloads and decrypts one Vault file from its id and key alone (Watch together has no descriptor); returns an object URL. */
-export async function fetchVaultFile(id: string, key: string, iv: string, mime: string, thumb = false): Promise<string> {
-  const buf = await api.getBytes(`/api/vault/${encodeURIComponent(id)}/${thumb ? 'thumb' : 'file'}`);
+export async function fetchVaultFile(id: string, key: string, iv: string, mime: string, thumb: boolean | 'preview' = false): Promise<string> {
+  const part = thumb === 'preview' ? 'preview' : thumb ? 'thumb' : 'file';
+  const buf = await api.getBytes(`/api/vault/${encodeURIComponent(id)}/${part}`);
   const plain = await decryptBlob(new Uint8Array(buf), key, iv);
   return URL.createObjectURL(new Blob([plain as Uint8Array<ArrayBuffer>], { type: mime }));
 }

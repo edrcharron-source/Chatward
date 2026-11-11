@@ -62,8 +62,8 @@ export const config = {
   vaultDir: path.resolve(process.env.VAULT_DIR ?? path.join(dataDir, 'vault')),
   /** Vault space each person may use, in bytes (VAULT_QUOTA_MB, default 20 GB). 0 turns the limit off. */
   vaultQuotaBytes: megabytes('VAULT_QUOTA_MB', '20480'),
-  /** Largest single Vault upload, in bytes (VAULT_MAX_MB, default 200 MB). Uploads are held in memory while they arrive. */
-  vaultMaxBytes: megabytes('VAULT_MAX_MB', '200'),
+  /** Largest single Vault file, in bytes (VAULT_MAX_MB, default 1 GB). Uploads arrive in chunks written straight to disk; the browser still encrypts the whole file in memory, which is what keeps this from going higher. */
+  vaultMaxBytes: megabytes('VAULT_MAX_MB', '1024'),
   /** Desktop installer, latest.yml and blockmap, served at /updates for the client auto-updater. */
   updatesDir: path.resolve(process.env.UPDATES_DIR ?? path.join(dataDir, 'updates')),
   /** Set by the update script from the installed release tag. */

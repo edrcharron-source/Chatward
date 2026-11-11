@@ -82,6 +82,7 @@ itself while open.
 | Logs | `cd deploy/home && docker compose logs -f server` (also `journalctl -t chatward-server`) |
 | Stop / start | `cd deploy/home && docker compose stop` / `docker compose up -d` |
 | DNS now | `./deploy/home/ddns-update.sh` · timer: `systemctl list-timers chatward-ddns.timer` |
+| Vault backup | `./deploy/home/backup-vault.sh` (see below) |
 | Disk | The server logs free space for data and uploads at start and hourly, and warns above 85% |
 
 If you use a Docker UI, the stack shows as `chatward`; run updates with `update-home.sh` anyway so the backup happens
@@ -97,6 +98,32 @@ first.
 | `deploy/home/.env` | domain, tokens and keys, mode 600 |
 
 Backups hold password hashes and the login secret: anyone with a copy can sign in as any member. Keep them private.
+
+### Vault backups
+`update-home.sh` only backs up the data folder. Vault photos sit on the RAID, and their keys sit in the database, so a
+Vault backup needs both from the same moment. `backup-vault.sh` copies the live database (the server keeps running) and
+the Vault folder into a dated snapshot under `VAULT_BACKUP_PATH`; unchanged photos are hard-linked to the previous
+snapshot, so a nightly run only stores what is new. Set it up once:
+
+1. Pick a folder, ideally on a disk other than the RAID: `sudo mkdir -p /mnt/backup/chatward-vault && sudo chown $USER: /mnt/backup/chatward-vault`
+2. Add `VAULT_BACKUP_PATH=/mnt/backup/chatward-vault` to `deploy/home/.env` (and `VAULT_BACKUP_KEEP=7` to change how many are kept)
+3. Try it: `./deploy/home/backup-vault.sh`
+4. Run it nightly at 04:30:
+   ```
+   cd deploy/home
+   for u in chatward-vault-backup.service chatward-vault-backup.timer; do
+     sed "s|@DEPLOY_DIR@|$PWD|g; s|@DEPLOY_USER@|$USER|g" systemd/$u | sudo tee /etc/systemd/system/$u >/dev/null
+   done
+   sudo systemctl daemon-reload && sudo systemctl enable --now chatward-vault-backup.timer
+   ```
+
+To restore, stop the server, put `chatward.db` back in the data folder and the snapshot's `vault/` back in `VAULT_PATH`.
+
+### Vault storage layout
+Vault files live in `VAULT_PATH/<ab>/<cd>/<id>` (two folder levels from the end of the id), with `.thumb` and `.prev`
+(preview) files beside each original. Older servers kept everything in one folder; the server moves those
+files into the new layout by itself at start, and keeps serving them while it does. Unfinished uploads wait in
+`VAULT_PATH/.incoming` and are cleared after a day.
 
 ## Not done yet
 Nightly backups with retention and a restore script, pulling desktop installers from GitHub releases, a health timer,

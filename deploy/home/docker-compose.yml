@@ -57,7 +57,7 @@ services:
       JELLYFIN_API_KEY: ${JELLYFIN_API_KEY:-}
       JELLYFIN_USER_ID: ${JELLYFIN_USER_ID:-}
       VAULT_QUOTA_MB: ${VAULT_QUOTA_MB:-20480}   # Vault photos and videos per person. 0 = no limit
-      VAULT_MAX_MB: ${VAULT_MAX_MB:-200}   # largest single Vault file
+      VAULT_MAX_MB: ${VAULT_MAX_MB:-1024}   # largest single Vault file (uploaded in chunks)
       PUBLIC_URL: https://${DOMAIN}   # shown in the message chatward invite prints
     volumes:
       - ${DATA_PATH:-/srv/chatward/data}:/data

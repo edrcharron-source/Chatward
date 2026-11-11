@@ -6,10 +6,14 @@ import { onKeysChanged } from '../../crypto';
 import { sendMessage } from '../../state/chat';
 import { useSession } from '../../state/session';
 import { buildAlbums } from './albums';
-import { fetchVaultUrl, mergedNotes, normalizeTag, openDescriptor, openNotes, saveNotes, uploadToVault, type NotesByItem, type VaultPage } from './vault';
+import { fetchVaultUrl, fetchVaultViewUrl, mergedNotes, normalizeTag, openDescriptor, openNotes, readForVault, saveNotes, uploadToVault, type NotesByItem, type VaultPage } from './vault';
+import { loadVaultIndex } from './vaultIndex';
 import { canQueueToWatchParty, queueToWatchParty } from '../watchparty/bridge';
 import { vaultItem } from '../watchparty/sync';
 import './vault.css';
+
+/** Tiles drawn at first and added per "Show more"; albums and filters still cover the whole Vault. */
+const TILE_STEP = 120;
 
 const mb = (n: number) => `${(n / (1024 * 1024)).toFixed(n < 10 * 1024 * 1024 ? 1 : 0)} MB`;
 
@@ -17,6 +21,7 @@ export default function VaultView({ serverId, keyChannelId, canModerate, chatCha
   const me = useSession((s) => s.user?.id ?? '');
   const [items, setItems] = useState<VaultItem[]>([]);
   const [hasMore, setHasMore] = useState(false);
+  const [visible, setVisible] = useState(TILE_STEP);
   const [usage, setUsage] = useState({ used: 0, quota: 0, max: 0 });
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
@@ -74,11 +79,15 @@ export default function VaultView({ serverId, keyChannelId, canModerate, chatCha
     setHasMore(r.hasMore);
     setUsage({ used: r.usedBytes, quota: r.quotaBytes, max: r.maxBytes });
   };
+  // The whole Vault at once from the index (cached on this device), or page by page from servers without one.
   const load = useCallback(() => {
-    api.get<VaultPage>(`/api/servers/${serverId}/vault`).then((r) => apply(r, false)).catch((e: Error) => setError(e.message));
+    loadVaultIndex(serverId)
+      .then((r) => r ? apply({ items: r.items, hasMore: false, usedBytes: r.usedBytes, quotaBytes: r.quotaBytes, maxBytes: r.maxBytes }, false)
+        : api.get<VaultPage>(`/api/servers/${serverId}/vault`).then((p) => apply(p, false)))
+      .catch((e: Error) => setError(e.message));
   }, [serverId]);
   useEffect(() => {
-    setItems([]); setError(null); load();
+    setItems([]); setError(null); setVisible(TILE_STEP); load();
     return onFrame((f: ServerFrame) => {
       if (f.t === 'vault.new' && f.item.serverId === serverId) setItems((l) => (l.some((i) => i.id === f.item.id) ? l : [f.item, ...l]));
       else if (f.t === 'vault.delete' && f.serverId === serverId) setItems((l) => l.filter((i) => i.id !== f.itemId));
@@ -97,9 +106,16 @@ export default function VaultView({ serverId, keyChannelId, canModerate, chatCha
     setError(null);
     for (const [i, file] of [...files].entries()) {
       if (usage.max > 0 && file.size > usage.max) { setError(`${file.name} is over the ${mb(usage.max)} limit.`); continue; }
-      setStatus(`Encrypting and uploading ${file.name} (${i + 1}/${files.length})…`);
+      const label = `${file.name} (${i + 1}/${files.length})`;
+      setStatus(`Reading ${label}…`);
       try {
-        const item = await uploadToVault(serverId, keyChannelId, me, file);
+        const ready = await readForVault(file);
+        const twin = items.find((it) => descs[it.id]?.sha256 === ready.sha256);
+        if (twin && !window.confirm(`${file.name} is already in the Vault. Add it again?`)) continue;
+        const item = await uploadToVault(serverId, keyChannelId, me, file, {
+          ready,
+          onProgress: (sent, total) => setStatus(`Encrypting and uploading ${label}… ${total ? Math.floor((sent / total) * 100) : 0}%`),
+        });
         setItems((l) => (l.some((x) => x.id === item.id) ? l : [item, ...l]));
         setUsage((u) => ({ ...u, used: u.used + item.size }));
       } catch (e) { setError((e as Error).message); }
@@ -164,9 +180,10 @@ export default function VaultView({ serverId, keyChannelId, canModerate, chatCha
         </div>
       )}
       <div className="cw-vault-grid">
-        {shown.map((item) => <Tile key={item.id} item={item} onOpen={(d) => setOpen({ item, d })} />)}
+        {shown.slice(0, visible).map((item) => <Tile key={item.id} item={item} onOpen={(d) => setOpen({ item, d })} />)}
       </div>
-      {hasMore && <button type="button" className="cw-vault-more" onClick={() => void loadMore()}>Load older</button>}
+      {shown.length > visible && <button type="button" className="cw-vault-more" onClick={() => setVisible((n) => n + TILE_STEP)}>Show more ({shown.length - visible} left)</button>}
+      {shown.length <= visible && hasMore && <button type="button" className="cw-vault-more" onClick={() => void loadMore()}>Load older</button>}
       {open && <Viewer item={open.item} d={open.d} canDelete={open.item.ownerId === me || canModerate} onDelete={() => void remove(open.item)} onClose={() => setOpen(null)}
         panel={<NotesEditor item={open.item} me={me} mine={notes[open.item.id]?.[me]} merged={mergedNotes(notes[open.item.id])} people={people} onError={setError} />}
         extra={<>
@@ -206,14 +223,28 @@ function Tile({ item, onOpen }: { item: VaultItem; onOpen: (d: VaultDescriptor) 
 
 export function Viewer({ item, d, canDelete, onDelete, onClose, extra, panel }: { item: Pick<VaultItem, 'id'>; d: VaultDescriptor; canDelete: boolean; onDelete: () => void; onClose: () => void; extra?: React.ReactNode; panel?: React.ReactNode }) {
   const [url, setUrl] = useState<string | null>(null);
+  const [isOriginal, setIsOriginal] = useState(false);
   const [failed, setFailed] = useState(false);
+  const [saving, setSaving] = useState(false);
   useEffect(() => {
     let alive = true; let made: string | null = null;
-    fetchVaultUrl(item, d, false).then((u) => { made = u; if (alive) setUrl(u); else URL.revokeObjectURL(u); }).catch(() => { if (alive) setFailed(true); });
+    fetchVaultViewUrl(item, d).then((v) => { made = v.url; if (alive) { setUrl(v.url); setIsOriginal(v.original); } else URL.revokeObjectURL(v.url); }).catch(() => { if (alive) setFailed(true); });
     const key = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     document.addEventListener('keydown', key);
     return () => { alive = false; document.removeEventListener('keydown', key); if (made) URL.revokeObjectURL(made); };
   }, [item, d, onClose]);
+  // The viewer shows the lighter preview, so Save fetches the full original first.
+  async function saveOriginal() {
+    setSaving(true);
+    try {
+      const full = await fetchVaultUrl(item, d, false);
+      const a = document.createElement('a');
+      a.href = full; a.download = d.name;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(full), 60_000);
+    } catch { setFailed(true); }
+    finally { setSaving(false); }
+  }
   return (
     <div className="cw-vault-viewer" role="dialog" aria-label={d.name} onClick={onClose}>
       <div className="cw-vault-stage" onClick={(e) => e.stopPropagation()}>
@@ -224,7 +255,8 @@ export function Viewer({ item, d, canDelete, onDelete, onClose, extra, panel }: 
         <div className="cw-vault-bar">
           <span title={d.name}>{d.name} · {mb(d.size)}</span>
           {extra}
-          {url && <a href={url} download={d.name}>Save</a>}
+          {url && isOriginal && <a href={url} download={d.name}>Save</a>}
+          {url && !isOriginal && <button type="button" disabled={saving} title="Downloads the full-size original" onClick={() => void saveOriginal()}>{saving ? 'Saving…' : 'Save'}</button>}
           {canDelete && <button type="button" onClick={onDelete}>Delete</button>}
           <button type="button" onClick={onClose}>Close</button>
         </div>

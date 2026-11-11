@@ -181,6 +181,8 @@ export interface VaultItem {
   keyVersion: number;
   /** base64(iv || AES-GCM ciphertext) of JSON VaultDescriptor */
   ciphertext: string;
+  /** A mid-size preview is stored next to the file (GET /api/vault/:id/preview). */
+  hasPreview?: boolean;
 }
 
 /** Decrypted Vault item details (only ever exists on clients). `key`/`iv` open the file, `thumbKey`/`thumbIv` the thumbnail. */
@@ -192,12 +194,23 @@ export interface VaultDescriptor {
   width?: number;
   height?: number;
   durationSec?: number;
-  /** When the photo or video was taken (file's last-modified time, ms epoch). Absent on older uploads. */
+  /** When the photo or video was taken (ms epoch): the camera's date when the photo has one, else the file's last-modified time. Absent on older uploads. */
   takenAt?: number;
+  /** Where takenAt came from: the photo's own EXIF date, or the file's last-modified time. */
+  takenAtSource?: 'exif' | 'file';
+  /** Camera make and model from EXIF, when present. */
+  camera?: string;
+  /** Hex SHA-256 of the stored (unencrypted) file, used to spot the same file being added twice. */
+  sha256?: string;
+  /** True when location data was removed from the photo before it was encrypted. */
+  gpsRemoved?: boolean;
   key: string;
   iv: string;
   thumbKey: string;
   thumbIv: string;
+  /** Key and iv of the mid-size WebP preview, when one was made. Older items have none and show the file instead. */
+  prevKey?: string;
+  prevIv?: string;
 }
 
 /** A Vault item shared in a message: the item id plus its decrypted descriptor (which holds the file keys). */
