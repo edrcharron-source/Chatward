@@ -1,6 +1,7 @@
 // Checks the LCARS layout's see-through window (main/index.ts, components/lcars/shapedWindow.ts): picking LCARS swaps in a
 // transparent window, the page paints nothing past the frame's outline (the corners stay fully see-through, even with a
-// dialog open), the edges can resize it, and picking another layout brings the usual window back. Screenshots (on a pink
+// dialog open), the edges can resize it, and picking another layout brings the usual window back. Each switch moves the
+// page to the new window as it is (no reload), so a typed draft and the page's own state carry over. Screenshots (on a pink
 // backdrop, so the see-through parts show) land in the out dir.
 // Needs xvfb on Linux. Run with: npm run lcars:shaped -w @chatward/client -- <out dir>
 import assert from 'node:assert/strict';
@@ -32,21 +33,24 @@ function onPink(png: Buffer, file: string) {
   fs.writeFileSync(path.join(out, file), PNG.sync.write(img));
 }
 
-async function pickLayout(app: ElectronApplication, page: Page, layout: string, skin: string): Promise<Page> {
-  const next = app.waitForEvent('window');
-  await page.evaluate(({ layout, skin }) => {
-    const saved = JSON.parse(localStorage.getItem('chatward.settings') ?? '{}');
-    localStorage.setItem('chatward.settings', JSON.stringify({ ...saved, layout, skin }));
-    location.reload();
-  }, { layout, skin });
-  const win = await next;
-  await win.waitForLoadState('load');
-  return win;
+// Picks a layout in Settings > Appearance, the way a person does, and waits until the page is in the matching window.
+// The page must not reload: it is moved to the new window as it is.
+async function pickLayout(page: Page, layout: string, label: string) {
+  await page.getByRole('button', { name: 'Settings', exact: true }).first().click();
+  const dialog = page.getByRole('dialog', { name: 'Settings' });
+  await dialog.getByRole('tab', { name: 'Appearance', exact: true }).click();
+  await dialog.getByRole('radio', { name: label, exact: true }).check();
+  await page.keyboard.press('Escape');
+  const want = layout === 'lcars';
+  await page.waitForFunction((want) => window.chatward.windowControls.isShaped() === want, want);
+  await page.waitForTimeout(400);
 }
 
-const windows = (app: ElectronApplication) => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length);
-const capture = (app: ElectronApplication) => app.evaluate(async ({ BrowserWindow }) =>
-  (await BrowserWindow.getAllWindows()[0].webContents.capturePage()).toPNG().toString('base64')).then((b) => Buffer.from(b, 'base64'));
+const windows = (app: ElectronApplication) => app.evaluate(({ BaseWindow }) => BaseWindow.getAllWindows().length);
+const capture = (app: ElectronApplication) => app.evaluate(async ({ webContents }) => {
+  const page = webContents.getAllWebContents().find((w) => w.getURL().startsWith('app://'));
+  return (await page!.capturePage()).toPNG().toString('base64');
+}).then((b) => Buffer.from(b, 'base64'));
 
 async function run() {
   fs.mkdirSync(out, { recursive: true });
@@ -58,17 +62,22 @@ async function run() {
       safeStorage.encryptString = (s: string) => Buffer.from(s);
       safeStorage.decryptString = (b: Buffer) => b.toString();
     });
-    let page = await app.firstWindow();
+    const page = await app.firstWindow();
     await page.waitForLoadState('load');
-    assert.equal(await page.evaluate(() => window.chatward.windowControls.shaped), false, 'starts in the usual window');
-
-    page = await pickLayout(app, page, 'lcars', 'lcars');
-    assert.equal(await windows(app), 1, 'the old window is gone after the swap');
-    assert.equal(await page.evaluate(() => window.chatward.windowControls.shaped), true, 'LCARS gets the see-through window');
-    assert.deepEqual(JSON.parse(fs.readFileSync(path.join(userData, 'window-frame.json'), 'utf8')), { shaped: true });
-
+    assert.equal(await page.evaluate(() => window.chatward.windowControls.isShaped()), false, 'starts in the usual window');
     await page.getByText('Try demo', { exact: false }).click();
     await page.getByLabel('Message', { exact: true }).waitFor();
+    // Something only this run of the page has: it must still be there after each switch, so the page never reloaded.
+    await page.evaluate(() => { (window as unknown as { stillHere: boolean }).stillHere = true; });
+    const stillHere = () => page.evaluate(() => (window as unknown as { stillHere?: boolean }).stillHere === true);
+    await page.getByLabel('Message', { exact: true }).fill('half-typed draft');
+
+    await pickLayout(page, 'lcars', 'LCARS');
+    assert.equal(await windows(app), 1, 'the old window is gone after the switch');
+    assert.equal(await stillHere(), true, 'switching to LCARS keeps the page running (no reload)');
+    assert.equal(await page.getByLabel('Message', { exact: true }).inputValue(), 'half-typed draft', 'a typed draft survives the switch');
+    assert.deepEqual(JSON.parse(fs.readFileSync(path.join(userData, 'window-frame.json'), 'utf8')), { shaped: true });
+
     // The real app has no demo banner, so the frame starts at the window's top edge.
     await page.addStyleTag({ content: '.cw-app > *:not(.cw-app-body) { display: none !important; }' });
     await page.waitForTimeout(800);
@@ -87,9 +96,12 @@ async function run() {
     assert.deepEqual(alphaAt(dialog, corners), [0, 0, 0, 0], 'a dialog backdrop does not fill the corners');
     await page.keyboard.press('Escape');
 
-    page = await pickLayout(app, page, 'tabs', 'lebserver');
-    assert.equal(await page.evaluate(() => window.chatward.windowControls.shaped), false, 'other layouts get the usual window back');
+    await pickLayout(page, 'tabs', 'Tabs');
+    assert.equal(await windows(app), 1, 'one window after switching back');
+    assert.equal(await stillHere(), true, 'switching back from LCARS keeps the page running (no reload)');
     assert.deepEqual(alphaAt(await capture(app), corners), [255, 255, 255, 255], 'the usual window is solid');
+    await pickLayout(page, 'orbit', 'Orbit');
+    assert.equal(await stillHere(), true, 'switching to Orbit keeps the page running');
     console.log('LCARS gets a see-through window with nothing past its frame, and other layouts keep the usual one.');
   } finally {
     await app.close();

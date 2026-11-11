@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, net, protocol, safeStorage, desktopCapturer, screen, session, shell } from 'electron';
+import { app, BaseWindow, BrowserWindow, WebContentsView, dialog, ipcMain, net, protocol, safeStorage, desktopCapturer, screen, session, shell } from 'electron';
 import { join, normalize, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync, renameSync } from 'node:fs';
@@ -114,19 +114,31 @@ const childWindows = new WeakMap<Electron.WebContents, Map<string, BrowserWindow
 // about:blank, so its own address doesn't say it is ours).
 const appWindowContents = new WeakSet<Electron.WebContents>();
 
-function controlledWindow(sender: Electron.WebContents, target: unknown): BrowserWindow | null {
+/**
+ * The app's page lives in a view that can be moved from one window to another without reloading (see swapWindow).
+ * This maps the page to the main window it is in right now. Pop-outs are ordinary windows with their own page.
+ */
+const hosts = new Map<Electron.WebContents, BaseWindow>();
+function windowOf(sender: Electron.WebContents): BaseWindow | null {
+  return hosts.get(sender) ?? BrowserWindow.fromWebContents(sender);
+}
+/** True when the sender is the app's main page itself, not a pop-out or a frame inside it. */
+const isMainPage = (sender: Electron.WebContents) => hosts.has(sender);
+
+function controlledWindow(sender: Electron.WebContents, target: unknown): BaseWindow | null {
   if (typeof target === 'string' && target) {
     const child = childWindows.get(sender)?.get(target);
     return child && !child.isDestroyed() ? child : null;
   }
-  return BrowserWindow.fromWebContents(sender);
+  return windowOf(sender);
 }
 
 /**
  * The LCARS layout's frame is not a rectangle, so the main window can be a "shaped" one: transparent, with no system
  * border, shadow or rounded corners, and the page paints only the frame (lcars.css). Windows can only make a window
- * transparent when it is created, so the choice is saved and switching the layout in or out of LCARS swaps the window
- * for a new one (see window:shaped below). Every other layout keeps the usual window.
+ * transparent when it is created, so switching the layout in or out of LCARS puts the page into a new window of the
+ * other kind (see swapWindow). The page itself is moved, not reloaded, so everything on it carries on as it was. The
+ * choice is saved so the app starts in the right window. Every other layout keeps the usual window.
  */
 const FRAME_FILE = 'window-frame.json';
 function loadShaped(): boolean {
@@ -135,13 +147,13 @@ function loadShaped(): boolean {
 function saveShaped(shaped: boolean): void {
   try { writeFileSync(join(app.getPath('userData'), FRAME_FILE), JSON.stringify({ shaped })); } catch { /* the next start uses the usual window */ }
 }
-const shapedWindows = new WeakSet<BrowserWindow>();
-/** The app's main windows (not pop-outs): only these follow the layout's window choice. */
-const mainWindows = new WeakSet<BrowserWindow>();
+const shapedWindows = new WeakSet<BaseWindow>();
+/** The app's main windows (not pop-outs) and the page each one shows. */
+const mainPages = new WeakMap<BaseWindow, WebContentsView>();
 const MIN_SIZE = { width: 900, height: 600 };
 
 /** An edge drag in progress on a shaped window (it has no system border to drag): the cursor is followed until the page says the button is up. */
-let resizing: { win: BrowserWindow; timer: NodeJS.Timeout; pacer: ResizePacer } | null = null;
+let resizing: { win: BaseWindow; timer: NodeJS.Timeout; pacer: ResizePacer } | null = null;
 function stopResize(): void {
   if (!resizing) return;
   clearInterval(resizing.timer);
@@ -149,13 +161,24 @@ function stopResize(): void {
   resizing = null;
 }
 
-function createWindow(place?: { bounds: Electron.Rectangle; maximized: boolean }) {
+/** The page fills the window's inside. */
+function fitPage(win: BaseWindow): void {
+  const view = mainPages.get(win);
+  if (!view || win.isDestroyed()) return;
+  const { width, height } = win.getContentBounds();
+  view.setBounds({ x: 0, y: 0, width, height });
+}
+
+/** A main window, shaped or not, showing `view` (a new page when none is given). */
+function createWindow(place?: { bounds: Electron.Rectangle; maximized: boolean }, view?: WebContentsView, shapedChoice?: boolean) {
   // Fit to the primary display's work area so the bottom edge is not hidden behind the taskbar on small or scaled screens.
   const fitted = fitWindow(screen.getPrimaryDisplay().workArea, { width: 1280, height: 800, minWidth: MIN_SIZE.width, minHeight: MIN_SIZE.height });
   const bounds = place ? { ...place.bounds, minWidth: fitted.minWidth, minHeight: fitted.minHeight } : fitted;
-  const shaped = process.platform !== 'darwin' && !app.commandLine.hasSwitch('chatward-keep-window') && loadShaped();
-  const win = new BrowserWindow({
+  const shaped = shapedChoice ?? (process.platform !== 'darwin' && !app.commandLine.hasSwitch('chatward-keep-window') && loadShaped());
+  const win = new BaseWindow({
     ...bounds,
+    // A moved page is put in before the window shows, so the new window never flashes empty.
+    show: !view,
     title: 'Chatward',
     // The app icon shown in the taskbar. Packaged builds include build/icon.png (see package.json "files").
     icon: join(app.getAppPath(), 'build/icon.png'),
@@ -166,41 +189,80 @@ function createWindow(place?: { bounds: Electron.Rectangle; maximized: boolean }
       // No system frame: the page draws its own title bar (components/titlebar). 'hidden' keeps the edge resizing,
       // the shadow and Windows snap that frame: false would lose. macOS keeps its traffic lights.
       : { backgroundColor: '#1e1f22', titleBarStyle: 'hidden' as const }),
+  });
+  const page = view ?? new WebContentsView({
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true,
-      // Tells the page it is in a shaped window, so it clears the page's own background around the LCARS frame.
+      // Tells the page whether it starts in a shaped window; a move to another window says so with window:shaped-changed.
       additionalArguments: shaped ? ['--chatward-shaped'] : [],
     },
   });
-  mainWindows.add(win);
+  // A see-through page in the shaped window, so the desktop shows past the LCARS frame.
+  page.setBackgroundColor(shaped ? '#00000000' : '#1e1f22');
+  win.contentView.addChildView(page);
+  mainPages.set(win, page);
+  hosts.set(page.webContents, win);
   if (shaped) shapedWindows.add(win);
+  fitPage(win);
+  win.on('resize', () => fitPage(win));
+  // Once the user looks at the window, the taskbar flash has done its job, so stop it; typing goes to the page.
+  win.on('focus', () => {
+    win.flashFrame(false);
+    if (mainPages.get(win) === page && !page.webContents.isDestroyed()) page.webContents.focus();
+  });
+  win.on('closed', () => {
+    if (resizing?.win === win) stopResize();
+    // A window closed by the user takes its page with it. A swap has already moved the page on.
+    if (hosts.get(page.webContents) === win) {
+      hosts.delete(page.webContents);
+      if (!page.webContents.isDestroyed()) page.webContents.close();
+    }
+  });
   if (place?.maximized) win.maximize();
-  guardWebContents(win.webContents);
-  appWindowContents.add(win.webContents);
-  // Once the user looks at the window, the taskbar flash has done its job, so stop it.
-  win.on('focus', () => win.flashFrame(false));
-  win.on('closed', () => { if (resizing?.win === win) stopResize(); });
+  if (view) {
+    win.show();
+    page.webContents.focus();
+    page.webContents.send('window:shaped-changed', shaped);
+    return win;
+  }
+
+  const wc = page.webContents;
+  guardWebContents(wc);
+  appWindowContents.add(wc);
+  wc.on('destroyed', () => { hosts.delete(wc); });
   // Child windows (the watch-party pop-out) don't inherit the handlers above, so guard them too.
-  // They live on this window's page, so they close with it.
-  win.webContents.on('did-create-window', (child, { frameName }) => {
+  // They live on this page, so they close with it (not with the window: a layout swap moves the page on).
+  wc.on('did-create-window', (child, { frameName }) => {
     guardWebContents(child.webContents);
     appWindowContents.add(child.webContents);
     if (frameName) {
-      const named = childWindows.get(win.webContents) ?? new Map<string, BrowserWindow>();
-      childWindows.set(win.webContents, named);
+      const named = childWindows.get(wc) ?? new Map<string, BrowserWindow>();
+      childWindows.set(wc, named);
       named.set(frameName, child);
       child.on('closed', () => { if (named.get(frameName) === child) named.delete(frameName); });
     }
-    win.on('closed', () => { if (!child.isDestroyed()) child.close(); });
+    wc.once('destroyed', () => { if (!child.isDestroyed()) child.close(); });
   });
-  if (process.env['ELECTRON_RENDERER_URL']) win.loadURL(process.env['ELECTRON_RENDERER_URL']);
-  else win.loadURL(`${APP_ORIGIN}/index.html`);
+  if (process.env['ELECTRON_RENDERER_URL']) wc.loadURL(process.env['ELECTRON_RENDERER_URL']);
+  else wc.loadURL(`${APP_ORIGIN}/index.html`);
   return win;
 }
 
+/** Moves the page into a new window of the other kind, at the same place and size, without reloading it. */
+function swapWindow(win: BaseWindow, shaped: boolean): void {
+  const page = mainPages.get(win);
+  if (!page) return;
+  const place = { bounds: win.getNormalBounds(), maximized: win.isMaximized() };
+  if (resizing?.win === win) stopResize();
+  win.contentView.removeChildView(page);
+  mainPages.delete(win);
+  createWindow(place, page, shaped);
+  win.destroy();
+}
+
 /** Pending window swaps, so a layout flipped back and forth quickly (or a page that mounts twice) swaps at most once. */
-const swapTimers = new WeakMap<BrowserWindow, NodeJS.Timeout>();
+const swapTimers = new WeakMap<Electron.WebContents, NodeJS.Timeout>();
 
 app.whenReady().then(() => {
   mkdirSync(app.getPath('userData'), { recursive: true });
@@ -224,7 +286,7 @@ app.whenReady().then(() => {
     const origin = serverOrigin(String(raw ?? ''));
     if (origin === allowedServer) return false;
     if (origin) {
-      const { response } = await dialog.showMessageBox(BrowserWindow.fromWebContents(e.sender) ?? undefined as unknown as BrowserWindow, {
+      const { response } = await dialog.showMessageBox(windowOf(e.sender) ?? undefined as unknown as BaseWindow, {
         type: 'question', buttons: ['Connect', 'Cancel'], defaultId: 0, cancelId: 1,
         title: 'Chatward', message: `Connect to ${origin}?`,
         detail: 'Chatward will only reach this server, and the voice server on the same address.',
@@ -258,7 +320,7 @@ app.whenReady().then(() => {
   });
 
   sendReferrerForYouTube();
-  setupUpdater();
+  setupUpdater(() => [...hosts.keys()]);
 
   ipcMain.handle('secure:get', (_e, key: string) => readSecret(key));
   // Demo-only internet access. Both run here so the renderer's CSP and CORS never apply.
@@ -288,7 +350,7 @@ app.whenReady().then(() => {
   ipcMain.handle('screen:select', (_e, id: string) => { pendingSourceId = id; });
   // The renderer asks for a taskbar flash only for messages the user should see. Skip it if they are already looking.
   ipcMain.on('window:flash', (e) => {
-    const win = BrowserWindow.fromWebContents(e.sender);
+    const win = windowOf(e.sender);
     if (win && !win.isFocused()) win.flashFrame(true);
   });
 
@@ -301,29 +363,27 @@ app.whenReady().then(() => {
     else if (action === 'close') win.close();
   });
   // The page says whether its layout wants the shaped window (LCARS) or the usual one. When that differs from the
-  // window it is in, the choice is saved and the window is swapped for a new one at the same place and size. The page
-  // reloads in the new window, like a restart, so this only happens when the layout setting changes.
+  // window it is in, the choice is saved and the page moves to a new window of the right kind at the same place and
+  // size. The page is not reloaded: it carries on as it was, call and all.
   ipcMain.on('window:shaped', (e, want: unknown) => {
-    const win = BrowserWindow.fromWebContents(e.sender);
-    if (!win || win.webContents !== e.sender || typeof want !== 'boolean' || !mainWindows.has(win)) return;
+    const win = hosts.get(e.sender);
+    if (!win || typeof want !== 'boolean') return;
     // The screenshot checks hold on to the first window, so they ask for it to be kept.
     if (process.platform === 'darwin' || app.commandLine.hasSwitch('chatward-keep-window')) return;
-    clearTimeout(swapTimers.get(win));
-    swapTimers.set(win, setTimeout(() => {
-      swapTimers.delete(win);
-      if (win.isDestroyed()) return;
+    clearTimeout(swapTimers.get(e.sender));
+    swapTimers.set(e.sender, setTimeout(() => {
+      swapTimers.delete(e.sender);
+      const now = hosts.get(e.sender);
+      if (!now || now.isDestroyed()) return;
       saveShaped(want);
-      if (shapedWindows.has(win) === want) return;
-      const place = { bounds: win.getNormalBounds(), maximized: win.isMaximized() };
-      createWindow(place);
-      win.destroy();
-    }, 400));
+      if (shapedWindows.has(now) !== want) swapWindow(now, want);
+    }, 150));
   });
   // A shaped window has no system border, so the LCARS frame's edges start the resize themselves.
   ipcMain.on('window:resize', (e, edge: unknown) => {
-    const win = BrowserWindow.fromWebContents(e.sender);
+    const win = hosts.get(e.sender);
     stopResize();
-    if (!win || win.webContents !== e.sender || !isResizeEdge(edge) || win.isMaximized() || win.isFullScreen()) return;
+    if (!win || !isResizeEdge(edge) || win.isMaximized() || win.isFullScreen()) return;
     const start = win.getBounds();
     const from = screen.getCursorScreenPoint();
     const [minW, minH] = win.getMinimumSize();
@@ -338,6 +398,7 @@ app.whenReady().then(() => {
       const now = win.getBounds();
       if (next.x !== now.x || next.y !== now.y || next.width !== now.width || next.height !== now.height) {
         win.setBounds(next);
+        fitPage(win);
         pacer.sent(tick);
       }
     }, 16);
@@ -348,12 +409,12 @@ app.whenReady().then(() => {
   ipcMain.on('window:resize-end', () => stopResize());
   // The page has drawn the size the window was last moved to, so the next step may go ahead.
   ipcMain.on('window:resize-ack', (e) => {
-    if (resizing && resizing.win.webContents === e.sender) resizing.pacer.acked();
+    if (resizing && hosts.get(e.sender) === resizing.win) resizing.pacer.acked();
   });
   ipcMain.handle('window:maximized', (e, target: unknown) => controlledWindow(e.sender, target)?.isMaximized() ?? false);
 
   createWindow();
-  app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
+  app.on('activate', () => { if (BaseWindow.getAllWindows().length === 0) createWindow(); });
 });
 
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
