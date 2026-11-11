@@ -14,6 +14,11 @@ export interface Settings {
    * (components/orbit). Separate from the skin: every skin works in every layout.
    */
   layout: 'tabs' | 'classic' | 'lcars' | 'orbit';
+  /**
+   * Desktop app (not macOS): every layout uses the see-through window LCARS needs, so switching to or from LCARS never
+   * changes the window and there is no blink. Off = only LCARS uses it (the usual window keeps its shadow and snapping).
+   */
+  seamlessWindow: boolean;
   /** tabs layout split view: share of the width the left tab takes, 0.2..0.8 */
   splitRatio: number;
   /** tabs layout: the tab bar's order, by tab id; unknown ids are dropped and missing ones go at the end */
@@ -45,7 +50,7 @@ export interface Settings {
 
 const LS = 'chatward.settings';
 const defaults = {
-  theme: 'dark' as const, skin: 'lebserver', animatedBackgrounds: true, welcomeDismissed: false, layout: 'tabs' as Settings['layout'], splitRatio: 0.5, tabOrder: [] as string[], inputDeviceId: '', outputDeviceId: '', cameraDeviceId: '',
+  theme: 'dark' as const, skin: 'lebserver', animatedBackgrounds: true, welcomeDismissed: false, layout: 'tabs' as Settings['layout'], seamlessWindow: false, splitRatio: 0.5, tabOrder: [] as string[], inputDeviceId: '', outputDeviceId: '', cameraDeviceId: '',
   masterVolume: 1, micGain: 1, noiseSuppression: true, echoCancellation: true,
   messageSounds: true, voiceJoinLeaveSounds: true, silenceAll: false, soundVolume: 0.6,
   autoLoadEmbeds: false, linkPreviews: true, confirmDeleteMessages: true, userVolumes: {} as Record<string, number>, mutedUsers: {} as Record<string, boolean>,

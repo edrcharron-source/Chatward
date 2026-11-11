@@ -94,7 +94,10 @@ any other choice.
 - **The window** (desktop app, not macOS) is see-through around the frame: picking the LCARS layout swaps the main
   window for a transparent one with no system border, shadow or rounded corners (`main/index.ts`, saved in
   `window-frame.json`), and picking another layout swaps the usual window back. The page lives in a view that is moved
-  to the new window as it is, so nothing reloads: dialogs, drafts and the call carry on. The
+  to the new window as it is, so nothing reloads: dialogs, drafts and the call carry on. With **Seamless layout
+  switching** on (Settings > Appearance, off by default) every layout uses the see-through window, so nothing is swapped
+  at all; the rectangular layouts paint solid and get their own resize edges (`titlebar/windowShape.tsx`), and they give
+  up the usual window's shadow and Windows snapping. The
   page clears everything behind the frame and clips itself to the frame's outline (`useShapedFrame`), and thin strips on
   the frame's outer edges resize the window, since it has no system border to drag. Maximized, it is a plain rectangle.
 - **Rules:** four colours with fixed meanings (blue frame/ready, amber selected/live, red close/leave/alert, lilac text),

@@ -6,6 +6,7 @@ import { keepTokenFresh } from './api/token';
 import { isLiveChannel, refreshUnread, signOut, useSession, type ServerBundle } from './state/session';
 import { useSettings, applyTheme } from './state/settings';
 import { applySkin } from './skins';
+import { PlainWindowEdges } from './components/titlebar/windowShape';
 import { useVoice, rekeyActiveCall, resumeVoiceSlot, clearLeftoverVoiceSlot, leaveCallOnExit } from './state/voice';
 import { forgetChatChannels, useChat } from './state/chat';
 import { installGuestKeys } from './state/guests';
@@ -331,6 +332,7 @@ function Shell() {
             onOpenMovies={jellyfinEnabled ? () => setMoviesOpen(true) : null}
             frame={layout === 'lcars' || layout === 'orbit' ? layout : undefined} rail={layout === 'classic'} />}
       {modals}
+      <PlainWindowEdges />
     </>
   );
 }

@@ -10,12 +10,13 @@ export function syncShapedWindow(): void {
   const controls = window.chatward?.windowControls;
   if (!controls?.setShaped || controls.platform === 'darwin') return;
   let last: boolean | undefined;
-  const sync = (layout: string) => {
-    const want = layout === 'lcars';
+  const sync = ({ layout, seamlessWindow }: { layout: string; seamlessWindow: boolean }) => {
+    // Seamless layout switching keeps every layout in the see-through window, so a layout change never swaps it.
+    const want = layout === 'lcars' || seamlessWindow;
     if (want === last) return;
     last = want;
     controls.setShaped(want);
   };
-  sync(useSettings.getState().layout);
-  useSettings.subscribe((s) => sync(s.layout));
+  sync(useSettings.getState());
+  useSettings.subscribe(sync);
 }

@@ -35,13 +35,13 @@ function onPink(png: Buffer, file: string) {
 
 // Picks a layout in Settings > Appearance, the way a person does, and waits until the page is in the matching window.
 // The page must not reload: it is moved to the new window as it is.
-async function pickLayout(page: Page, layout: string, label: string) {
+async function pickLayout(page: Page, layout: string, label: string, seamless = false) {
   await page.getByRole('button', { name: 'Settings', exact: true }).first().click();
   const dialog = page.getByRole('dialog', { name: 'Settings' });
   await dialog.getByRole('tab', { name: 'Appearance', exact: true }).click();
   await dialog.getByRole('radio', { name: label, exact: true }).check();
   await page.keyboard.press('Escape');
-  const want = layout === 'lcars';
+  const want = layout === 'lcars' || seamless;
   await page.waitForFunction((want) => window.chatward.windowControls.isShaped() === want, want);
   await page.waitForTimeout(400);
 }
@@ -102,7 +102,33 @@ async function run() {
     assert.deepEqual(alphaAt(await capture(app), corners), [255, 255, 255, 255], 'the usual window is solid');
     await pickLayout(page, 'orbit', 'Orbit');
     assert.equal(await stillHere(), true, 'switching to Orbit keeps the page running');
-    console.log('LCARS gets a see-through window with nothing past its frame, and other layouts keep the usual one.');
+
+    // Seamless layout switching: every layout stays in the see-through window, so switching to and from LCARS never
+    // changes the window at all. The rectangular layouts paint solid and draw their own resize edges.
+    await pickLayout(page, 'tabs', 'Tabs');
+    await page.getByRole('button', { name: 'Settings', exact: true }).first().click();
+    const settings = page.getByRole('dialog', { name: 'Settings' });
+    await settings.getByRole('tab', { name: 'Appearance', exact: true }).click();
+    await settings.getByRole('switch', { name: /Seamless layout switching/ }).check();
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => window.chatward.windowControls.isShaped() === true);
+    await page.waitForTimeout(400);
+    assert.equal(await stillHere(), true, 'turning Seamless layout switching on keeps the page running');
+    const seamlessShot = await capture(app);
+    onPink(seamlessShot, '3-tabs-seamless.png');
+    assert.deepEqual(alphaAt(seamlessShot, corners), [255, 255, 255, 255], 'Tabs in the see-through window is solid');
+    assert.equal(await page.locator('.cw-resize').count(), 8, 'Tabs in the see-through window has resize edges');
+    const windowId = () => app.evaluate(({ BaseWindow }) => BaseWindow.getAllWindows().map((w) => w.id).join());
+    const before = await windowId();
+    await pickLayout(page, 'lcars', 'LCARS', true);
+    assert.equal(await windowId(), before, 'switching to LCARS keeps the same window (no blink)');
+    assert.equal(await page.locator('.cw-resize').count(), 0, 'LCARS draws its own edges instead');
+    assert.equal(await page.locator('.lcars-resize').count(), 8, 'the LCARS frame has its resize edges');
+    await pickLayout(page, 'orbit', 'Orbit', true);
+    assert.equal(await windowId(), before, 'switching from LCARS to Orbit keeps the same window (no blink)');
+    assert.deepEqual(alphaAt(await capture(app), corners), [255, 255, 255, 255], 'Orbit in the see-through window is solid');
+    assert.equal(await stillHere(), true, 'the page never reloaded');
+    console.log('LCARS gets a see-through window with nothing past its frame, other layouts keep the usual one, and Seamless layout switching keeps one window for all.');
   } finally {
     await app.close();
   }

@@ -22,6 +22,10 @@ export default function AppearanceTab() {
   const layout = useSettings((s) => s.layout);
   const confirmDeleteMessages = useSettings((s) => s.confirmDeleteMessages);
   const animatedBackgrounds = useSettings((s) => s.animatedBackgrounds);
+  const seamlessWindow = useSettings((s) => s.seamlessWindow);
+  // Only the desktop app on Windows and Linux has the see-through window (macOS keeps the usual one).
+  const controls = window.chatward?.windowControls;
+  const canSeamless = !!controls?.setShaped && controls.platform !== 'darwin';
   const set = useSettings((s) => s.set);
   const choices = [PLAIN_SKIN, ...SKINS];
   // An unknown id counts as no skin, so it shows as Plain.
@@ -55,6 +59,11 @@ export default function AppearanceTab() {
             </label>
           ))}
         </div>
+        {canSeamless && (
+          <Toggle label="Seamless layout switching"
+            hint="Switch to and from LCARS with no blink. Every layout then uses LCARS's see-through window, which has no window shadow, no Windows snapping when dragged to a screen edge, and the app's own thin resize edges."
+            checked={seamlessWindow} onChange={(on) => set({ seamlessWindow: on })} />
+        )}
       </Section>
       <Section title="Confirmations">
         <Toggle label="Ask before deleting a message"

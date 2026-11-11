@@ -24,3 +24,16 @@
 .cw-popout > .cw-titlebar { flex: none; }
 /* A window in fullscreen (the watch-party pop-out's Fullscreen button) shows no title bar. */
 :root:fullscreen .cw-titlebar { display: none; }
+
+/* Resize strips along the edges of the see-through window when it shows a rectangular layout (Seamless layout
+   switching, titlebar/windowShape.tsx). That window has no system border to drag. */
+.cw-resize { position: fixed; z-index: 1000; -webkit-app-region: no-drag; }
+.cw-resize-n { top: 0; left: 8px; right: 8px; height: 5px; cursor: ns-resize; }
+.cw-resize-s { bottom: 0; left: 8px; right: 8px; height: 5px; cursor: ns-resize; }
+.cw-resize-w { left: 0; top: 8px; bottom: 8px; width: 5px; cursor: ew-resize; }
+.cw-resize-e { right: 0; top: 8px; bottom: 8px; width: 5px; cursor: ew-resize; }
+.cw-resize-nw, .cw-resize-ne, .cw-resize-sw, .cw-resize-se { width: 8px; height: 8px; }
+.cw-resize-nw { left: 0; top: 0; cursor: nwse-resize; }
+.cw-resize-ne { right: 0; top: 0; cursor: nesw-resize; }
+.cw-resize-sw { left: 0; bottom: 0; cursor: nesw-resize; }
+.cw-resize-se { right: 0; bottom: 0; cursor: nwse-resize; }

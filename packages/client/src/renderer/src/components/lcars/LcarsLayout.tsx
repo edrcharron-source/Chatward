@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState, useSyncExternalStore, type DragEvent, type ReactNode, type RefObject } from 'react';
+import { useEffect, useRef, useState, type DragEvent, type ReactNode, type RefObject } from 'react';
 import { useSession } from '../../state/session';
+import { ResizeEdges, useMaximized, useShapedWindow } from '../titlebar/windowShape';
 import StatusPicker from '../servers/StatusPicker';
 import VoiceDock from '../voice/VoiceDock';
 import { isLebserver } from '../brand/PoweredBy';
@@ -43,7 +44,7 @@ export default function LcarsLayout(props: {
   const shaped = useShapedFrame(shell);
   return (
     <div className="lcars-shell" data-region="shell" data-layout="lcars" data-shaped={shaped ? '' : undefined} ref={shell}>
-      {shaped && <ResizeEdges />}
+      {shaped && <ResizeEdges className="lcars-resize" />}
       <div className="lcars-rail" {...props.dropArea}>
         <span className="lcars-elbow top" aria-hidden="true" />
         {props.nav}
@@ -92,29 +93,6 @@ export default function LcarsLayout(props: {
   );
 }
 
-/** Whether the window is maximized, kept up to date as it is resized. */
-function useMaximized(): boolean {
-  const controls = window.chatward?.windowControls;
-  const [maximized, setMaximized] = useState(false);
-  useEffect(() => {
-    if (!controls) return;
-    const check = () => { void controls.isMaximized().then(setMaximized, () => {}); };
-    check();
-    window.addEventListener('resize', check);
-    return () => window.removeEventListener('resize', check);
-  }, [controls]);
-  return maximized;
-}
-
-/** True while the page is in the shaped window. It changes when the layout moves the page to the other kind of window. */
-function useShapedWindow(): boolean {
-  const controls = window.chatward?.windowControls;
-  return useSyncExternalStore(
-    (cb) => controls?.onShapedChange?.(cb) ?? (() => {}),
-    () => controls?.isShaped?.() === true,
-  );
-}
-
 /**
  * In the shaped window (transparent, no border) the page's own background must not show past the frame: the page
  * behind the frame is cleared (lcars.css, html.cw-shaped-lcars) and the page is clipped to the frame's outline, so a
@@ -149,29 +127,6 @@ function useShapedFrame(shell: RefObject<HTMLDivElement | null>): boolean {
     return () => { watch.disconnect(); root.classList.remove('cw-shaped-lcars'); document.body.style.clipPath = ''; };
   }, [shell, shapedWindow, maximized]);
   return shaped;
-}
-
-const EDGES = ['n', 's', 'e', 'w', 'nw', 'ne', 'sw', 'se'] as const;
-
-/** Thin grab strips along the frame's outside edges that resize the shaped window, which has no system border to drag. */
-function ResizeEdges() {
-  const controls = window.chatward?.windowControls;
-  if (!controls?.startResize) return null;
-  const end = () => controls.endResize();
-  return (
-    <>
-      {EDGES.map((edge) => (
-        <span key={edge} className={`lcars-resize lcars-resize-${edge}`} aria-hidden="true"
-          onPointerDown={(e) => {
-            if (e.button !== 0) return;
-            e.preventDefault();
-            e.currentTarget.setPointerCapture(e.pointerId);
-            controls.startResize(edge);
-          }}
-          onPointerUp={end} onLostPointerCapture={end} />
-      ))}
-    </>
-  );
 }
 
 /** Minimize, maximize and close as the last segments of the top bar. Without the desktop app's bridge there are none. */
