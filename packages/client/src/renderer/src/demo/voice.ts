@@ -13,7 +13,9 @@ const SELF_KEY = 'demo:self';
 const TONE_USER = 'demo:tone';
 
 interface Bot {
-  say: (clip: AudioBuffer, onDone: () => void) => void;
+  say: (clip: AudioBuffer) => void;
+  /** true while this chatter's clip is still playing; a chatter never talks over itself */
+  busy: () => boolean;
   stop: () => void;
 }
 
@@ -55,26 +57,23 @@ function startBot(userId: string, ctx: AudioContext): Bot {
   attachRemote(key, userId, dest.stream.getAudioTracks()[0]);
 
   let playing: AudioBufferSourceNode | null = null;
-  let done: (() => void) | null = null;
   return {
-    say: (clip, onDone) => {
+    say: (clip) => {
       const src = ctx.createBufferSource();
       src.buffer = clip;
       src.connect(level);
       playing = src;
-      done = onDone;
       talking.add(userId);
       publishSpeaking();
       src.onended = () => {
         if (playing !== src) return;
         playing = null;
-        done = null;
         talking.delete(userId);
         publishSpeaking();
-        onDone();
       };
       src.start();
     },
+    busy: () => playing !== null,
     stop: () => {
       if (playing) {
         playing.onended = null;
@@ -83,9 +82,6 @@ function startBot(userId: string, ctx: AudioContext): Bot {
       }
       talking.delete(userId);
       detachRemote(key);
-      // a chatter leaving mid-clip hands the turn back to the loop
-      done?.();
-      done = null;
     },
   };
 }
@@ -109,24 +105,25 @@ function base64Bytes(b64: string): ArrayBuffer {
   return bytes.buffer;
 }
 
-/** After a random pause, a random chatter plays a random recording (never the same one twice in a row), then repeat. */
+/**
+ * After a random pause, a random chatter that is not already talking plays a random recording (never the same one
+ * twice in a row), then repeat. The pause does not wait for the clip to end, so chatters can talk over each other;
+ * if every chatter is still talking, that turn is skipped.
+ */
 function scheduleChatter(delayMs = chatterWait(CHATTER_TIMING.nextClip)): void {
   const c = call;
   if (!c) return;
   window.clearTimeout(c.chatterTimer);
   c.chatterTimer = window.setTimeout(() => {
     if (call !== c) return;
-    const bots = [...c.bots.values()];
+    const bots = [...c.bots.values()].filter((b) => !b.busy());
     const clips = c.clips;
-    if (!bots.length || !clips.length) {
-      scheduleChatter();
-      return;
+    if (bots.length && clips.length) {
+      const pick = chatterClip(clips.length, c.lastClip);
+      c.lastClip = pick;
+      bots[Math.floor(Math.random() * bots.length)].say(clips[pick]);
     }
-    const pick = chatterClip(clips.length, c.lastClip);
-    c.lastClip = pick;
-    bots[Math.floor(Math.random() * bots.length)].say(clips[pick], () => {
-      if (call === c) scheduleChatter();
-    });
+    scheduleChatter();
   }, delayMs);
 }
 

@@ -246,7 +246,8 @@ function startHosting(serverId: string) {
   };
   later(serverId, chatterWait(CHATTER_TIMING.firstLine), textLoop);
   const voiceLoop = () => {
-    void speak(serverId).then((ms) => later(serverId, ms + chatterWait(CHATTER_TIMING.nextClip), voiceLoop));
+    // the next clip does not wait for this one to end, so guests can talk over each other
+    void speak(serverId).then(() => later(serverId, chatterWait(CHATTER_TIMING.nextClip), voiceLoop));
   };
   later(serverId, chatterWait(CHATTER_TIMING.firstClip), voiceLoop);
 }
@@ -349,23 +350,27 @@ async function play(guest: number, clip: number) {
 }
 
 /**
- * While we are in a call, one of our guests plays a recording. The call's data channel tells everyone else in the
- * call which guest and which recording, and each app plays it as that guest. Returns how long it lasts, in ms.
+ * While we are in a call, one of our guests that is not already talking plays a recording (if all are talking,
+ * this turn is skipped). The call's data channel tells everyone else in the call which guest and which recording,
+ * and each app plays it as that guest.
  */
-async function speak(serverId: string): Promise<number> {
-  const mine = useGuests.getState().mine[serverId] ?? [];
+async function speak(serverId: string): Promise<void> {
   const { room, status } = useVoice.getState();
-  if (!mine.length || useVoice.getState().serverId !== serverId || status !== 'connected' || !room) return 0;
+  if (useVoice.getState().serverId !== serverId || status !== 'connected' || !room) return;
   const audio = await clipList();
-  if (!audio) return 0;
+  if (!audio) return;
+  const idle = (useGuests.getState().mine[serverId] ?? []).filter((g) => {
+    const user = GUEST_USERS[g];
+    return user && !playing.has(user.id);
+  });
+  if (!idle.length) return;
   const clip = chatterClip(audio.list.length, lastClip);
   lastClip = clip;
-  const guest = mine[Math.floor(Math.random() * mine.length)];
+  const guest = idle[Math.floor(Math.random() * idle.length)];
   void room.localParticipant
     .publishData(new TextEncoder().encode(JSON.stringify({ guest, clip })), { reliable: true, topic: CLIP_TOPIC })
     .catch(() => undefined);
   void play(guest, clip);
-  return audio.list[clip].duration * 1000;
 }
 
 /** Another host's guest speaks in our call. Only the guest's own host can make it speak. */
