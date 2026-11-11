@@ -21,12 +21,14 @@ let micGain: GainNode | null = null;
 let micGate: GainNode | null = null;
 let micMeter: AnalyserNode | null = null;
 let meterBuf: Float32Array<ArrayBuffer> | null = null;
+/** scratch space for reading a remote meter (all remote meters use fftSize 512) */
+const remoteBuf = new Float32Array(512);
 
 let playCtx: SinkContext | null = null;
 let master: GainNode | null = null;
 let deafened = false;
 /** keyed by LiveKit track sid */
-const remotes = new Map<string, { userId: string; source: MediaStreamAudioSourceNode; gain: GainNode; sink: HTMLAudioElement }>();
+const remotes = new Map<string, { userId: string; source: MediaStreamAudioSourceNode; gain: GainNode; meter: AnalyserNode; sink: HTMLAudioElement }>();
 
 // Browser-side processing only: auto gain would fight the mic boost setting.
 function captureConstraints(deviceId: string): MediaTrackConstraints {
@@ -84,6 +86,23 @@ export function micLevel(): number {
   let sum = 0;
   for (const v of meterBuf) sum += v * v;
   return Math.sqrt(sum / meterBuf.length);
+}
+
+/**
+ * How loud one person in the call is right now (RMS, 0..1): your own outgoing mic when `local`, otherwise the
+ * loudest of their incoming tracks. Null when there is no audio to read for them (not in a call, or no track yet).
+ */
+export function voiceLevel(userId: string, local: boolean): number | null {
+  if (local) return micMeter ? micLevel() : null;
+  let level: number | null = null;
+  for (const r of remotes.values()) {
+    if (r.userId !== userId) continue;
+    r.meter.getFloatTimeDomainData(remoteBuf);
+    let sum = 0;
+    for (const v of remoteBuf) sum += v * v;
+    level = Math.max(level ?? 0, Math.sqrt(sum / remoteBuf.length));
+  }
+  return level;
 }
 
 /** Swaps the raw mic source the user picked; the published track stays the same. */
@@ -177,14 +196,18 @@ export function attachRemote(key: string, userId: string, track: MediaStreamTrac
   const stream = new MediaStream([track]);
   const source = playCtx.createMediaStreamSource(stream);
   const gain = playCtx.createGain();
+  // the meter reads what they send, before your volume for them, for the Lebserver sound meter
+  const meter = playCtx.createAnalyser();
+  meter.fftSize = 512;
   source.connect(gain);
+  source.connect(meter);
   gain.connect(master);
   // Chromium can leave WebRTC tracks silent in WebAudio unless a media element also plays them.
   const sink = new Audio();
   sink.muted = true;
   sink.srcObject = stream;
   void sink.play().catch(() => {});
-  remotes.set(key, { userId, source, gain, sink });
+  remotes.set(key, { userId, source, gain, meter, sink });
   applyLevels();
 }
 
@@ -193,6 +216,7 @@ export function detachRemote(key: string): void {
   if (!r) return;
   r.source.disconnect();
   r.gain.disconnect();
+  r.meter.disconnect();
   r.sink.srcObject = null;
   remotes.delete(key);
 }
