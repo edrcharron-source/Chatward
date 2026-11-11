@@ -82,6 +82,9 @@ try {
   assert.equal((await get('/api/jellyfin/hls/bogus/Videos/' + ID + '/master.m3u8', false)).status, 401);
   const upstreamQuery = seen.filter((s) => s.url.startsWith(`/Videos/${ID}/master`)).at(-1)!;
   assert.equal(upstreamQuery.token, 'KEY');
+  const q = new URL(upstreamQuery.url, 'http://x').searchParams;
+  assert.equal(q.get('VideoBitRate'), '120000000', 'asks for the movie\'s own quality, not the encoder default');
+  assert.equal(q.get('MaxWidth'), null, 'original quality does not shrink the picture');
   log('tickets are scoped to one item; unknown tickets are refused');
   console.log('jellyfin: all checks passed');
 } finally {

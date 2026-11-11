@@ -115,7 +115,10 @@ export function register(app: Express, ctx: Ctx): void {
       const qs = new URLSearchParams({
         MediaSourceId: id, PlaySessionId: crypto.randomUUID().replace(/-/g, ''), DeviceId: 'chatward',
         VideoCodec: 'h264', AudioCodec: 'aac', TranscodingMaxAudioChannels: '2', SegmentContainer: 'ts',
-        MaxStreamingBitrate: '12000000',
+        // Play every movie at its own quality. Without VideoBitRate Jellyfin leaves the bitrate to the encoder's default,
+        // which for hardware encoders is very low and blocky. Jellyfin never goes above the file's own bitrate, and with no
+        // MaxWidth/MaxHeight it keeps the file's own resolution, so this ceiling just means "as good as the file".
+        VideoBitRate: '120000000', AudioBitRate: '320000', MaxStreamingBitrate: '120320000',
       });
       const out: JellyfinPlayback = {
         url: `/api/jellyfin/hls/${ticket}/Videos/${id}/master.m3u8?${qs}`,
