@@ -120,6 +120,27 @@ export function openDb(): DB {
     PRIMARY KEY (item_id, author_id)
   );
   CREATE INDEX IF NOT EXISTS idx_vault_notes_server ON vault_annotations(server_id);
+  CREATE TABLE IF NOT EXISTS vault_albums (
+    id TEXT PRIMARY KEY,
+    server_id TEXT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+    owner_id TEXT NOT NULL REFERENCES users(id),
+    channel_id TEXT NOT NULL,
+    key_version INTEGER NOT NULL,
+    sealed_by TEXT NOT NULL,
+    ciphertext TEXT NOT NULL,
+    cover_item_id TEXT REFERENCES vault_items(id) ON DELETE SET NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_vault_albums_server ON vault_albums(server_id);
+  CREATE TABLE IF NOT EXISTS vault_album_items (
+    album_id TEXT NOT NULL REFERENCES vault_albums(id) ON DELETE CASCADE,
+    item_id TEXT NOT NULL REFERENCES vault_items(id) ON DELETE CASCADE,
+    added_by TEXT NOT NULL,
+    added_at INTEGER NOT NULL,
+    PRIMARY KEY (album_id, item_id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_vault_album_items_item ON vault_album_items(item_id);
   CREATE TABLE IF NOT EXISTS vault_uploads (
     id TEXT PRIMARY KEY,
     server_id TEXT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,

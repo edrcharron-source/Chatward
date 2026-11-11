@@ -1,4 +1,4 @@
-import type { VaultAnnotation, VaultDescriptor, VaultItem, VaultNotes } from '@chatward/shared';
+import type { VaultAlbum, VaultAlbumMeta, VaultAnnotation, VaultDescriptor, VaultItem, VaultNotes } from '@chatward/shared';
 import { api, ApiError } from '../../api/http';
 import { readPhotoFacts, stripGps } from './exif';
 import { decryptBlob, decryptMessage, encryptBlob, encryptPayload } from '../../crypto';
@@ -240,3 +240,37 @@ export function mergedNotes(by: Record<string, VaultNotes> | undefined): { tags:
   for (const n of Object.values(by ?? {})) { n.tags.forEach((t) => tags.add(t)); n.people.forEach((p) => people.add(p)); }
   return { tags: [...tags].sort(), people: [...people] };
 }
+
+/** Opens an album's sealed name; null when the channel key is missing. */
+export async function openAlbumMeta(a: VaultAlbum): Promise<VaultAlbumMeta | null> {
+  const msg = await decryptMessage({ id: a.id, channelId: a.channelId, authorId: a.sealedBy, createdAt: a.updatedAt, editedAt: null, keyVersion: a.keyVersion, ciphertext: a.ciphertext });
+  if (!msg) return null;
+  try {
+    const m = JSON.parse(msg.text) as Partial<VaultAlbumMeta>;
+    return typeof m.name === 'string' ? { name: m.name, ...(typeof m.description === 'string' ? { description: m.description } : {}) } : null;
+  } catch { return null; }
+}
+
+const sealAlbum = async (channelId: string, me: string, meta: VaultAlbumMeta) => {
+  const clean: VaultAlbumMeta = { name: meta.name.trim().slice(0, 80), ...(meta.description?.trim() ? { description: meta.description.trim().slice(0, 500) } : {}) };
+  const { ciphertext, keyVersion } = await encryptPayload(channelId, me, { text: JSON.stringify(clean) });
+  return { channelId, keyVersion, ciphertext };
+};
+
+export const albumsApi = {
+  list: (serverId: string) => api.get<{ albums: VaultAlbum[] }>(`/api/servers/${serverId}/vault/albums`).then((r) => r.albums),
+  create: async (serverId: string, channelId: string, me: string, meta: VaultAlbumMeta, itemIds: string[] = []) =>
+    (await api.post<{ album: VaultAlbum }>(`/api/servers/${serverId}/vault/albums`, { ...(await sealAlbum(channelId, me, meta)), itemIds: itemIds.slice(0, 500) })).album,
+  rename: async (album: VaultAlbum, channelId: string, me: string, meta: VaultAlbumMeta) =>
+    (await api.patch<{ album: VaultAlbum }>(`/api/vault/albums/${album.id}`, await sealAlbum(channelId, me, meta))).album,
+  setCover: async (albumId: string, coverItemId: string | null) => (await api.patch<{ album: VaultAlbum }>(`/api/vault/albums/${albumId}`, { coverItemId })).album,
+  /** Adds and takes out items, 500 at a time. Returns the album as it ends up. */
+  change: async (albumId: string, add: string[] = [], remove: string[] = []): Promise<VaultAlbum> => {
+    let album: VaultAlbum | null = null;
+    for (let i = 0; i < Math.max(add.length, remove.length, 1); i += 500) {
+      album = (await api.post<{ album: VaultAlbum }>(`/api/vault/albums/${albumId}/items`, { add: add.slice(i, i + 500), remove: remove.slice(i, i + 500) })).album;
+    }
+    return album!;
+  },
+  remove: (albumId: string) => api.del(`/api/vault/albums/${albumId}`),
+};

@@ -245,7 +245,7 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenMov
       case 'workouts':
         return <WorkoutsView />;
       case 'vault':
-        return <VaultView key={bundle.server.id} serverId={bundle.server.id} keyChannelId={text?.id} canModerate={isAdmin(me)} />;
+        return <VaultView key={bundle.server.id} serverId={bundle.server.id} keyChannelId={text?.id} canModerate={isAdmin(me)} people={members.map((m) => ({ id: m.user.id, name: m.user.displayName || m.user.username }))} />;
     }
   }
 
