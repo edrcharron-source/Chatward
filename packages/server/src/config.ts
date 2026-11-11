@@ -64,6 +64,11 @@ export const config = {
   vaultQuotaBytes: megabytes('VAULT_QUOTA_MB', '20480'),
   /** Largest single Vault file, in bytes (VAULT_MAX_MB, default 1 GB). Uploads arrive in chunks written straight to disk; the browser still encrypts the whole file in memory, which is what keeps this from going higher. */
   vaultMaxBytes: megabytes('VAULT_MAX_MB', '1024'),
+  /**
+   * The Vault photo sorter's image model (MobileCLIP S0, ONNX), handed to clients that sort on their own devices.
+   * The Docker image downloads it at build time; without it, clients sort by file clues only.
+   */
+  vaultSortModel: path.resolve(process.env.VAULT_SORT_MODEL ?? (fs.existsSync('/app/models/mobileclip_s0_vision.onnx') ? '/app/models/mobileclip_s0_vision.onnx' : path.join(dataDir, 'models', 'mobileclip_s0_vision.onnx'))),
   /** Desktop installer, latest.yml and blockmap, served at /updates for the client auto-updater. */
   updatesDir: path.resolve(process.env.UPDATES_DIR ?? path.join(dataDir, 'updates')),
   /** Set by the update script from the installed release tag. */

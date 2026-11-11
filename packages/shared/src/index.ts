@@ -257,6 +257,22 @@ export interface VaultNotes {
   tags: string[];
   people: string[];
   caption?: string;
+  /** What the on-device sorter made of the item. A person's #photo, #meme or #screenshot tag always wins over it. */
+  auto?: VaultAutoSort;
+}
+
+export type VaultCategory = 'photo' | 'meme' | 'screenshot';
+
+/** One device's automatic sort of a Vault item, sealed with the rest of that person's notes. */
+export interface VaultAutoSort {
+  /** null when the sorter was not sure enough; the item shows as unsorted. */
+  category: VaultCategory | null;
+  /** How sure it was, 0 to 1. */
+  score: number;
+  /** What decided: 'clues' (file name, camera, size) or the model's name. */
+  by: string;
+  /** Sorter version, so a better sorter can redo older results. */
+  v: number;
 }
 
 export interface SoundboardSound {
