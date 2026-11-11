@@ -8,8 +8,21 @@ export const whenOf = (e: AlbumEntry) => e.d?.takenAt ?? e.item.createdAt;
 
 const day = (t: number) => new Date(t).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 
+/** Photos taken on today's month and day in earlier years, newest year first. */
+export function onThisDay(entries: AlbumEntry[], now = Date.now()): Album | null {
+  const today = new Date(now);
+  const ids = entries
+    .filter((e) => {
+      const d = new Date(whenOf(e));
+      return d.getMonth() === today.getMonth() && d.getDate() === today.getDate() && d.getFullYear() < today.getFullYear();
+    })
+    .sort((a, b) => whenOf(b) - whenOf(a))
+    .map((e) => e.item.id);
+  return ids.length ? { key: 'smart:on-this-day', label: 'On this day', ids } : null;
+}
+
 /** Groups into automatic albums: events (photos close in time), who uploaded, and photos vs videos. Albums of one item are left out. */
-export function buildAlbums(entries: AlbumEntry[], nameOf: (userId: string) => string): { events: Album[]; people: Album[]; kinds: Album[] } {
+export function buildAlbums(entries: AlbumEntry[], nameOf: (userId: string) => string, now = Date.now()): { events: Album[]; people: Album[]; kinds: Album[]; onThisDay: Album | null } {
   const sorted = [...entries].sort((a, b) => whenOf(a) - whenOf(b));
   const events: Album[] = [];
   let run: AlbumEntry[] = [];
@@ -36,5 +49,5 @@ export function buildAlbums(entries: AlbumEntry[], nameOf: (userId: string) => s
     const ids = entries.filter((e) => e.d?.kind === kind).map((e) => e.item.id);
     if (ids.length) kinds.push({ key: `kind:${kind}`, label, ids });
   }
-  return { events, people, kinds };
+  return { events, people, kinds, onThisDay: onThisDay(entries, now) };
 }

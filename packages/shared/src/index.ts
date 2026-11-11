@@ -216,6 +216,31 @@ export interface VaultDescriptor {
 /** A Vault item shared in a message: the item id plus its decrypted descriptor (which holds the file keys). */
 export type VaultRef = VaultDescriptor & { itemId: string };
 
+/**
+ * A Vault album someone made by hand. The name and description are sealed in `ciphertext` (a VaultAlbumMeta) with the
+ * channel key by `sealedBy`; the server only knows which item ids are grouped together.
+ */
+export interface VaultAlbum {
+  id: string;
+  serverId: string;
+  ownerId: string;
+  channelId: string;
+  keyVersion: number;
+  sealedBy: string;
+  ciphertext: string;
+  coverItemId: string | null;
+  createdAt: number;
+  updatedAt: number;
+  /** Items in the album, oldest addition first. */
+  itemIds: string[];
+}
+
+/** The sealed part of a VaultAlbum. */
+export interface VaultAlbumMeta {
+  name: string;
+  description?: string;
+}
+
 /** One person's sealed tags for a Vault item. `ciphertext` seals VaultNotes with the item's anchor channel key; the author is part of the seal. */
 export interface VaultAnnotation {
   itemId: string;
@@ -318,6 +343,8 @@ export type ServerFrame =
   | { t: 'vault.delete'; serverId: string; itemId: string }
   | { t: 'vault.annotation'; annotation: VaultAnnotation }
   | { t: 'vault.annotation.delete'; serverId: string; itemId: string; authorId: string }
+  | { t: 'vault.album'; album: VaultAlbum }
+  | { t: 'vault.album.delete'; serverId: string; albumId: string }
   | { t: 'sound.play'; serverId: string; channelId: string; soundId: string; userId: string }
   | { t: 'voice.state'; serverId: string; channelId: string; userIds: string[] }
   | { t: 'voice.kicked'; channelId: string }

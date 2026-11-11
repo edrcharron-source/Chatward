@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { ServerFrame, VaultAnnotation, VaultDescriptor, VaultItem, VaultNotes } from '@chatward/shared';
+import type { ServerFrame, VaultAlbum, VaultAnnotation, VaultDescriptor, VaultItem, VaultNotes } from '@chatward/shared';
 import { api } from '../../api/http';
 import { onFrame } from '../../api/ws';
 import { onKeysChanged } from '../../crypto';
 import { sendMessage } from '../../state/chat';
 import { useSession } from '../../state/session';
 import { buildAlbums } from './albums';
-import { fetchVaultUrl, fetchVaultViewUrl, mergedNotes, normalizeTag, openDescriptor, openNotes, readForVault, saveNotes, uploadToVault, type NotesByItem, type VaultPage } from './vault';
+import AlbumStrip, { type AlbumCard } from './AlbumStrip';
+import { albumsApi, fetchVaultUrl, fetchVaultViewUrl, openAlbumMeta, mergedNotes, normalizeTag, openDescriptor, openNotes, readForVault, saveNotes, uploadToVault, type NotesByItem, type VaultPage } from './vault';
 import { loadVaultIndex } from './vaultIndex';
 import { canQueueToWatchParty, queueToWatchParty } from '../watchparty/bridge';
 import { vaultItem } from '../watchparty/sync';
@@ -40,6 +41,86 @@ export default function VaultView({ serverId, keyChannelId, canModerate, chatCha
     return () => { alive = false; };
   }, [items, keyTick]); // eslint-disable-line react-hooks/exhaustive-deps
   const albums = buildAlbums(items.map((item) => ({ item, d: descs[item.id] })), (id) => people.find((p) => p.id === id)?.name ?? 'someone');
+
+  // Albums made by hand: stored on the server with sealed names, kept live over the socket.
+  const [manual, setManual] = useState<VaultAlbum[]>([]);
+  const [albumNames, setAlbumNames] = useState<Record<string, string>>({});
+  const [selecting, setSelecting] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const putAlbum = useCallback((a: VaultAlbum) => {
+    setManual((cur) => [a, ...cur.filter((x) => x.id !== a.id)].sort((x, y) => y.createdAt - x.createdAt));
+    void openAlbumMeta(a).then((m) => setAlbumNames((cur) => ({ ...cur, [a.id]: m?.name ?? 'Locked album' })));
+  }, []);
+  useEffect(() => {
+    let alive = true;
+    setManual([]);
+    albumsApi.list(serverId).then((list) => { if (alive) list.forEach(putAlbum); }).catch(() => {});
+    return () => { alive = false; };
+  }, [serverId, keyTick, putAlbum]);
+  useEffect(() => onFrame((f: ServerFrame) => {
+    if (f.t === 'vault.album' && f.album.serverId === serverId) putAlbum(f.album);
+    else if (f.t === 'vault.album.delete' && f.serverId === serverId) {
+      setManual((cur) => cur.filter((a) => a.id !== f.albumId));
+      setFilter((cur) => (cur?.value === `manual:${f.albumId}` ? null : cur));
+    } else if (f.t === 'vault.delete' && f.serverId === serverId) {
+      setManual((cur) => cur.map((a) => (a.itemIds.includes(f.itemId) ? { ...a, itemIds: a.itemIds.filter((i) => i !== f.itemId), coverItemId: a.coverItemId === f.itemId ? null : a.coverItemId } : a)));
+    }
+  }), [serverId, putAlbum]);
+  const smartAlbums = [...(albums.onThisDay ? [albums.onThisDay] : []), ...albums.kinds, ...albums.events, ...albums.people];
+  const activeManual = filter?.kind === 'album' && filter.value.startsWith('manual:') ? manual.find((a) => `manual:${a.id}` === filter.value) : undefined;
+  const activeSmart = filter?.kind === 'album' && !activeManual ? smartAlbums.find((a) => a.key === filter.value) : undefined;
+  const albumIds = (key: string) => key.startsWith('manual:') ? manual.find((a) => `manual:${a.id}` === key)?.itemIds ?? [] : smartAlbums.find((a) => a.key === key)?.ids ?? [];
+  const itemsById = Object.fromEntries(items.map((i) => [i.id, i]));
+  const albumCards: AlbumCard[] = [
+    ...manual.map((a) => ({ key: `manual:${a.id}`, label: albumNames[a.id] ?? '…', count: a.itemIds.length, coverId: a.coverItemId ?? a.itemIds[0], manual: true })),
+    ...smartAlbums.map((a) => ({ key: a.key, label: a.label, count: a.ids.length, coverId: a.ids[0] })),
+  ];
+  const canManage = (a: VaultAlbum) => a.ownerId === me || canModerate;
+  const askName = (start = '') => {
+    const name = window.prompt('Album name', start)?.trim();
+    return name ? name.slice(0, 80) : null;
+  };
+  async function newAlbum(ids: string[]) {
+    if (!keyChannelId) return;
+    const name = askName();
+    if (!name) return;
+    try {
+      const a = await albumsApi.create(serverId, keyChannelId, me, { name }, ids);
+      putAlbum(a);
+      setFilter({ kind: 'album', value: `manual:${a.id}` });
+      setSelecting(false); setSelected(new Set());
+    } catch (e) { setError((e as Error).message); }
+  }
+  async function renameAlbum(a: VaultAlbum) {
+    if (!keyChannelId) return;
+    const name = askName(albumNames[a.id]);
+    if (!name) return;
+    try { putAlbum(await albumsApi.rename(a, keyChannelId, me, { name })); } catch (e) { setError((e as Error).message); }
+  }
+  async function deleteAlbum(a: VaultAlbum) {
+    if (!window.confirm(`Delete the album "${albumNames[a.id] ?? ''}"? The photos stay in the Vault.`)) return;
+    try { await albumsApi.remove(a.id); setManual((cur) => cur.filter((x) => x.id !== a.id)); setFilter(null); } catch (e) { setError((e as Error).message); }
+  }
+  async function addToAlbum(albumId: string, ids: string[]) {
+    try {
+      putAlbum(await albumsApi.change(albumId, ids));
+      setStatus(`Added to ${albumNames[albumId] ?? 'the album'}.`);
+      setTimeout(() => setStatus((s) => (s?.startsWith('Added to') ? null : s)), 2500);
+    } catch (e) { setError((e as Error).message); }
+  }
+  async function takeOut(a: VaultAlbum, ids: string[]) {
+    try { putAlbum(await albumsApi.change(a.id, [], ids)); setSelected(new Set()); } catch (e) { setError((e as Error).message); }
+  }
+  async function deleteSelected(ids: string[]) {
+    const mine = ids.filter((id) => itemsById[id]?.ownerId === me || canModerate);
+    if (!mine.length) return;
+    if (!window.confirm(`Delete ${mine.length} item${mine.length === 1 ? '' : 's'} from the Vault for everyone?`)) return;
+    for (const id of mine) {
+      try { await api.del(`/api/vault/${id}`); setItems((l) => l.filter((i) => i.id !== id)); } catch (e) { setError((e as Error).message); break; }
+    }
+    setSelected(new Set());
+  }
+  const toggle = (id: string) => setSelected((cur) => { const n = new Set(cur); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const putNotes = useCallback(async (a: VaultAnnotation) => {
     const n = await openNotes(a);
     setNotes((cur) => {
@@ -68,7 +149,7 @@ export default function VaultView({ serverId, keyChannelId, canModerate, chatCha
   const taggedPeople = [...new Set(Object.values(notes).flatMap((by) => mergedNotes(by).people))];
   const nameOf = (id: string) => people.find((p) => p.id === id)?.name ?? 'Someone';
   const shown = !filter ? items : items.filter((i) => {
-    if (filter.kind === 'album') return [...albums.events, ...albums.people, ...albums.kinds].find((a) => a.key === filter.value)?.ids.includes(i.id) ?? false;
+    if (filter.kind === 'album') return albumIds(filter.value).includes(i.id);
     const m = mergedNotes(notes[i.id]);
     return filter.kind === 'tag' ? m.tags.includes(filter.value) : m.people.includes(filter.value);
   });
@@ -118,6 +199,8 @@ export default function VaultView({ serverId, keyChannelId, canModerate, chatCha
         });
         setItems((l) => (l.some((x) => x.id === item.id) ? l : [item, ...l]));
         setUsage((u) => ({ ...u, used: u.used + item.size }));
+        // Adding while an album is open puts the new items in that album too.
+        if (activeManual) await albumsApi.change(activeManual.id, [item.id]).then(putAlbum).catch(() => {});
       } catch (e) { setError((e as Error).message); }
     }
     setStatus(null);
@@ -154,18 +237,35 @@ export default function VaultView({ serverId, keyChannelId, canModerate, chatCha
         <span className="muted">
           {usage.quota > 0 ? `${mb(usage.used)} of ${mb(usage.quota)} used by you` : `${mb(usage.used)} used by you`}
         </span>
-        <button type="button" className="primary" disabled={!keyChannelId || status !== null} onClick={() => fileInput.current?.click()}>Add photos or videos</button>
+        {items.length > 0 && <button type="button" aria-pressed={selecting} onClick={() => { setSelecting((v) => !v); setSelected(new Set()); }}>{selecting ? 'Done' : 'Select'}</button>}
+        <button type="button" className="primary" disabled={!keyChannelId || (status !== null && !status.startsWith('Added to'))} onClick={() => fileInput.current?.click()}>Add photos or videos</button>
         <input ref={fileInput} type="file" multiple accept="image/*,video/*" hidden onChange={(e) => void upload(e.target.files)} />
       </header>
       {status && <p className="muted">{status}</p>}
       {error && <p className="media-error" role="alert">{error}</p>}
       {!items.length && !error && <p className="muted">Nothing here yet. Add photos or videos and everyone in the server can see them. Everything is encrypted before it leaves your computer.</p>}
-      {(albums.events.length + albums.people.length + albums.kinds.length > 0) && (
-        <div className="cw-vault-filters" role="group" aria-label="Albums">
-          <span className="muted">Albums:</span>
-          {[...albums.kinds, ...albums.events, ...albums.people].map((a) => (
-            <button key={a.key} type="button" className={filter?.kind === 'album' && filter.value === a.key ? 'on' : ''} onClick={() => setFilter(filter?.value === a.key ? null : { kind: 'album', value: a.key })}>{a.label} {a.ids.length}</button>
-          ))}
+      {(albumCards.length > 0 || items.length > 0) && (
+        <AlbumStrip cards={albumCards} items={itemsById} descs={descs}
+          active={filter?.kind === 'album' ? filter.value : null}
+          onPick={(key) => setFilter(key ? { kind: 'album', value: key } : null)}
+          onNew={keyChannelId && items.length ? () => void newAlbum(selecting ? [...selected] : []) : undefined}
+          newLabel={selecting && selected.size ? `New album with ${selected.size}` : 'New album'} />
+      )}
+      {activeManual && (
+        <div className="cw-vault-albumbar">
+          <strong>{albumNames[activeManual.id] ?? 'Album'}</strong>
+          <span className="muted">{activeManual.itemIds.length} item{activeManual.itemIds.length === 1 ? '' : 's'}</span>
+          {canManage(activeManual) && <button type="button" onClick={() => void renameAlbum(activeManual)}>Rename</button>}
+          {canManage(activeManual) && <button type="button" onClick={() => void deleteAlbum(activeManual)}>Delete album</button>}
+          <button type="button" onClick={() => setFilter(null)}>Close</button>
+        </div>
+      )}
+      {activeSmart && (
+        <div className="cw-vault-albumbar">
+          <strong>{activeSmart.label}</strong>
+          <span className="muted">{activeSmart.ids.length} item{activeSmart.ids.length === 1 ? '' : 's'}, picked automatically</span>
+          {keyChannelId && <button type="button" title="Keep these as an album you can add to and rename" onClick={() => void newAlbum(activeSmart.ids)}>Save as album</button>}
+          <button type="button" onClick={() => setFilter(null)}>Close</button>
         </div>
       )}
       {(allTags.length > 0 || taggedPeople.length > 0) && (
@@ -179,8 +279,23 @@ export default function VaultView({ serverId, keyChannelId, canModerate, chatCha
           ))}
         </div>
       )}
+      {selecting && (
+        <div className="cw-vault-selectbar" role="toolbar" aria-label="Selected items">
+          <span>{selected.size} selected</span>
+          <button type="button" onClick={() => setSelected(new Set(shown.map((i) => i.id)))}>Select all {shown.length}</button>
+          {manual.length > 0 && (
+            <select aria-label="Add to album" value="" disabled={!selected.size} onChange={(e) => { if (e.target.value) void addToAlbum(e.target.value, [...selected]); }}>
+              <option value="">Add to album…</option>
+              {manual.map((a) => <option key={a.id} value={a.id}>{albumNames[a.id] ?? '…'}</option>)}
+            </select>
+          )}
+          <button type="button" disabled={!selected.size || !keyChannelId} onClick={() => void newAlbum([...selected])}>New album</button>
+          {activeManual && <button type="button" disabled={!selected.size} onClick={() => void takeOut(activeManual, [...selected])}>Take out of album</button>}
+          <button type="button" disabled={!selected.size} onClick={() => void deleteSelected([...selected])}>Delete</button>
+        </div>
+      )}
       <div className="cw-vault-grid">
-        {shown.slice(0, visible).map((item) => <Tile key={item.id} item={item} onOpen={(d) => setOpen({ item, d })} />)}
+        {shown.slice(0, visible).map((item) => <Tile key={item.id} item={item} selecting={selecting} selected={selected.has(item.id)} onToggle={() => toggle(item.id)} onOpen={(d) => setOpen({ item, d })} />)}
       </div>
       {shown.length > visible && <button type="button" className="cw-vault-more" onClick={() => setVisible((n) => n + TILE_STEP)}>Show more ({shown.length - visible} left)</button>}
       {shown.length <= visible && hasMore && <button type="button" className="cw-vault-more" onClick={() => void loadMore()}>Load older</button>}
@@ -189,12 +304,19 @@ export default function VaultView({ serverId, keyChannelId, canModerate, chatCha
         extra={<>
           {open.d.kind === 'video' && canQueueToWatchParty() && <button type="button" title="Queue this for everyone in your call" onClick={() => watchTogether(open.item, open.d)}>Watch together</button>}
           {chatChannelId && <button type="button" disabled={sending} onClick={() => void sendToChat(open.item, open.d)}>{sending ? 'Sending…' : 'Send to chat'}</button>}
+          {manual.length > 0 && (
+            <select aria-label="Add to album" value="" onChange={(e) => { if (e.target.value) void addToAlbum(e.target.value, [open.item.id]); }}>
+              <option value="">Add to album…</option>
+              {manual.filter((a) => !a.itemIds.includes(open.item.id)).map((a) => <option key={a.id} value={a.id}>{albumNames[a.id] ?? '…'}</option>)}
+            </select>
+          )}
+          {activeManual?.itemIds.includes(open.item.id) && canManage(activeManual) && <button type="button" title="Use this as the album's cover" onClick={() => void albumsApi.setCover(activeManual.id, open.item.id).then(putAlbum).catch((e: Error) => setError(e.message))}>Make cover</button>}
         </>} />}
     </section>
   );
 }
 
-function Tile({ item, onOpen }: { item: VaultItem; onOpen: (d: VaultDescriptor) => void }) {
+function Tile({ item, onOpen, selecting = false, selected = false, onToggle }: { item: VaultItem; onOpen: (d: VaultDescriptor) => void; selecting?: boolean; selected?: boolean; onToggle?: () => void }) {
   const [d, setD] = useState<VaultDescriptor | null>(null);
   const [url, setUrl] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
@@ -214,8 +336,10 @@ function Tile({ item, onOpen }: { item: VaultItem; onOpen: (d: VaultDescriptor) 
     return () => { alive = false; if (made) URL.revokeObjectURL(made); };
   }, [item, tries]);
   return (
-    <button type="button" className="cw-vault-tile" disabled={!d} onClick={() => d && onOpen(d)} title={d?.name}>
+    <button type="button" className={`cw-vault-tile${selected ? ' selected' : ''}`} disabled={!d && !selecting} aria-pressed={selecting ? selected : undefined}
+      onClick={() => (selecting ? onToggle?.() : d && onOpen(d))} title={d?.name}>
       {url ? <img src={url} alt={d?.name ?? ''} /> : <span className="muted">{failed ? 'Locked' : '…'}</span>}
+      {selecting && <span className="cw-vault-check" aria-hidden="true">{selected ? '✓' : ''}</span>}
       {d?.kind === 'video' && <span className="cw-vault-badge">▶{d.durationSec ? ` ${Math.floor(d.durationSec / 60)}:${String(d.durationSec % 60).padStart(2, '0')}` : ''}</span>}
     </button>
   );
