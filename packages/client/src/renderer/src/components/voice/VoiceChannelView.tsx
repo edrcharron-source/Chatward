@@ -272,7 +272,7 @@ function Tile({ user, joined, local, micOff, speaking, screen, video, onMenu, th
           : user
             ? <ProfileTrigger user={user}><Avatar user={user} size={64} /></ProfileTrigger>
             : <Avatar user={user} size={64} />}
-        {!video && art && joined && <div className="cv-tile-meter"><AsciiMeter active={speaking} /></div>}
+        {!video && art && joined && <div className="cv-tile-meter"><AsciiMeter speaking={speaking} userId={user?.id} local={local} live={!micOff} /></div>}
         <div className="cv-tile-name" style={{ position: 'absolute', left: 8, bottom: 6, fontSize: 12, color: '#fff', textShadow: '0 1px 2px #000' }}>
           <span className="cv-tile-who">{name}{local ? ' (you)' : ''}</span>
           {screen && <span className="cv-tile-state"> · screen</span>}
