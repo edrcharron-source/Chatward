@@ -2,6 +2,15 @@ import { contextBridge, ipcRenderer } from 'electron';
 import type { UpdateStatus } from '@chatward/shared';
 import type { NowPlaying, PlayResult } from '../main/spotify';
 
+// Whether the page is in the transparent, borderless window the LCARS layout uses (only its frame shows; see
+// main/index.ts). The page keeps running when it is moved to a window of the other kind, and is told so here.
+let shaped = process.argv.includes('--chatward-shaped');
+const shapedListeners = new Set<(shaped: boolean) => void>();
+ipcRenderer.on('window:shaped-changed', (_e, now: unknown) => {
+  shaped = now === true;
+  for (const cb of shapedListeners) cb(shaped);
+});
+
 const api = {
   secureStore: {
     get: (key: string): Promise<string | null> => ipcRenderer.invoke('secure:get', key),
@@ -19,9 +28,12 @@ const api = {
     toggleMaximize: (target?: string): void => ipcRenderer.send('window:control', 'maximize', target),
     close: (target?: string): void => ipcRenderer.send('window:control', 'close', target),
     isMaximized: (target?: string): Promise<boolean> => ipcRenderer.invoke('window:maximized', target),
-    // True in the transparent, borderless window the LCARS layout uses (only its frame shows; see main/index.ts).
-    shaped: process.argv.includes('--chatward-shaped'),
-    // Says whether the layout wants that window. When it differs from this one, the window is swapped for a new one.
+    isShaped: (): boolean => shaped,
+    onShapedChange: (cb: (shaped: boolean) => void): (() => void) => {
+      shapedListeners.add(cb);
+      return () => { shapedListeners.delete(cb); };
+    },
+    // Says whether the layout wants that window. When it differs from this one, the page moves to a new one (no reload).
     setShaped: (want: boolean): void => ipcRenderer.send('window:shaped', want),
     // A shaped window has no system border, so the page's own edges resize it: start on pointer down, end on pointer up.
     startResize: (edge: 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw'): void => ipcRenderer.send('window:resize', edge),

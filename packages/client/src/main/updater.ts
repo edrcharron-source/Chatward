@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, ipcMain } from 'electron';
 import { autoUpdater } from 'electron-updater';
 import type { UpdateStatus } from '@chatward/shared';
 
@@ -10,9 +10,12 @@ let status: UpdateStatus = { state: 'idle' };
 let feedBase: string | null = null;
 let downloadingVersion = '';
 
+/** The app's main pages, which show the update status. */
+let pages: () => Electron.WebContents[] = () => [];
+
 function setStatus(next: UpdateStatus): void {
   status = next;
-  for (const win of BrowserWindow.getAllWindows()) win.webContents.send('update:status', next);
+  for (const page of pages()) if (!page.isDestroyed()) page.send('update:status', next);
 }
 
 function checkNow(): void {
@@ -21,7 +24,8 @@ function checkNow(): void {
   autoUpdater.checkForUpdates().catch(() => undefined);
 }
 
-export function setupUpdater(): void {
+export function setupUpdater(mainPages: () => Electron.WebContents[]): void {
+  pages = mainPages;
   // Download in the background; the user chooses when to restart (or the app installs on its next quit).
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;

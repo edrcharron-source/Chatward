@@ -93,7 +93,8 @@ any other choice.
   is up); the bottom bar holds the call controls or Join voice. The soundboard opens in a pop-up with a small frame.
 - **The window** (desktop app, not macOS) is see-through around the frame: picking the LCARS layout swaps the main
   window for a transparent one with no system border, shadow or rounded corners (`main/index.ts`, saved in
-  `window-frame.json`; the page reloads, like a restart), and picking another layout swaps the usual window back. The
+  `window-frame.json`), and picking another layout swaps the usual window back. The page lives in a view that is moved
+  to the new window as it is, so nothing reloads: dialogs, drafts and the call carry on. The
   page clears everything behind the frame and clips itself to the frame's outline (`useShapedFrame`), and thin strips on
   the frame's outer edges resize the window, since it has no system border to drag. Maximized, it is a plain rectangle.
 - **Rules:** four colours with fixed meanings (blue frame/ready, amber selected/live, red close/leave/alert, lilac text),
@@ -103,7 +104,7 @@ any other choice.
   the Tabs and LCARS layouts, fails if LCARS is missing any control Tabs shows, uses the frame's own controls (split,
   pop-out, tab reorder, Join voice, Leave, switching layouts) and saves screenshots of both. It keeps one window
   (`--chatward-keep-window`). `npm run lcars:shaped -w @chatward/client -- <out dir>` checks the see-through window:
-  the swap, clear corners (also with a dialog open) and the usual window coming back.
+  the swap (picked in Settings, with no reload), clear corners (also with a dialog open) and the usual window coming back.
 
 ## Orbit (a layout and a skin)
 

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type DragEvent, type ReactNode, type RefObject } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore, type DragEvent, type ReactNode, type RefObject } from 'react';
 import { useSession } from '../../state/session';
 import StatusPicker from '../servers/StatusPicker';
 import VoiceDock from '../voice/VoiceDock';
@@ -106,6 +106,15 @@ function useMaximized(): boolean {
   return maximized;
 }
 
+/** True while the page is in the shaped window. It changes when the layout moves the page to the other kind of window. */
+function useShapedWindow(): boolean {
+  const controls = window.chatward?.windowControls;
+  return useSyncExternalStore(
+    (cb) => controls?.onShapedChange?.(cb) ?? (() => {}),
+    () => controls?.isShaped?.() === true,
+  );
+}
+
 /**
  * In the shaped window (transparent, no border) the page's own background must not show past the frame: the page
  * behind the frame is cleared (lcars.css, html.cw-shaped-lcars) and the page is clipped to the frame's outline, so a
@@ -113,7 +122,7 @@ function useMaximized(): boolean {
  * a plain rectangle. Returns true while the frame is shaped, so the edges can resize the window.
  */
 function useShapedFrame(shell: RefObject<HTMLDivElement | null>): boolean {
-  const shapedWindow = window.chatward?.windowControls?.shaped === true;
+  const shapedWindow = useShapedWindow();
   const maximized = useMaximized();
   const shaped = shapedWindow && !maximized;
   useEffect(() => {
