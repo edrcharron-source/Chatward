@@ -1,5 +1,5 @@
 // Offline stand-in for the server. Implements docs/CONTRACT.md REST routes and the WS frame stream in memory.
-import { CHATTER_LINES, CHATTER_REPLIES, CHATTER_TIMING, chatterNamed, chatterReply, chatterWait, DEFAULT_VOICE_BITRATE_KBPS, LIMITS, VOICE_BITRATES_KBPS, type Channel, type Member, type Message, type LibraryGif, type ServerFrame, type SoundboardSound, type User } from '@chatward/shared';
+import { CHATTER_CHATS, CHATTER_REPLIES, CHATTER_TIMING, chatterNamed, chatterReply, chatterWait, DEFAULT_VOICE_BITRATE_KBPS, LIMITS, VOICE_BITRATES_KBPS, type Channel, type Member, type Message, type LibraryGif, type ServerFrame, type SoundboardSound, type User } from '@chatward/shared';
 import { avatarPng } from './assets';
 import { createWorld, makeMessage, newId, SERVER_ID, YOU_ID } from './world';
 import { demoDecode } from '../codec';
@@ -59,15 +59,36 @@ function randomBot() {
 
 function pick<T>(list: T[]): T { return list[Math.floor(Math.random() * list.length)]; }
 
+/** Conversations started lately, so the same one does not come back soon. */
+const recentChats: number[] = [];
+
 function scheduleBotChatter() {
+  // Now and then the bots start a short conversation among themselves, each line by a different bot.
   const loop = () => {
-    const bot = randomBot();
-    if (bot) {
+    const bots = activeBots();
+    if (bots.length) {
+      const fresh = CHATTER_CHATS.map((_, i) => i).filter((i) => !recentChats.includes(i));
+      const n = pick(fresh);
+      recentChats.push(n);
+      if (recentChats.length > Math.floor(CHATTER_CHATS.length / 2)) recentChats.shift();
       const channel = pick(['demo-ch-general', 'demo-ch-memes']);
-      emit({ t: 'typing', channelId: channel, userId: bot.user.id });
-      later(chatterWait(CHATTER_TIMING.lineTyping), () => postBotMessage(channel, bot.user.id, pick(CHATTER_LINES)));
+      const lines = bots.length > 1 ? CHATTER_CHATS[n] : CHATTER_CHATS[n].slice(0, 1);
+      let speaker: (typeof bots)[number] | undefined;
+      const next = (i: number) => {
+        if (i >= lines.length) return;
+        const bot = pick(bots.filter((b) => b !== speaker));
+        speaker = bot;
+        later(i ? chatterWait(CHATTER_TIMING.replyPause) : 0, () => {
+          emit({ t: 'typing', channelId: channel, userId: bot.user.id });
+          later(chatterWait(CHATTER_TIMING.lineTyping), () => {
+            postBotMessage(channel, bot.user.id, lines[i]);
+            next(i + 1);
+          });
+        });
+      };
+      next(0);
     }
-    later(chatterWait(CHATTER_TIMING.nextLine), loop);
+    later(chatterWait(CHATTER_TIMING.nextChat), loop);
   };
   later(chatterWait(CHATTER_TIMING.firstLine), loop);
 }

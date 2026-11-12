@@ -377,10 +377,57 @@ export type ServerFrame =
 // ---------- Demo chatter ----------
 // The demo's chatter bots, shared by the offline demo and the guests in client state/guests.ts.
 // A guest message names a line by its index: the text shown always comes from the app's own copy.
-export const CHATTER_LINES = [
+/**
+ * Short conversations guests start among themselves now and then. The first line always makes sense on its own (a
+ * lone guest only says that one); the rest alternate between guests. Each line is CHATTER_LINES[start + n], so add new
+ * conversations at the END only, because saved messages name a line by its index.
+ */
+export const CHATTER_CHATS: string[][] = [
+  ['anyone want to hop in voice later?', "I'm down, after dinner though", 'same, ping me', 'bet'],
+  ['what is everyone eating tonight?', 'probably pizza again', 'pizza is never the wrong answer', 'facts'],
+  ['I finally beat that boss I was stuck on', 'no way, how many tries?', "don't ask 💀", 'still counts, gg'],
+  ['what are you all watching these days?', 'rewatching an old show honestly', 'which one?', "the one with the good intro, you know the one"],
+  ['so tired today', 'same, I need a nap', "nap gang 😴"],
+  ["what's the best snack, go", 'chips, no contest', 'wrong, it is cookies', 'agree to disagree'],
+  ['good morning everyone ☀️', 'morning! coffee first', 'morning 👋'],
+  ['is it just me or did this week go by so slow', 'it took a month', 'at least the weekend is close'],
+  ['anyone got a song recommendation?', 'what kind of vibe?', 'something chill', "I'll queue something up later"],
+  ['should I get a pet?', 'yes. cat.', 'dog obviously', 'get both, problem solved'],
+  ['hot take: breakfast for dinner is the best dinner', 'pancakes at 8pm hits different', 'this is the way'],
+  ['I need a new game to play', 'what did you play last?', 'a bit of everything', "let's find something we can all play together"],
+  ['the weather is wild today', 'it keeps changing every hour', 'perfect stay inside weather'],
+  ['who is up for a movie night this weekend?', 'me!', 'only if I pick the snacks', 'deal'],
+  ['my internet keeps dropping', 'turn it off and on again', 'already did 😭', 'rip, hope it holds up'],
+  ['just made the best sandwich of my life', 'pics or it did not happen', 'it is already gone', 'tragic'],
+  ['how is everyone doing?', 'pretty good, you?', 'not bad at all', 'glad to hear it'],
+  ['anyone else stay up way too late last night?', 'guilty', 'I saw the sunrise 💀', 'we need help'],
+  ['what should we do this weekend?', 'game night?', 'game night with snacks', 'perfect'],
+  ['I started a new hobby', 'ooh what is it?', 'drawing, I am terrible at it', 'everyone starts somewhere'],
+  ['can we talk about how good fries are', 'fries are elite', 'curly fries especially', 'correct'],
+  ['I keep forgetting to drink water', 'hydration check 💧', 'drinking some right now', 'proud of us'],
+  ['who wants to watch something together later?', 'yes, put it on Watch together', 'I will bring popcorn 🍿'],
+  ['my playlist has been on repeat all day', 'which songs?', 'the same five, honestly', 'that is the dream'],
+  ['random thought: are hot dogs sandwiches?', 'no.', 'technically yes', 'this is going to start a war'],
+  ['ok who is ready for the weekend', 'me, so ready', 'counting the hours', 'almost there'],
+  ['I just remembered I have stuff to do tomorrow', 'future you will handle it', 'that is a tomorrow problem', 'true, back to chilling'],
+  ['what is everyone up to right now?', 'just hanging out here', 'listening to music', 'same, chill night'],
+  ['coffee or tea?', 'coffee all day', 'tea gang 🍵', 'both, depends on the mood'],
+  ['should I start a new show or rewatch an old one?', 'rewatch, comfort show', 'new one, live a little', 'flip a coin'],
+];
+/** Where CHATTER_CHATS start in CHATTER_LINES. The lines before it are no longer said, but saved messages still use them. */
+const CHATTER_OLD_LINES = [
   'anyone seen the patch notes?', 'lol that is so true', 'brb getting snacks', 'gg that was close',
   'who wants to hop in the Lounge', 'this app feels snappy 👀', 'not gonna lie, that gif got me', 'ok I am back',
 ];
+export const CHATTER_LINES = [...CHATTER_OLD_LINES, ...CHATTER_CHATS.flat()];
+
+/** Conversation n as indexes into CHATTER_LINES. */
+export function chatterChat(n: number): number[] {
+  let start = CHATTER_OLD_LINES.length;
+  for (let i = 0; i < n; i++) start += CHATTER_CHATS[i].length;
+  return CHATTER_CHATS[n].map((_, i) => start + i);
+}
+
 /**
  * Replies by topic. A guest answering a message picks a reply from the matching topic with the lowest `rank`, or a
  * general reply when nothing matches. A word matches whole words only ("hi" does not match "this"); a word with an
@@ -424,7 +471,7 @@ export const CHATTER_TOPICS: { name: string; rank: number; words: string[]; repl
     replies: ['loud and clear 📡', 'test received', 'works on my end', 'yep I see it', 'all good here', 'signal strong 💪', 'received ✅', 'test passed'] },
   { name: 'Compliments', rank: 10, words: ['good bot', 'love you', 'ily', "you're the best", 'youre the best', 'ur the best', 'best bot', "you're cool", 'youre cool', 'you rock', '❤️', '🥰', 'you are the best', 'ur cool', 'love this', 'good job', 'well done', 'smart bot', 'great bot', '💖', '💕'],
     replies: ['aww 🥹', 'love you too', "stop I'm blushing", 'finally someone appreciates me', 'you too!!', 'right back at you', '🥰', "you're making my day"] },
-  { name: 'Rude', rank: 10, words: ['shut up', 'stfu', 'bad bot', 'go away', 'annoying', 'be quiet', 'stop talking', 'nobody asked', 'you suck', 'ur dumb', 'you are dumb', 'stupid bot', 'dumb bot', 'leave me alone', 'kys'],
+  { name: 'Rude', rank: 10, words: ['shut up', 'stfu', 'bad bot', 'go away', 'annoying', 'be quiet', 'stop talking', 'nobody asked', 'you suck', 'ur dumb', 'you are dumb', 'stupid bot', 'dumb bot', 'leave me alone', 'kys', 'fuck you', 'fuck off', 'f you', 'fu', 'screw you', "didn't ask", 'didnt ask', 'who asked', 'shut it', 'hate you', 'i hate you', "you're stupid", 'youre stupid', 'ur stupid', "you're dumb", 'youre dumb', 'idiot', 'loser', 'you are trash', 'ur trash', '🖕'],
     replies: ['rude 😤', "ok ok I'll be quiet", 'wow.', "I'll remember that", 'fine 🙄', 'ouch', 'that hurt my circuits', 'noted 📝', 'and yet here you are', 'k'] },
   { name: 'Sorry', rank: 25, words: ['sorry', 'my bad', 'mb', 'oops', 'whoops', 'apologies', 'sry', 'my fault', 'forgive me', 'i apologize'],
     replies: ['all good', 'no worries', 'it happens', "you're fine", "don't worry about it", 'forgiven', 'nah we good', 'no stress'] },
@@ -551,6 +598,8 @@ export function chatterNamed(text: string, names: string[]): number {
 export const CHATTER_TIMING = {
   firstLine: [8_000, 8_000],
   nextLine: [20_000, 45_000],
+  /** Between conversations guests start among themselves. */
+  nextChat: [90_000, 180_000],
   lineTyping: [1_500, 3_000],
   replyPause: [1_500, 3_000],
   replyTyping: [1_200, 2_000],

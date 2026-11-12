@@ -9,6 +9,8 @@ import {
   CHATTER_LINES,
   CHATTER_REPLIES,
   CHATTER_TIMING,
+  chatterChat,
+  CHATTER_CHATS,
   chatterClip,
   chatterNamed,
   chatterReply,
@@ -213,12 +215,12 @@ function sendRoster(serverId: string) {
   if (channelId) void sendTag(channelId, { kind: 'roster', session: SESSION, roster: useGuests.getState().mine[serverId] ?? [] });
 }
 
-/** A guest says something: a random line, or reply number `reply`. `guest` picks who, if they are still here. */
-function say(serverId: string, channelId: string, reply?: number, guest?: number) {
+/** A guest says reply number `reply`, or line number `chatLine`. `guest` picks who, if they are still here. */
+function say(serverId: string, channelId: string, reply?: number, guest?: number, chatLine?: number) {
   const mine = useGuests.getState().mine[serverId] ?? [];
   if (!mine.length) return;
   const who = guest !== undefined && mine.includes(guest) ? guest : mine[Math.floor(Math.random() * mine.length)];
-  const line = reply ?? Math.floor(Math.random() * CHATTER_LINES.length);
+  const line = reply ?? chatLine ?? 0;
   void sendTag(channelId, { kind: 'line', session: SESSION, roster: mine, guest: who, line, reply: reply !== undefined });
 }
 
@@ -240,12 +242,34 @@ function stopHosting(serverId: string) {
   timers.delete(serverId);
 }
 
-/** Same timing as the demo: a line in a random text channel now and then, and clips in our call. */
+/** Conversations started lately, so the same one does not come back soon. */
+const recentChats: number[] = [];
+
+/** Guests start a short conversation among themselves: each line by a different guest than the one before. */
+function converse(serverId: string, channelId: string) {
+  const fresh = CHATTER_CHATS.map((_, i) => i).filter((i) => !recentChats.includes(i));
+  const n = fresh[Math.floor(Math.random() * fresh.length)];
+  recentChats.push(n);
+  if (recentChats.length > Math.floor(CHATTER_CHATS.length / 2)) recentChats.shift();
+  const mine = useGuests.getState().mine[serverId] ?? [];
+  const lines = mine.length > 1 ? chatterChat(n) : chatterChat(n).slice(0, 1);
+  let at = 0;
+  let speaker = -1;
+  for (const line of lines) {
+    const others = mine.filter((g) => g !== speaker);
+    const guest = others[Math.floor(Math.random() * others.length)];
+    speaker = guest;
+    at += at ? chatterWait(CHATTER_TIMING.replyPause) + chatterWait(CHATTER_TIMING.replyTyping) : 0;
+    later(serverId, at, () => say(serverId, channelId, undefined, guest, line));
+  }
+}
+
+/** A short conversation in a random text channel now and then, and clips in our call. */
 function startHosting(serverId: string) {
   const textLoop = () => {
     const channels = textChannels(serverId);
-    if (channels.length) say(serverId, channels[Math.floor(Math.random() * channels.length)]);
-    later(serverId, chatterWait(CHATTER_TIMING.nextLine), textLoop);
+    if (channels.length) converse(serverId, channels[Math.floor(Math.random() * channels.length)]);
+    later(serverId, chatterWait(CHATTER_TIMING.nextChat), textLoop);
   };
   later(serverId, chatterWait(CHATTER_TIMING.firstLine), textLoop);
   const voiceLoop = () => {
