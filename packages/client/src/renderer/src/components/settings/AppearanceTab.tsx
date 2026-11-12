@@ -2,6 +2,7 @@ import { useSettings } from '../../state/settings';
 import { SKINS, PLAIN_SKIN } from '../../skins';
 import { Section, Toggle } from './controls';
 import LayoutPreview from './LayoutPreview';
+import { usePhone } from '../../web/usePhone';
 
 const THEMES = [
   { id: 'dark', label: 'Dark' },
@@ -20,6 +21,8 @@ export default function AppearanceTab() {
   const theme = useSettings((s) => s.theme);
   const skin = useSettings((s) => s.skin);
   const layout = useSettings((s) => s.layout);
+  // Phones always use their own layout, so the layout choice only shows on wider screens.
+  const phone = usePhone();
   const confirmDeleteMessages = useSettings((s) => s.confirmDeleteMessages);
   const animatedBackgrounds = useSettings((s) => s.animatedBackgrounds);
   const set = useSettings((s) => s.set);
@@ -40,7 +43,7 @@ export default function AppearanceTab() {
           ))}
         </div>
       </Section>
-      <Section title="Layout">
+      {!phone && <Section title="Layout">
         {/* Layout and skin are separate choices: picking one never changes the other. Each choice shows a small drawing
             of the layout in the skin that is on now. */}
         <div className="choice-group layouts" role="radiogroup" aria-label="Layout">
@@ -55,7 +58,7 @@ export default function AppearanceTab() {
             </label>
           ))}
         </div>
-      </Section>
+      </Section>}
       <Section title="Confirmations">
         <Toggle label="Ask before deleting a message"
           hint="Turn off to delete a message straight away. Turn on again to be asked each time."

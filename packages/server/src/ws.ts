@@ -20,6 +20,8 @@ export function attachWs(http: HttpServer, ctx: Ctx) {
   const activityByUser = new Map<string, Activity>();
   // Which device each socket belongs to, so removing one device closes only its sockets.
   const deviceBySocket = new WeakMap<WebSocket, string | null>();
+  // Sockets whose app said it is in the background or idle ('focus' frame). Absent means in use.
+  const idleSockets = new WeakSet<WebSocket>();
 
   http.on('upgrade', (req, socket, head) => {
     // A malformed request target (for example "GET //") makes URL throw; that must not reach the process.
@@ -60,7 +62,9 @@ export function attachWs(http: HttpServer, ctx: Ctx) {
             const sid = ctx.serverIdForChannelMember(f.channelId, userId);
             if (sid) ctx.broadcastToServer(sid, { t: 'typing', channelId: f.channelId, userId });
           } else if (f.t === 'presence' && typeof f.status === 'string' && CLIENT_STATUSES.includes(f.status)) announce(userId, f.status);
-          else if (f.t === 'activity') {
+          else if (f.t === 'focus') {
+            if (f.active === false) idleSockets.add(ws); else idleSockets.delete(ws);
+          } else if (f.t === 'activity') {
             const activity = cleanActivity(f.activity);
             if (activity !== undefined) setActivity(userId, activity);
           }
@@ -171,6 +175,7 @@ export function attachWs(http: HttpServer, ctx: Ctx) {
   ctx.sendToUser = (userId, frame) => {
     for (const ws of socketsByUser.get(userId) ?? []) send(ws, frame);
   };
+  ctx.isUserActive = (userId) => [...(socketsByUser.get(userId) ?? [])].some((ws) => !idleSockets.has(ws));
   ctx.broadcastToServer = (serverId, frame) => {
     const ids = ctx.db.prepare('SELECT user_id FROM members WHERE server_id=?').all(serverId) as { user_id: string }[];
     for (const { user_id } of ids) ctx.sendToUser(user_id, frame);

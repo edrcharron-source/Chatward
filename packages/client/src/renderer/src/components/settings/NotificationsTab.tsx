@@ -2,6 +2,8 @@ import { playSound, type SoundKind } from '../../notify/notify';
 import { useSettings } from '../../state/settings';
 import { PushSwitch } from '../workouts/WorkoutsView';
 import { Section, Slider, Toggle } from './controls';
+import { usePhone } from '../../web/usePhone';
+import { PushPanel } from '../phone/Notifications';
 
 const PREVIEWS: { kind: SoundKind; label: string }[] = [
   { kind: 'message', label: 'Message' },
@@ -16,10 +18,11 @@ export default function NotificationsTab() {
   const soundVolume = useSettings((s) => s.soundVolume);
   const silenceAll = useSettings((s) => s.silenceAll);
   const set = useSettings((s) => s.set);
+  const phone = usePhone();
 
   return (
     <>
-      <PushSwitch title="Phone notifications" />
+      {phone ? <PushPanel /> : <PushSwitch title="Phone notifications" />}
 
       <Section title="Silence">
         <Toggle label="Silence all notifications" hint="No sounds and no taskbar flashing for messages, pings or voice. Highlights in chat still show."

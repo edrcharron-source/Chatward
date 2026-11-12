@@ -92,3 +92,20 @@
   .setting-row input[type='range'] { width: 120px; }
 }
 .key-change { border-left: 3px solid var(--warn); padding-left: 10px; }
+
+/* Settings on a phone (PhoneSettings in SettingsModal.tsx): the same modal, nav and body, shown one at a time and
+   filling the screen. The nav is the section list; a section has a Back button over its heading. */
+.cw-settings-phone > .modal.settings { flex-direction: column; height: calc(100% - env(safe-area-inset-top) - 8px) !important; }
+.cw-settings-phone .settings-nav { width: auto; flex: 1; flex-direction: column; overflow-y: auto; padding: 16px 14px calc(16px + env(safe-area-inset-bottom)); gap: 6px; }
+.cw-settings-phone .settings-nav h2 { margin: 0 0 10px; font-size: 20px; color: var(--text-strong); }
+.cw-settings-phone .settings-nav .spacer { display: block; min-height: 12px; }
+.cw-settings-phone .settings-nav button { display: flex; align-items: center; gap: 10px; min-height: 48px; white-space: nowrap; }
+.cw-settings-phone .settings-nav button > span:not(.settings-chevron) { flex: 1; }
+.cw-settings-phone .settings-chevron { color: var(--text-muted); font-size: 18px; line-height: 1; }
+.cw-settings-phone .settings-body { padding: 14px 14px calc(24px + env(safe-area-inset-bottom)); }
+.cw-settings-phone .settings-back { margin: 0 0 10px; padding: 0 10px; min-height: 40px; }
+.cw-settings-phone .settings-close { top: 10px; right: 10px; min-width: 40px; min-height: 40px; }
+.cw-settings-phone .setting-row { flex-wrap: wrap; }
+.cw-settings-phone .setting-row .slider { flex: 1 1 160px; }
+.cw-settings-phone .setting-row input[type='range'] { flex: 1; width: auto; min-width: 0; }
+.cw-settings-phone .row-actions button { min-height: 40px; }

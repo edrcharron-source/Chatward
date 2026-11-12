@@ -34,3 +34,51 @@
 .cw-vault-tile.selected img { opacity: .7; }
 .cw-vault-tile.selected { outline: 3px solid currentColor; outline-offset: -3px; }
 .cw-vault-check { position: absolute; left: 6px; top: 6px; width: 22px; height: 22px; display: grid; place-items: center; border-radius: 50%; border: 2px solid #fff; background: rgba(0, 0, 0, .45); color: #fff; font-size: 13px; }
+
+/* ---- Phones (the iPhone home-screen app) ----
+   The top bar already says "Vault", so the header keeps to how much space you use and the buttons. Pictures fill the
+   width three to a row with hairline gaps, like the Photos app; albums and filters scroll sideways in one row; the
+   selection bar sits at the bottom, under your thumb; and the viewer takes the whole screen. */
+@media (max-width: 700px) {
+  .cw-vault { padding: 10px 12px 0; gap: 10px; }
+  .cw-vault > * { flex-shrink: 0; }
+  .cw-vault::after { content: ''; flex: none; height: 12px; order: 9; }
+  .cw-vault-head { flex-wrap: wrap; gap: 8px; }
+  .cw-vault-head h2 { display: none; }
+  .cw-vault-head > .muted { flex: 1 1 100%; font-size: 12.5px; }
+  .cw-vault-head button { flex: 1 1 0; min-height: 40px; white-space: nowrap; padding: 0 10px; }
+  .cw-vault-head button.cw-vault-add { flex: 1.3 1 0; }
+  .cw-vault-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px; margin: 0 -12px; }
+  .cw-vault-tile { border-radius: 0; -webkit-touch-callout: none; user-select: none; -webkit-user-select: none; }
+  .cw-vault-tile img { -webkit-user-drag: none; pointer-events: none; }
+  .cw-vault-albums { margin: 0 -12px; padding: 2px 12px 6px; scroll-padding-inline: 12px; scroll-snap-type: x proximity; scrollbar-width: none; }
+  .cw-vault-albums::-webkit-scrollbar { display: none; }
+  .cw-vault-album { flex-basis: 96px; width: 96px; scroll-snap-align: start; }
+  .cw-vault-album-cover { font-size: 26px; }
+  .cw-vault-filters { flex-wrap: nowrap; overflow-x: auto; margin: 0 -12px; padding: 2px 12px; scrollbar-width: none; }
+  .cw-vault-filters::-webkit-scrollbar { display: none; }
+  .cw-vault-filters button, .cw-vault-chips button { flex: none; min-height: 34px; padding: 0 14px; white-space: nowrap; }
+  .cw-vault-albumbar button { min-height: 38px; }
+  .cw-vault-selectbar {
+    /* last in the column, so it sticks to the bottom of the screen while the pictures scroll above it */
+    order: 10; position: sticky; top: auto; bottom: 0; z-index: 2; margin: 0 -12px; padding: 8px 12px; border-radius: 0;
+    border-top: 1px solid var(--border); box-shadow: 0 -6px 18px rgba(0, 0, 0, .25);
+    flex-wrap: wrap; gap: 6px; background: var(--bg-1);
+  }
+  .cw-vault-selectbar > span { flex: 1 1 100%; font-weight: 600; }
+  .cw-vault-selectbar button, .cw-vault-selectbar select { flex: 1 1 auto; min-height: 40px; white-space: nowrap; }
+  .cw-vault-check { width: 24px; height: 24px; }
+  .cw-vault-viewer {
+    place-items: stretch; background: #000;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+  .cw-vault-stage { max-width: none; max-height: none; width: 100%; height: 100%; gap: 0; }
+  .cw-vault-stage > img, .cw-vault-stage > video { flex: 1; min-height: 0; width: 100%; max-width: none; max-height: none; object-fit: contain; }
+  .cw-vault-bar { flex: none; flex-wrap: wrap; gap: 8px; padding: 10px 12px; background: rgba(0, 0, 0, .7); }
+  .cw-vault-bar > span { flex: 1 1 100%; font-size: 13px; }
+  .cw-vault-bar button, .cw-vault-bar a { min-height: 40px; display: inline-flex; align-items: center; padding: 0 12px; }
+  /* Save is a link (it downloads the file); give it the same box as the buttons beside it. */
+  .cw-vault-bar a { border: 1px solid var(--border); border-radius: var(--radius-sm); text-decoration: none; }
+  .cw-vault-notes { flex: none; max-height: 34vh; overflow-y: auto; padding: 0 12px 10px; background: rgba(0, 0, 0, .7); }
+  .cw-vault-notes input { min-width: 0; width: 100%; }
+}

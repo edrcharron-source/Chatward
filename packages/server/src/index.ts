@@ -70,6 +70,7 @@ const ctx: Ctx = {
   broadcastToServer: () => {},
   sendToUser: () => {},
   revokeSockets: () => {},
+  isUserActive: () => false,
   onDisconnect: [],
   onConnect: [],
   getUser: (id) => {

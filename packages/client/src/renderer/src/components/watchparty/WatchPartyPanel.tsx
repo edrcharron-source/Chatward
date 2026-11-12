@@ -12,6 +12,7 @@ import { fetchVaultFile, openDescriptor, uploadToVault, type VaultPage } from '.
 import { attachJellyfin, startJellyfinPlayback } from '../jellyfin/JellyfinBrowser';
 import { bindPlayer, embedSrc, parseYouTubeUrl, sendCommand, type PlayerEvent } from './youtube';
 import { popoutUrl, type PanelToPopout, type PopoutToPanel } from './popout';
+import { usePhone } from '../../web/usePhone';
 import './watchparty.css';
 
 /** Wire shape of the latest snapshot (GET response and watch.sync frame). */
@@ -86,6 +87,9 @@ export function WatchPartyPanel({ callChannelId: channelId, keyChannelId, vaultS
   /** true while the embed lives in the pop-out window instead of the panel */
   const [popped, setPopped] = useState(false);
   const [vaultOpen, setVaultOpen] = useState(false);
+  // The home-screen app on a phone can't open a second window, so the pop-out player is left off there; the video's own
+  // full-screen and picture-in-picture buttons do that job.
+  const phone = usePhone();
   /** "Uploading clip.mp4…" while a dropped file goes to the Vault */
   const [uploading, setUploading] = useState<string | null>(null);
   const [dropping, setDropping] = useState(false);
@@ -572,7 +576,7 @@ export function WatchPartyPanel({ callChannelId: channelId, keyChannelId, vaultS
         <span>Watch party</span>
         {(active || onLeave) && (
           <span className="watch-party-head-actions">
-            {active && !useVideo && !popped && <button type="button" onClick={() => popOut(true)}>Picture in picture</button>}
+            {active && !useVideo && !popped && !phone && <button type="button" onClick={() => popOut(true)}>Picture in picture</button>}
             {active && <button type="button" className="watch-party-stop" onClick={stop}>Stop</button>}
             {onLeave && <button type="button" className="watch-party-stop" title="Leave the watch party and stay in the voice chat" onClick={onLeave}>Leave</button>}
           </span>

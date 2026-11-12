@@ -45,8 +45,11 @@ function loadKeys(dataDir: string): void {
       fs.writeFileSync(file, JSON.stringify(keys), { mode: 0o600 });
     }
   }
-  // Apple refuses pushes whose subject is not a mailto: or https: address.
-  webpush.setVapidDetails(process.env.VAPID_SUBJECT || 'mailto:admin@example.com', keys.publicKey, keys.privateKey);
+  // Apple refuses pushes whose subject is not a real mailto: or https: address, and can refuse a placeholder one. With
+  // no VAPID_SUBJECT the server's own public address (PUBLIC_URL, which the Docker setups set) is used.
+  const publicUrl = (process.env.PUBLIC_URL ?? '').trim();
+  const subject = process.env.VAPID_SUBJECT || (/^https:\/\/[^/]+\.[^/]+/.test(publicUrl) ? publicUrl.replace(/\/$/, '') : 'mailto:admin@example.com');
+  webpush.setVapidDetails(subject, keys.publicKey, keys.privateKey);
   vapidPublic = keys.publicKey;
   ready = true;
 }
@@ -129,21 +132,19 @@ export function register(app: Express, ctx: Ctx): void {
     res.json({ ok: true, delivered });
   });
 
-  // New messages: a member with no open connection gets a push with the message still encrypted; the phone opens it and
-  // shows the text, or "Name sent a message" when it can't. One push per channel per person every few minutes, so a busy
-  // chat doesn't buzz nonstop.
+  // New messages: a member who isn't using any of their apps right now gets a push with the message still encrypted; the
+  // phone opens it and shows the text, or "Name sent a message" when it can't. An app that is open but in the background,
+  // on a hidden window or left idle doesn't count (ctx.isUserActive), so a desktop app left running no longer stops
+  // the phone from buzzing. One push per channel per person every few minutes, so a busy chat doesn't buzz nonstop.
   const lastPushed = new Map<string, number>();
   const QUIET_MS = 3 * 60_000;
-  const online = new Set<string>();
-  ctx.onConnect.push((userId) => { online.add(userId); });
-  ctx.onDisconnect.push((userId, _device, state) => { if (!state.user) online.delete(userId); });
   messageHooks.push(({ channelId, authorId, keyVersion, ciphertext }) => {
     const ch = ctx.getChannel(channelId);
     if (!ch) return;
     const author = ctx.getUser(authorId)?.displayName ?? 'Someone';
     for (const m of ctx.getMembers(ch.serverId)) {
       const uid = m.user.id;
-      if (uid === authorId || online.has(uid)) continue;
+      if (uid === authorId || ctx.isUserActive(uid)) continue;
       const key = `${uid}|${channelId}`;
       const now = Date.now();
       if (now - (lastPushed.get(key) ?? 0) < QUIET_MS) continue;

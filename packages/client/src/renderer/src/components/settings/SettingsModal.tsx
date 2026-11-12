@@ -6,20 +6,69 @@ import VoiceVideoTab from './VoiceVideoTab';
 import NotificationsTab from './NotificationsTab';
 import PrivacyTab from './PrivacyTab';
 import SecurityTab from './SecurityTab';
+import { usePhone } from '../../web/usePhone';
+import PixelIcon, { type PixelIconName } from '../icons/PixelIcon';
 import './settings.css';
 
 const TABS = [
-  { id: 'account', label: 'Account', Panel: AccountTab },
-  { id: 'appearance', label: 'Appearance', Panel: AppearanceTab },
-  { id: 'voice', label: 'Voice & Video', Panel: VoiceVideoTab },
-  { id: 'notifications', label: 'Notifications', Panel: NotificationsTab },
-  { id: 'privacy', label: 'Privacy', Panel: PrivacyTab },
-  { id: 'security', label: 'Security', Panel: SecurityTab },
+  { id: 'account', label: 'Account', Panel: AccountTab, icon: 'user' as PixelIconName },
+  { id: 'appearance', label: 'Appearance', Panel: AppearanceTab, icon: 'palette' as PixelIconName },
+  { id: 'voice', label: 'Voice & Video', Panel: VoiceVideoTab, icon: 'mic' as PixelIconName },
+  { id: 'notifications', label: 'Notifications', Panel: NotificationsTab, icon: 'bell' as PixelIconName },
+  { id: 'privacy', label: 'Privacy', Panel: PrivacyTab, icon: 'eye' as PixelIconName },
+  { id: 'security', label: 'Security', Panel: SecurityTab, icon: 'lock' as PixelIconName },
 ] as const;
 
 export type SettingsTabId = (typeof TABS)[number]['id'];
 
 export default function SettingsModal({ onClose, initialTab = 'account' }: { onClose: () => void; initialTab?: SettingsTabId }) {
+  const phone = usePhone();
+  if (phone) return <PhoneSettings onClose={onClose} initialTab={initialTab} />;
+  return <DesktopSettings onClose={onClose} initialTab={initialTab} />;
+}
+
+/**
+ * Settings on a phone: a full-screen page with a list of sections, like the iPhone Settings app. Tapping one opens it,
+ * and Back returns to the list. Opened straight on a section (Notifications from the welcome card), Back still works.
+ */
+function PhoneSettings({ onClose, initialTab }: { onClose: () => void; initialTab: SettingsTabId }) {
+  // Opening on the first section means "Settings" in general, so the list shows first.
+  const [tab, setTab] = useState<SettingsTabId | null>(initialTab === 'account' ? null : initialTab);
+  const current = tab ? TABS.find((t) => t.id === tab) ?? null : null;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { if (tab) setTab(null); else onClose(); } };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose, tab]);
+  // The same modal, nav and body as the wide Settings, one at a time: the section list, then the section.
+  return (
+    <div className="modal-backdrop cw-settings-phone">
+      <div className="modal settings" role="dialog" aria-modal="true" aria-label={current ? current.label : 'Settings'}>
+        {current ? (
+          <section className="settings-body" role="tabpanel" aria-label={current.label}>
+            <button type="button" className="settings-back" onClick={() => setTab(null)}>‹ Settings</button>
+            <h2>{current.label}</h2>
+            <current.Panel />
+          </section>
+        ) : (
+          <nav className="settings-nav" aria-label="Settings">
+            <h2>Settings</h2>
+            {TABS.map((t) => (
+              <button key={t.id} type="button" onClick={() => setTab(t.id)}>
+                <PixelIcon name={t.icon} size={14} /><span>{t.label}</span><span className="settings-chevron" aria-hidden="true">›</span>
+              </button>
+            ))}
+            <div className="spacer" />
+            <button type="button" className="danger" onClick={() => void signOut()}>Log out</button>
+          </nav>
+        )}
+        <button type="button" className="icon settings-close" aria-label="Close settings" onClick={onClose}>✕</button>
+      </div>
+    </div>
+  );
+}
+
+function DesktopSettings({ onClose, initialTab }: { onClose: () => void; initialTab: SettingsTabId }) {
   const [tab, setTab] = useState<SettingsTabId>(initialTab);
   const current = TABS.find((t) => t.id === tab) ?? TABS[0];
 

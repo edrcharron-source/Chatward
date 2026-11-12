@@ -10,9 +10,10 @@ import { DEMO_URL } from './demo';
 import { syncShapedWindow } from './components/lcars/shapedWindow';
 import { installWebBridge, registerServiceWorker } from './web/bridge';
 import { syncStatusBarColour } from './web/statusBar';
+import { followVisualViewport } from './web/viewport';
 
 // In the web app there is no Electron preload, so window.chatward is filled in from browser features first.
-if (__CHATWARD_BUILD__.web) { installWebBridge(); registerServiceWorker(); syncStatusBarColour(); }
+if (__CHATWARD_BUILD__.web) { installWebBridge(); registerServiceWorker(); syncStatusBarColour(); followVisualViewport(); }
 
 // The token comes from secureStore, so wait for it before the first request goes out.
 // The page's connection rules are fixed when it loads. If the saved server is not the one they were set for, reload once.

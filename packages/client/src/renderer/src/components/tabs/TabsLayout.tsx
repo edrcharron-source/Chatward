@@ -25,6 +25,9 @@ import LcarsLayout from '../lcars/LcarsLayout';
 import { OrbitBackdrop, OrbitMark, OrbitWindowButtons } from '../orbit/OrbitFrame';
 import MysteryButton from '../mystery/MysteryButton';
 import { usePhone } from '../../web/usePhone';
+import { clearNotifications, syncPush } from '../../web/push';
+import MeSheet from '../phone/MeSheet';
+import { NotifyPrompt } from '../phone/Notifications';
 import './tabs.css';
 import './phone.css';
 
@@ -121,6 +124,17 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenMov
   // Phones: one tab at a time with the tab bar along the bottom, and the member list in a drawer.
   const phone = usePhone();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [meOpen, setMeOpen] = useState(false);
+  const presence = useSession((s) => s.presence);
+  // The web app: make sure this device's notifications still reach it, and clear the badge once it is open.
+  useEffect(() => {
+    if (!__CHATWARD_BUILD__.web) return;
+    void syncPush().catch((e) => console.warn('[push]', e));
+    void clearNotifications();
+    const onVisible = () => { if (!document.hidden) void clearNotifications(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, []);
   useEffect(() => { if (phone) setSplit(false); }, [phone]);
   const savedOrder = useSettings((s) => s.tabOrder);
   const setSettings = useSettings((s) => s.set);
@@ -221,7 +235,11 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenMov
           )
           : <Empty>This server has no text chat yet.</Empty>;
       case 'voice':
-        return voice ? <VoiceChannelView key={voice.id} channel={voice} /> : <Empty>This server has no voice chat yet.</Empty>;
+        if (!voice) return <Empty>This server has no voice chat yet.</Empty>;
+        // On a phone the call controls sit under the call, where your thumb is, instead of in a side column.
+        return phone
+          ? <div className="cw-tab-pane cw-phone-voice"><VoiceChannelView key={voice.id} channel={voice} /><section className="cw-me cw-phone-call" aria-label="Call controls"><VoiceDock stacked /></section></div>
+          : <VoiceChannelView key={voice.id} channel={voice} />;
       case 'watch':
         // Watch together belongs to the voice call, so you need to be in voice to be in it. Being in voice puts you in it,
         // but you can leave it (and join it again) without leaving voice.
@@ -321,7 +339,7 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenMov
               nudgeTab(t.id, e.key === back ? -1 : 1);
             }}>
             <span aria-hidden="true">[</span>
-            <PixelIcon name={t.icon} size={14} />
+            <PixelIcon name={t.icon} size={phone ? 18 : 14} />
             <span>{phone || rail ? (t.short ?? t.label) : t.label}</span>
             {t.id === 'text' && textUnread > 0 && !textOnScreen && (
               <span className="cw-badge" aria-label={`${textUnread} unread`}>{textUnread > 99 ? '99+' : textUnread}</span>
@@ -339,7 +357,7 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenMov
       {onOpenMovies && (
         <span className="cw-tab">
           <button type="button" className="cw-tab-main" title="Browse the Jellyfin library" onClick={onOpenMovies}>
-            <span aria-hidden="true">[</span><PixelIcon name="movies" size={14} /><span>Movies</span><span aria-hidden="true">]</span>
+            <span aria-hidden="true">[</span><PixelIcon name="movies" size={phone ? 18 : 14} /><span>Movies</span><span aria-hidden="true">]</span>
           </button>
         </span>
       )}
@@ -426,28 +444,45 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenMov
   );
 
   if (phone) {
-    // In a call, the people button shows a dot, because the call controls are in the drawer.
+    // Same pieces as the wide layout: the server name, the tool buttons and the tab bar, with the member list in a drawer
+    // and your card (status, notifications, settings) in a sheet behind the gear.
     const inCall = !!callChannelId;
+    const onlineCount = members.filter((m) => m.user.id === user?.id || (presence[m.user.id] ?? 'offline') !== 'offline').length;
     return (
       <div className="cw-tabs-shell cw-phone" data-region="shell" data-layout="phone">
-        <header className="cw-phone-top" data-region="tabs">
+        <header className="cw-tabs-bar cw-phone-top" data-region="tabs">
           <strong className="cw-tabs-server">{bundle?.server.name ?? 'Chatward'}</strong>
-          {canOpenServerSettings && (
-            <button type="button" className="cw-tool" aria-label="Server settings" onClick={() => setServerSettingsOpen(true)}>
-              <span>Server</span>
+          <div className="cw-tabs-tools">
+            <button type="button" className={`cw-tool${meOpen ? ' active' : ''}`} aria-label="You: status, notifications and settings" aria-expanded={meOpen} onClick={() => setMeOpen(true)}>
+              <PixelIcon name="gear" size={16} />
+              {myStatus !== 'online' && <span className={`cw-dot-inline ${myStatus}`} aria-hidden="true" />}
             </button>
-          )}
-          <button type="button" className="icon cw-tool-icon" aria-label="Settings" onClick={() => onOpenSettings()}>
-            <PixelIcon name="gear" size={18} />
-          </button>
-          <button type="button" className={`cw-tool${drawerOpen ? ' active' : ''}`} aria-expanded={drawerOpen} onClick={() => setDrawerOpen((o) => !o)}>
-            People{inCall && <span className="cw-tab-live" aria-label="You are in the call" />}
-          </button>
+            <button type="button" className={`cw-tool${drawerOpen ? ' active' : ''}`} aria-expanded={drawerOpen}
+              aria-label={`People, ${onlineCount} online`} onClick={() => setDrawerOpen((o) => !o)}>
+              <PixelIcon name="user" size={16} />
+              <span>{onlineCount}</span>
+              {inCall && <span className="cw-tab-live" aria-label="You are in the call" />}
+            </button>
+          </div>
         </header>
+        {tab === 'text' && <NotifyPrompt />}
         {main}
+        {inCall && tab !== 'voice' && (
+          <button type="button" className="cw-tool cw-call-pill" onClick={() => selectTab('voice', false)}>
+            <span className="cw-tab-live" aria-hidden="true" />
+            <span className="cw-call-pill-text">In voice{voice ? ` · ${voice.name}` : ''}</span>
+            <span>Open</span>
+          </button>
+        )}
         <footer className="cw-phone-bottom">{nav}</footer>
         {drawerOpen && <div className="cw-phone-scrim" onClick={() => setDrawerOpen(false)} aria-hidden="true" />}
-        {side(`cw-tabs-side cw-phone-drawer${drawerOpen ? ' open' : ''}`)}
+        <div className={`cw-tabs-side cw-phone-drawer${drawerOpen ? ' open' : ''}`} data-region="side" aria-hidden={!drawerOpen}>
+          {bundle && <MemberList serverId={bundle.server.id} members={members} />}
+        </div>
+        {meOpen && (
+          <MeSheet onClose={() => setMeOpen(false)} onOpenSettings={() => onOpenSettings()}
+            onOpenServerSettings={canOpenServerSettings ? () => setServerSettingsOpen(true) : null} />
+        )}
         {windows}
       </div>
     );

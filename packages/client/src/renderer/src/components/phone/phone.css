@@ -1,0 +1,57 @@
+/* Phone pieces (Sheet.tsx, the "You" sheet, the long-press menu, the notifications card). They are drawn with the app's
+   own tokens and classes (.modal, .cw-me, .cw-tool, .media-menu, .setting-section, .cw-welcome), so every skin restyles
+   them like the rest of the app. */
+
+/* ---- bottom sheet: the app's dialog surface, sliding up from the bottom ---- */
+.cw-sheet-layer { position: fixed; inset: 0; z-index: 120; display: flex; flex-direction: column; justify-content: flex-end; }
+.cw-sheet-scrim { position: absolute; inset: 0; background: var(--backdrop); animation: cw-sheet-fade .2s ease; }
+.cw-sheet {
+  position: relative; display: flex; flex-direction: column; max-height: calc(100% - env(safe-area-inset-top) - 24px);
+  margin: 0 env(safe-area-inset-right) 0 env(safe-area-inset-left);
+  background: var(--bg-2); color: var(--text); outline: none;
+  border-radius: var(--radius-modal) var(--radius-modal) 0 0; box-shadow: var(--shadow-popover);
+  border-top: 1px solid var(--border);
+  padding-bottom: env(safe-area-inset-bottom);
+  animation: cw-sheet-up .24s cubic-bezier(.2, .8, .2, 1);
+  transition: transform .2s ease;
+}
+.cw-sheet:focus, .cw-sheet:focus-visible { outline: none; }
+.cw-sheet.cw-sheet-dragging { transition: none; }
+.cw-sheet-full { height: calc(100% - env(safe-area-inset-top) - 24px); }
+.cw-sheet-grab { flex: none; touch-action: none; padding: 6px 0 0; }
+.cw-sheet-handle { display: block; width: 36px; height: 4px; margin: 0 auto 4px; border-radius: 2px; background: var(--bg-hover); }
+.cw-sheet-head { display: flex; align-items: center; justify-content: space-between; padding: 0 8px 4px 16px; }
+.cw-sheet-head strong { color: var(--text-strong); font-size: 16px; }
+.cw-sheet-close { min-width: 40px; min-height: 40px; }
+.cw-sheet-body {
+  flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+  display: flex; flex-direction: column; gap: 14px; padding: 6px 14px 14px;
+}
+.cw-sheet-body .setting-section { margin-bottom: 0; }
+@keyframes cw-sheet-up { from { transform: translateY(100%); } to { transform: none; } }
+@keyframes cw-sheet-fade { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .cw-sheet, .cw-sheet-scrim { animation: none; } }
+
+/* ---- the "You" sheet ---- */
+.cw-sheet-body .cw-me { border-top: 0; padding: 10px; border-radius: var(--radius); }
+.cw-sheet-actions { display: flex; flex-direction: column; gap: 6px; }
+.cw-sheet-actions .cw-tool { min-height: 44px; }
+.cw-push-row .primary { flex: none; }
+.cw-me-brand:empty { display: none; }
+.cw-me-brand .cw-powered { margin: 0 -14px -14px; }
+.cw-dot-inline { display: inline-block; width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.cw-dot-inline.idle { background: var(--warn); }
+.cw-dot-inline.dnd { background: var(--danger); }
+
+/* ---- the long-press menu: the right-click menu's items, full width ---- */
+.cw-action-preview {
+  padding: 2px 2px 0; font-size: 13px; color: var(--text-muted); overflow: hidden;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+}
+.cw-action-preview strong { color: var(--text-strong); }
+.cw-action-list { display: flex; flex-direction: column; gap: 4px; }
+.cw-action-list button, .cw-action-cancel { min-height: 46px; width: 100%; text-align: left; }
+.cw-action-list .cv-msg-menu-danger { color: var(--danger); }
+
+/* ---- the notifications card above the chat (cw-welcome's look) ---- */
+.cw-notify-prompt { flex: none; }

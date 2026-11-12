@@ -1,7 +1,7 @@
 // Chatward web app service worker. It makes the app installable and keeps the app's own files (the page, scripts,
 // styles and icons) cached so it opens fast. It never caches the API, the chat socket, uploads or voice: those are
 // always fetched live, and encrypted messages are never stored here.
-const CACHE = 'chatward-shell-v1';
+const CACHE = 'chatward-shell-v2';
 const LIVE = /^\/(api|ws|rtc|updates)(\/|$)/;
 
 self.addEventListener('install', (event) => {
@@ -130,6 +130,11 @@ self.addEventListener('push', (event) => {
       badge: '/icons/icon-192.png',
       data: { url: data.url || '/' },
     });
+    // The number on the app icon: how many notifications are waiting. The app clears it when opened.
+    try {
+      const shown = await self.registration.getNotifications();
+      if (self.navigator.setAppBadge) await self.navigator.setAppBadge(shown.length || 1);
+    } catch { /* badges not supported */ }
   })());
 });
 
