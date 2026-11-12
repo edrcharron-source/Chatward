@@ -3,22 +3,20 @@ import Sheet from './Sheet';
 
 export interface Action { label: string; onPick: () => void; danger?: boolean }
 
-/** The phone's long-press menu: a list of actions sliding up from the bottom, with Cancel under it. */
+/** The phone's long-press menu: the same items as the right-click menu, in a sheet from the bottom. */
 export default function ActionSheet({ actions, onClose, preview }: { actions: Action[]; onClose: () => void; preview?: ReactNode }) {
   return (
-    <Sheet onClose={onClose} className="cw-action-sheet">
+    <Sheet onClose={onClose} label="Message options">
       {preview && <div className="cw-action-preview">{preview}</div>}
-      <div className="cw-row-group">
+      <div className="media-menu cw-action-list" role="menu" aria-label="Message options">
         {actions.map((a) => (
-          <button key={a.label} type="button" className={`cw-row cw-action${a.danger ? ' cw-row-danger' : ''}`}
+          <button key={a.label} type="button" role="menuitem" className={a.danger ? 'cv-msg-menu-danger' : undefined}
             onClick={() => { onClose(); a.onPick(); }}>
-            <span className="cw-row-label">{a.label}</span>
+            {a.label}
           </button>
         ))}
       </div>
-      <div className="cw-row-group">
-        <button type="button" className="cw-row cw-action cw-action-cancel" onClick={onClose}><span className="cw-row-label">Cancel</span></button>
-      </div>
+      <button type="button" className="cw-action-cancel" onClick={onClose}>Cancel</button>
     </Sheet>
   );
 }

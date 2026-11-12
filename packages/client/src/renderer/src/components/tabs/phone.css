@@ -1,91 +1,58 @@
-/* The phone form of the tabs layout (TabsLayout with usePhone()), built for the iPhone home-screen app.
-   Top: your avatar (opens the "You" sheet), the open view's name, search and People. Middle: the open view. Bottom: the
-   views as a tab bar with big icons. The safe-area insets keep everything clear of the notch and the home bar, and while
-   the keyboard is open (html.cw-kb, web/viewport.ts) the tab bar steps aside so the chat keeps its room.
-   Colours, fonts and corners come from the theme tokens, so every skin restyles it. */
+/* The phone form of the tabs layout (TabsLayout with usePhone()), for the iPhone home-screen app. It keeps the tabs
+   layout's own pieces and classes, so every skin dresses it like the wide layout: the bar with the server name and the
+   tools (.cw-tabs-bar, .cw-tool), the open tab, and the same tabs (.cw-tab) along the bottom. The member list is a drawer
+   and your card a sheet. Only sizes and places are set here; colours, fonts and corners come from the theme and skin.
+   The safe-area insets keep it clear of the notch and the home bar, and while the keyboard is open (html.cw-kb,
+   web/viewport.ts) the tab bar steps aside so the chat keeps its room. */
 .cw-tabs-shell.cw-phone {
   display: flex; flex-direction: column; height: 100%;
   padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right);
 }
 .cw-phone > [data-region='main'] { flex: 1; min-height: 0; }
 
-/* ---- top bar ---- */
+/* ---- top bar: the wide layout's bar (server name and tools), with the tools as icons ---- */
 .cw-phone-top {
-  flex: none; display: flex; align-items: center; gap: 4px; min-height: 52px;
-  padding: calc(4px + env(safe-area-inset-top)) 6px 4px 8px;
-  background: var(--bg-1); border-bottom: 1px solid var(--border);
+  flex: none; flex-wrap: nowrap; gap: 8px; min-height: 48px;
+  padding: calc(6px + env(safe-area-inset-top)) 10px 6px 12px;
 }
-:root:root .cw-phone-top button {
-  flex: none; display: inline-grid; place-items: center; min-width: 44px; min-height: 44px; padding: 0;
-  background: transparent; box-shadow: none; color: var(--text-muted); border-radius: var(--radius-sm);
-  -webkit-tap-highlight-color: transparent;
-}
-:root:root .cw-phone-top button:active, :root:root .cw-phone-top button.on { color: var(--text-strong); background: var(--bg-hover); }
-.cw-phone-me .cw-avatar-wrap { position: relative; display: inline-flex; }
-.cw-phone-me .cw-dot { position: absolute; right: -2px; bottom: -2px; }
-.cw-phone-title { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.15; padding: 0 4px; }
-.cw-phone-title strong {
-  color: var(--text-strong); font-size: 17px; font-weight: 700;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.cw-phone-title span { color: var(--text-muted); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-:root:root .cw-phone-top .cw-phone-people { display: inline-flex; gap: 3px; padding: 0 8px; }
-.cw-phone-count { font-size: 13px; font-variant-numeric: tabular-nums; }
+.cw-phone-top .cw-tabs-server { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.cw-phone-top .cw-tool { min-height: 40px; min-width: 44px; justify-content: center; }
 
-/* The chat's own header (# name and search) moves into the top bar on a phone. */
-.cw-phone .cv-header { display: none; }
-
-/* ---- bottom tab bar ---- */
+/* ---- the tab bar along the bottom: the same tabs as the wide bar, one per column, icon over name ---- */
 .cw-phone-bottom {
   flex: none; background: var(--bg-1); border-top: 1px solid var(--border);
-  padding: 2px 4px env(safe-area-inset-bottom);
+  padding: 4px 4px calc(4px + env(safe-area-inset-bottom));
 }
 html.cw-kb .cw-phone-bottom { display: none; }
-.cw-phone-bottom .cw-tabs { display: flex; flex-wrap: nowrap; justify-content: space-around; gap: 0; margin: 0; }
-:root:root:root .cw-phone .cw-phone-bottom .cw-tab,
-:root:root:root .cw-phone .cw-phone-bottom .cw-tab.active { flex: 1 1 0; min-width: 0; border: 0; background: transparent; box-shadow: none; justify-content: center; }
-:root:root:root .cw-phone .cw-phone-bottom .cw-tab-main {
-  position: relative; flex-direction: column; gap: 3px; width: 100%; min-height: 52px; padding: 6px 2px 4px;
-  justify-content: center; background: transparent; box-shadow: none;
-  font-size: 10.5px; font-weight: 600; letter-spacing: .01em; color: var(--text-muted);
-  -webkit-tap-highlight-color: transparent;
+.cw-phone-bottom .cw-tabs { flex-wrap: nowrap; justify-content: space-around; gap: 4px; margin: 0; }
+.cw-phone-bottom .cw-tab { flex: 1 1 0; min-width: 0; justify-content: center; }
+.cw-phone-bottom .cw-tab-main {
+  position: relative; flex-direction: column; gap: 3px; width: 100%; min-height: 50px; padding: 5px 2px;
+  justify-content: center; font-size: 11px;
 }
-/* The open view: its icon sits in a soft pill and its name takes the accent colour. */
-.cw-phone-bottom .cw-tab-main > svg { padding: 3px 14px; box-sizing: content-box; border-radius: 999px; transition: background .15s, color .15s; }
-:root:root:root .cw-phone .cw-phone-bottom .cw-tab.active .cw-tab-main { color: var(--accent); background: transparent; }
-.cw-phone-bottom .cw-tab.active .cw-tab-main > svg { background: var(--accent-tint); }
 .cw-phone-bottom .cw-tab-main > [aria-hidden='true']:not(svg), .cw-phone-bottom .cw-tab-pop { display: none; }
 .cw-phone-bottom .cw-tab-main > span:not([aria-hidden]):not(.cw-badge):not(.cw-tab-live) { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cw-phone-bottom .cw-badge, .cw-phone-bottom .cw-tab-live { position: absolute; top: 3px; left: calc(50% + 10px); }
+.cw-phone-bottom .cw-badge, .cw-phone-bottom .cw-tab-live { position: absolute; top: 3px; right: calc(50% - 22px); }
 
-/* ---- "in a call" pill above the tab bar, shown on the other views ---- */
-:root:root .cw-call-pill {
-  flex: none; display: flex; align-items: center; gap: 8px; margin: 0; padding: 0 14px; min-height: 40px; width: 100%;
-  border-radius: 0; border-top: 1px solid var(--border); box-shadow: none;
-  background: color-mix(in srgb, var(--ok) 16%, var(--bg-1)); color: var(--text-strong); font-size: 13px; font-weight: 600;
-  text-align: left;
-}
-.cw-call-pill > span:nth-child(2) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cw-call-pill-go { color: var(--ok); font-weight: 700; }
+/* ---- "in a call" bar above the tab bar, shown on the other views ---- */
+.cw-call-pill { flex: none; margin: 0 8px 4px; min-height: 40px; }
+.cw-call-pill-text { flex: 1; min-width: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 html.cw-kb .cw-call-pill { display: none; }
 
-/* ---- People drawer from the right ---- */
+/* ---- People drawer from the right: the wide layout's member column ---- */
 .cw-phone-drawer {
-  position: fixed; top: 0; right: 0; bottom: 0; z-index: 40; width: min(340px, 88vw);
-  display: flex; flex-direction: column;
+  position: fixed; top: 0; right: 0; bottom: 0; z-index: 40; width: min(320px, 86vw);
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) 0;
-  transform: translateX(100%); transition: transform .22s cubic-bezier(.2, .8, .2, 1), visibility 0s .22s; visibility: hidden;
+  transform: translateX(100%); transition: transform .2s ease; visibility: hidden;
 }
-.cw-phone-drawer.open { transform: none; visibility: visible; box-shadow: -8px 0 24px rgba(0, 0, 0, .35); transition: transform .22s cubic-bezier(.2, .8, .2, 1); }
-:root:root .cw-phone-drawer { width: min(340px, 88vw); background: var(--bg-1); border-left: 1px solid var(--border); }
-.cw-phone-drawer-head { flex: none; display: flex; align-items: center; justify-content: space-between; padding: 10px 8px 6px 16px; }
-.cw-phone-drawer-head strong { color: var(--text-strong); font-size: 17px; }
-.cw-phone-drawer .cw-members { flex: 1; min-height: 0; overflow-y: auto; width: auto; }
-.cw-phone-scrim { position: fixed; inset: 0; z-index: 39; background: rgba(0, 0, 0, .45); animation: cw-fade .2s ease; }
+.cw-phone-drawer.open { transform: none; visibility: visible; box-shadow: -8px 0 24px rgba(0, 0, 0, .35); }
+.cw-phone-scrim { position: fixed; inset: 0; z-index: 39; background: var(--backdrop); }
 
-/* ---- the Voice view: the call fills the space, the controls sit under it ---- */
+/* ---- the Voice view: the call fills the space, your call controls (the wide layout's corner card) sit under it ---- */
 .cw-phone-voice { display: flex; flex-direction: column; }
 .cw-phone-voice > :first-child { flex: 1; min-height: 0; }
+.cw-phone-call:empty { display: none; }
+.cw-phone-call .cw-call-stack button { min-height: 40px; }
 
 /* ---- views on a phone ---- */
 @media (max-width: 700px) {
@@ -120,4 +87,3 @@ html.cw-kb .cw-call-pill { display: none; }
    does, so the tab bar steps aside. */
 .cw-phone:has(.media-sheet) > .cw-phone-bottom, .cw-phone:has(.media-sheet) > .cw-call-pill { display: none; }
 
-@keyframes cw-fade { from { opacity: 0; } to { opacity: 1; } }

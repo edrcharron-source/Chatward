@@ -18,8 +18,7 @@ const ICON = 18;
  * Leave at the right end. Out of a call it offers Join voice there instead.
  */
 /** `words` (the Orbit layout's corner card) puts each button's name next to its icon. */
-/** `phone` puts the controls in one row of large round buttons under the call, for thumbs. */
-export default function VoiceDock({ stacked = false, words = false, bar, phone = false }: { stacked?: boolean; words?: boolean; bar?: { onJoin: (() => void) | null }; phone?: boolean }) {
+export default function VoiceDock({ stacked = false, words = false, bar }: { stacked?: boolean; words?: boolean; bar?: { onJoin: (() => void) | null } }) {
   const channelId = useVoice((s) => s.channelId);
   const status = useVoice((s) => s.status);
   const error = useVoice((s) => s.error);
@@ -155,18 +154,6 @@ export default function VoiceDock({ stacked = false, words = false, bar, phone =
           <span>Voice · {short}</span>
         </span>
         {leaveButton}
-      </div>
-    );
-  }
-
-  if (phone) {
-    return (
-      <div className="cw-call-phone" role="group" aria-label="Voice chat">
-        <div className="cw-call-phone-status">{signalButton}<span>Voice · {short}</span></div>
-        {notices}
-        <div className="cw-call-phone-row">
-          {muteButton}{deafenButton}<ShareControls />{soundboardButton}{loopbackButton}{leaveButton}
-        </div>
       </div>
     );
   }

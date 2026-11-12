@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
 import { disablePush, enablePush, pushState, testPush, type PushState } from '../../web/push';
-import PixelIcon from '../icons/PixelIcon';
 
 const DISMISS_KEY = 'chatward.notifyPromptDismissed';
 
@@ -34,39 +33,39 @@ export function usePush() {
   };
 }
 
-/** Notifications on/off for this phone, for the "You" sheet. */
+/** Notifications on/off for this phone, drawn as a Settings section (setting-section / setting-row). */
 export function PushPanel() {
   const { state, msg, busy, enable, disable, test } = usePush();
   if (!state || state === 'unsupported') return null;
   return (
-    <section className="cw-push-panel" aria-label="Notifications">
-      <div className="cw-push-head">
-        <span className="cw-row-icon" aria-hidden="true"><PixelIcon name="bell" size={18} /></span>
-        <div className="cw-push-text">
-          <strong>Notifications</strong>
-          <span className="muted">
-            {state === 'on' && 'On for this phone.'}
+    <section className="setting-section" aria-label="Notifications">
+      <h3>Notifications</h3>
+      <div className="setting-row cw-push-row">
+        <span className="setting-text">
+          <span>{state === 'on' ? 'On for this phone' : state === 'off' ? 'Off on this phone' : state === 'denied' ? 'Blocked' : 'Not available yet'}</span>
+          <small className="muted">
+            {state === 'on' && 'New messages, nudges and cheers buzz this phone while Chatward is closed.'}
             {state === 'off' && 'Get a buzz for new messages, nudges and cheers.'}
-            {state === 'denied' && "Blocked. Allow them for Chatward in your iPhone's Settings, under Notifications."}
-            {state === 'needs-install' && 'Add Chatward to your Home Screen first: tap Share, then Add to Home Screen, and open it from there.'}
-          </span>
-        </div>
+            {state === 'denied' && "Allow them for Chatward in your iPhone's Settings, under Notifications."}
+            {state === 'needs-install' && 'Add Chatward to your Home Screen first (Share, then Add to Home Screen) and open it from there.'}
+          </small>
+        </span>
+        {state === 'off' && <button type="button" className="primary" disabled={busy} onClick={() => void enable()}>Turn on</button>}
       </div>
-      {state === 'off' && <button type="button" className="primary cw-push-btn" disabled={busy} onClick={() => void enable()}>Turn on notifications</button>}
       {state === 'on' && (
-        <div className="cw-push-actions">
+        <div className="row-actions">
           <button type="button" onClick={test}>Send a test</button>
           <button type="button" disabled={busy} onClick={() => void disable()}>Turn off</button>
         </div>
       )}
-      {msg && <p className="muted cw-push-msg" role="status">{msg}</p>}
+      {msg && <p className="muted small" role="status">{msg}</p>}
     </section>
   );
 }
 
 /**
- * A slim banner above the chat on a phone that hasn't turned notifications on yet. One tap asks for permission. It can
- * be dismissed; the switch is always in the "You" sheet too.
+ * A card above the chat on a phone that hasn't turned notifications on yet, in the welcome card's style. One tap asks
+ * for permission. It can be dismissed; the switch is always in the "You" sheet too.
  */
 export function NotifyPrompt() {
   const { state, msg, busy, enable } = usePush();
@@ -74,13 +73,15 @@ export function NotifyPrompt() {
   if (dismissed || (state !== 'off' && state !== 'needs-install' && !msg)) return null;
   const dismiss = () => { setDismissed(true); try { localStorage.setItem(DISMISS_KEY, '1'); } catch { /* private mode */ } };
   return (
-    <div className="cw-notify-prompt" role="region" aria-label="Notifications">
-      <PixelIcon name="bell" size={16} />
-      <span className="cw-notify-text">
-        {msg ?? (state === 'off' ? 'Get notified about new messages.' : 'Add to Home Screen to get notifications.')}
-      </span>
-      {state === 'off' && <button type="button" className="primary" disabled={busy} onClick={() => void enable()}>Turn on</button>}
-      <button type="button" className="icon cw-notify-x" aria-label="Dismiss" onClick={dismiss}>✕</button>
-    </div>
+    <section className="cw-welcome cw-notify-prompt" aria-label="Notifications">
+      <div className="cw-welcome-text">
+        <strong>Notifications</strong>
+        <p>{msg ?? (state === 'off' ? 'Get a buzz on this phone for new messages.' : 'Add Chatward to your Home Screen (Share, then Add to Home Screen) to get notifications.')}</p>
+      </div>
+      <div className="cw-welcome-actions">
+        {state === 'off' && <button type="button" className="primary" disabled={busy} onClick={() => void enable()}>Turn on</button>}
+        <button type="button" className="cw-welcome-done" onClick={dismiss}>Not now</button>
+      </div>
+    </section>
   );
 }

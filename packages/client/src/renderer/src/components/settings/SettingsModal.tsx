@@ -8,9 +8,7 @@ import PrivacyTab from './PrivacyTab';
 import SecurityTab from './SecurityTab';
 import { usePhone } from '../../web/usePhone';
 import PixelIcon, { type PixelIconName } from '../icons/PixelIcon';
-import { SheetRow } from '../phone/Sheet';
 import './settings.css';
-import '../phone/phone.css';
 
 const TABS = [
   { id: 'account', label: 'Account', Panel: AccountTab, icon: 'user' as PixelIconName },
@@ -42,28 +40,29 @@ function PhoneSettings({ onClose, initialTab }: { onClose: () => void; initialTa
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose, tab]);
+  // The same modal, nav and body as the wide Settings, one at a time: the section list, then the section.
   return (
-    <div className="cw-page" role="dialog" aria-modal="true" aria-label={current ? current.label : 'Settings'}>
-      <header className="cw-page-head">
-        {current
-          ? <button type="button" className="cw-page-back" onClick={() => setTab(null)}>‹ Settings</button>
-          : <span />}
-        <strong>{current ? current.label : 'Settings'}</strong>
-        <button type="button" className="cw-sheet-done" onClick={onClose}>Done</button>
-      </header>
-      <div className="cw-page-body settings-body">
-        {current ? <current.Panel /> : (
-          <>
-            <div className="cw-row-group">
-              {TABS.map((t) => (
-                <SheetRow key={t.id} icon={<PixelIcon name={t.icon} size={18} />} label={t.label} onClick={() => setTab(t.id)} />
-              ))}
-            </div>
-            <div className="cw-row-group">
-              <SheetRow label="Log out" danger chevron={false} onClick={() => void signOut()} />
-            </div>
-          </>
+    <div className="modal-backdrop cw-settings-phone">
+      <div className="modal settings" role="dialog" aria-modal="true" aria-label={current ? current.label : 'Settings'}>
+        {current ? (
+          <section className="settings-body" role="tabpanel" aria-label={current.label}>
+            <button type="button" className="settings-back" onClick={() => setTab(null)}>‹ Settings</button>
+            <h2>{current.label}</h2>
+            <current.Panel />
+          </section>
+        ) : (
+          <nav className="settings-nav" aria-label="Settings">
+            <h2>Settings</h2>
+            {TABS.map((t) => (
+              <button key={t.id} type="button" onClick={() => setTab(t.id)}>
+                <PixelIcon name={t.icon} size={14} /><span>{t.label}</span><span className="settings-chevron" aria-hidden="true">›</span>
+              </button>
+            ))}
+            <div className="spacer" />
+            <button type="button" className="danger" onClick={() => void signOut()}>Log out</button>
+          </nav>
         )}
+        <button type="button" className="icon settings-close" aria-label="Close settings" onClick={onClose}>✕</button>
       </div>
     </div>
   );

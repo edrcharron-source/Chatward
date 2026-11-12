@@ -13,12 +13,12 @@ The server can also serve Chatward as a web app. It's the desktop app's page bui
 - **Keys** (device keys and the message vault) live in the browser's IndexedDB. Each value is encrypted with an AES-GCM key that the browser created as non-extractable, which stands in for Windows safeStorage. Each browser or home-screen app is its own device. If Safari's website data is cleared, that device is gone and the app signs in as a new device.
 - **Server address:** always the address the page was opened from, so the sign-in screen has no server field and no demo mode.
 - **Not available:** screen sharing on iPhone (Safari can't share a screen), Spotify, and installer updates (the page updates with the server).
-- **Phone layout:** at 700px wide or narrower the app uses its phone layout, built for the iPhone home-screen app:
-  - A top bar with your avatar (opens the **You** sheet: status, notifications, Settings, Server settings), the open view's name, search (on the chat) and **People** (a drawer with the member list and how many are online).
-  - A tab bar along the bottom with large icons. It steps aside while the keyboard is open, and the app follows the visible part of the screen (`web/viewport.ts`), so the message box sits right on top of the keyboard instead of under it.
+- **Phone layout:** at 700px wide or narrower the tabs layout takes its phone form, built for the iPhone home-screen app. It keeps the tabs layout's own pieces and classes, so every skin dresses it the same way as the wide layout:
+  - The top bar has the server name and two tools: the gear opens the **You** sheet (your card and status, notifications, Settings, Server settings), and People opens the member list as a drawer, with how many are online.
+  - The same tabs run along the bottom. They step aside while the keyboard is open, and the app follows the visible part of the screen (`web/viewport.ts`), so the message box sits right on top of the keyboard instead of under it.
   - Long-press a message for Reply, Copy text, Edit and Delete (a sheet from the bottom), or swipe it left to reply. There are no hover-only buttons.
-  - Voice puts the call controls under the call as big round buttons; on the other views an "In voice" bar above the tabs leads back to it.
-  - Settings is a full-screen list like the iPhone Settings app; other dialogs open as sheets from the bottom.
+  - Voice puts your call controls (the wide layout's corner card) under the call; on the other views an "In voice" bar above the tabs leads back to it.
+  - Settings shows its section list, then one section at a time with a Back button; other dialogs open as sheets from the bottom.
   - The Vault shows pictures three to a row, albums and filters scroll sideways, a long press starts selecting, and the viewer is full screen.
   - The message box is one rounded bar (+ to attach, GIF, emoji and a send arrow), and GIF and emoji open as one full-width panel under it, where the keyboard was, with Emoji / GIFs / Klipy tabs. `npm run phone:shots -w @chatward/client -- <out dir>` (under xvfb-run on Linux) takes phone-size screenshots of it in each skin.
 
