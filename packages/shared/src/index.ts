@@ -381,7 +381,172 @@ export const CHATTER_LINES = [
   'anyone seen the patch notes?', 'lol that is so true', 'brb getting snacks', 'gg that was close',
   'who wants to hop in the Lounge', 'this app feels snappy 👀', 'not gonna lie, that gif got me', 'ok I am back',
 ];
-export const CHATTER_REPLIES = ['lol', 'ha yes', 'agreed 😂', 'nice one', 'wait say that again', 'ok fair'];
+/**
+ * Replies by topic. A guest answering a message picks a reply from the matching topic with the lowest `rank`, or a
+ * general reply when nothing matches. A word matches whole words only ("hi" does not match "this"); a word with an
+ * emoji or symbol matches anywhere. Saved messages name a reply by its index in CHATTER_REPLIES (general replies,
+ * then each topic in list order), so add new replies as a new topic at the END of the list; `rank` sets when it is checked.
+ */
+const CHATTER_GENERAL = ['lol', 'ha yes', 'agreed 😂', 'nice one', 'wait say that again', 'ok fair'];
+export const CHATTER_TOPICS: { name: string; rank: number; words: string[]; replies: string[] }[] = [
+  { name: 'About the bots', rank: 20, words: ['bot', 'bots', 'robot', 'robots', 'ai', 'are you real', 'you real', 'npc', 'are you a bot', 'are you human', 'chatbot', 'beep boop'],
+    replies: ['beep boop 🤖', 'I am 100% a real person', 'no comment', 'I have feelings too you know', 'what gave it away', 'shh, our secret 🤫', 'definitely not a robot. *whirr*', 'I passed the captcha, I swear'] },
+  { name: 'Thanks', rank: 30, words: ['thanks', 'thank you', 'thx', 'ty', 'tysm', 'appreciate it', 'thank u', 'thanks a lot', 'much appreciated', 'cheers', 'ty so much'],
+    replies: ['np!', 'anytime', 'you got it 👍', 'of course', 'happy to help', 'no problem!', 'for you? always', 'np np'] },
+  { name: 'Goodbye', rank: 30, words: ['bye', 'goodbye', 'gn', 'good night', 'goodnight', 'night', 'cya', 'see ya', 'later', 'gotta go', 'heading out', 'logging off', 'bye bye', 'gtg', 'g2g', 'peace', 'peace out', 'ttyl', 'see you', 'nighty night', 'off to bed', 'signing off'],
+    replies: ['night!', 'see ya 👋', 'later!', 'cya tomorrow', 'sleep well', 'bye!!', 'take care', 'peace ✌️', 'ttyl', "don't be a stranger"] },
+  { name: 'Hello', rank: 30, words: ['hi', 'hey', 'heyy', 'heyyy', 'hello', 'yo', 'sup', 'wassup', 'whats up', "what's up", 'howdy', 'good morning', 'morning', 'gm', 'evening', 'hiya', 'heya', 'greetings', 'good afternoon', 'whats good', "what's good", 'ello', '👋'],
+    replies: ['hey!', 'yo 👋', 'heyy', "what's up", 'oh hi', 'hiii', 'hello hello', 'look who it is 👀', 'heyo', 'sup!', 'hey stranger'] },
+  { name: 'Laughing', rank: 60, words: ['lol', 'lmao', 'lmfao', 'haha', 'hahaha', 'hehe', 'rofl', 'dead', 'dying', '😂', '🤣', '💀', 'lolol', 'lmaooo', 'hahah', 'ahaha', 'kek', 'im dead', "i'm dead", 'crying', 'hilarious', 'funny'],
+    replies: ['LMAO', 'lol same', "I can't 😂", 'stop 😭', 'crying rn', '😂😂😂', 'that got me', 'HAHAHA', 'why is that so funny', 'I wheezed'] },
+  { name: 'Food', rank: 50, words: ['food', 'eat', 'eating', 'hungry', 'starving', 'pizza', 'dinner', 'lunch', 'breakfast', 'snack', 'snacks', 'taco', 'tacos', 'burger', 'burgers', 'fries', 'sushi', 'wings', 'pasta', 'cooking', '🍕', '🍔', 'chicken', 'steak', 'ramen', 'noodles', 'chips', 'candy', 'chocolate', 'ice cream', 'cookies', 'cake', 'dessert', 'mcdonalds', 'doordash', 'takeout', 'order food', 'grill'],
+    replies: ['now I am hungry', 'save me some 🍕', 'what are we ordering', 'ooh what kind', 'ok now I want food', 'I could eat', 'share??', 'that sounds so good', 'food is the answer'] },
+  { name: 'Games', rank: 50, words: ['game', 'games', 'gaming', 'play', 'playing', 'gg', 'match', 'ranked', 'queue', 'hop on', 'lobby', 'win', 'won', 'lost', 'lose', 'boss fight', 'level', 'loot', '🎮', 'minecraft', 'fortnite', 'valorant', 'league', 'overwatch', 'apex', 'cod', 'warzone', 'steam', 'xbox', 'playstation', 'ps5', 'switch', 'nintendo', 'speedrun', 'respawn', 'noob', 'clutch'],
+    replies: ["I'm down to play later", 'one more game?', 'gg honestly', "queue up, I'm in", 'carry me pls', 'you playing tonight?', 'I need a rematch', 'my aim is so bad today', 'that game is so good', 'invite me next time'] },
+  { name: 'Watching and music', rank: 50, words: ['movie', 'movies', 'watch', 'watching', 'show', 'episode', 'season', 'youtube', 'video', 'song', 'songs', 'music', 'playlist', 'spotify', 'album', 'netflix', 'anime', '🎵', '🎶', 'trailer', 'series', 'tv', 'concert', 'band', 'artist', 'podcast', 'stream', 'streaming', 'twitch', 'binge'],
+    replies: ['put it on Watch together', 'is it any good?', 'add it to the queue', 'no spoilers!!', 'what are you watching?', 'ooh send the link', 'that one is a banger', 'I need recommendations', 'adding that to my list'] },
+  { name: 'Tired or down', rank: 40, words: ['tired', 'sleepy', 'exhausted', 'sad', 'ugh', 'sick', 'bad day', 'stressed', 'bored', 'depressed', 'lonely', '😢', '😭', '😞', 'drained', 'burnt out', 'burned out', 'rough day', 'not feeling it', 'meh', 'blah', 'feel bad', 'feeling bad'],
+    replies: ['oof, hang in there', 'take it easy', 'big mood', 'sending good vibes', 'want to talk about it?', 'that sucks, sorry', 'rest up', "you've got this", 'virtual hug 🫂'] },
+  { name: 'Hype', rank: 70, words: ["let's go", 'lets go', 'letsgo', 'lets goo', 'lets gooo', 'nice', 'awesome', 'amazing', 'yay', 'finally', 'hype', 'pog', 'sick play', '🎉', '🔥', '🥳', 'sheesh', 'goated', 'insane', 'incredible', 'clean', 'woo', 'woohoo', 'epic', '💯', '🙌'],
+    replies: ["LET'S GO", 'huge', 'love that', 'W', 'HUGE W', "that's insane", 'massive', 'yesss', 'legend'] },
+  { name: 'Questions', rank: 90, words: ['?', 'what', 'why', 'how', 'when', 'who', 'where', 'anyone', 'should', 'which', 'can someone', 'does anyone', 'is anyone', 'do you', 'can you', 'would you', 'wanna'],
+    replies: ['good question', 'no idea tbh', 'hmm let me think', 'probably?', "don't ask me lol", 'ooh good one', 'depends honestly', "I'd say yes", "maybe? I'm not sure", 'why do you ask 👀', 'someone smarter than me should answer that'] },
+  // ---- added in the second round ----
+  { name: 'How are you', rank: 10, words: ['how are you', 'how are u', 'how r u', 'hru', "how's it going", 'hows it going', 'how you doing', 'how u doing', 'you good', 'u good', 'how have you been', 'how are things', "how's life", 'hows life', 'how was your day', 'how is your day', "how's your day", 'hows your day'],
+    replies: ['doing good, you?', 'pretty chill tbh', 'surviving 😅', 'better now that you asked', "can't complain", 'good! how about you?', 'honestly not bad', 'living the dream', 'tired but alive', 'great now 😊'] },
+  { name: 'What are you doing', rank: 10, words: ['wyd', 'what are you doing', 'what you doing', 'what are you up to', 'what u doing', 'whatcha doing', 'whatcha up to', 'what r u doing', 'what are you up 2', 'wbu', 'hbu', 'what about you'],
+    replies: ['nothing much, you?', 'just vibing', 'scrolling as usual', 'pretending to be productive', 'about to hop in a game', 'eating snacks', 'listening to music', 'watching something', 'nothing, bored', 'waiting for someone to hop in voice'] },
+  { name: 'Who are you', rank: 10, words: ['who are you', 'who r u', 'what are you', "what's your name", 'whats your name', 'introduce yourself', 'who is this', 'who dis', 'are you new'],
+    replies: ['just a friendly face 👋', 'the best member here obviously', 'you know me!', "I'm a regular here", 'your favorite chatter', 'a mystery 🕵️', "I've been here the whole time", 'just hanging out'] },
+  { name: 'Jokes', rank: 10, words: ['joke', 'jokes', 'tell me something funny', 'make me laugh', 'say something funny', 'dad joke', 'pun', 'puns', 'got any jokes'],
+    replies: ["why don't skeletons fight? they don't have the guts", "I told my wifi a joke. it didn't get the connection", "I'm reading a book on anti-gravity. can't put it down", 'why did the scarecrow win an award? he was outstanding in his field', "what do you call a fake noodle? an impasta", 'why did the computer go to the doctor? it had a virus', 'what do you call a bear with no teeth? a gummy bear', "why can't you trust stairs? they're always up to something", 'what did the ocean say to the beach? nothing, it just waved', "I'd tell you a UDP joke but you might not get it"] },
+  { name: 'Testing', rank: 10, words: ['test', 'testing', 'test test', 'mic check', 'can you see this', 'does this work', 'ping', 'hello?', 'is this thing on', 'anyone there', 'anybody there', 'can anyone see this'],
+    replies: ['loud and clear 📡', 'test received', 'works on my end', 'yep I see it', 'all good here', 'signal strong 💪', 'received ✅', 'test passed'] },
+  { name: 'Compliments', rank: 10, words: ['good bot', 'love you', 'ily', "you're the best", 'youre the best', 'ur the best', 'best bot', "you're cool", 'youre cool', 'you rock', '❤️', '🥰', 'you are the best', 'ur cool', 'love this', 'good job', 'well done', 'smart bot', 'great bot', '💖', '💕'],
+    replies: ['aww 🥹', 'love you too', "stop I'm blushing", 'finally someone appreciates me', 'you too!!', 'right back at you', '🥰', "you're making my day"] },
+  { name: 'Rude', rank: 10, words: ['shut up', 'stfu', 'bad bot', 'go away', 'annoying', 'be quiet', 'stop talking', 'nobody asked', 'you suck', 'ur dumb', 'you are dumb', 'stupid bot', 'dumb bot', 'leave me alone', 'kys'],
+    replies: ['rude 😤', "ok ok I'll be quiet", 'wow.', "I'll remember that", 'fine 🙄', 'ouch', 'that hurt my circuits', 'noted 📝', 'and yet here you are', 'k'] },
+  { name: 'Sorry', rank: 25, words: ['sorry', 'my bad', 'mb', 'oops', 'whoops', 'apologies', 'sry', 'my fault', 'forgive me', 'i apologize'],
+    replies: ['all good', 'no worries', 'it happens', "you're fine", "don't worry about it", 'forgiven', 'nah we good', 'no stress'] },
+  { name: 'Birthday', rank: 25, words: ['happy birthday', 'birthday', 'bday', 'hbd', '🎂', 'bday party', 'birthday party', 'turning', 'years old'],
+    replies: ['happy birthday!! 🎂', 'HBD 🎉', 'cake when?', 'another year of legend status', 'happy bday!!', 'party time 🥳', 'make a wish!', 'how old now?'] },
+  { name: 'Good news', rank: 25, words: ['congrats', 'congratulations', 'i did it', 'got the job', 'passed', 'promoted', 'good news', 'got in', 'accepted', 'hired', 'new job', 'won the', 'we did it', 'nailed it'],
+    replies: ['congrats!!', 'so proud 🥳', 'you earned it', 'we love to see it', 'WOO', 'knew you could do it', "that's amazing", 'celebration time 🎉'] },
+  { name: 'Angry', rank: 40, words: ['angry', 'mad', 'pissed', 'furious', 'annoyed', 'hate', 'so done', 'rage', '😡', '🤬', 'frustrated', 'irritated', 'so mad', 'pissed off', 'triggered', 'fed up'],
+    replies: ['deep breaths', 'who do we need to fight', 'valid honestly', 'let it out', 'ugh that is annoying', 'yeah that would make me mad too', 'want to vent?', 'breathe in, breathe out'] },
+  { name: 'Happy', rank: 40, words: ['happy', 'great day', 'good day', 'excited', 'so good', 'best day', 'feeling good', '😊', '😁', 'glad', 'joy', 'stoked', 'pumped', 'thrilled', 'grateful', 'blessed'],
+    replies: ['love to hear it', 'happy for you!', 'good vibes only ✨', "that's the energy", 'yay!!', 'this made me smile', 'love this for you', 'keep that energy'] },
+  { name: 'Nervous', rank: 40, words: ['nervous', 'scared', 'anxious', 'worried', 'freaking out', 'stress', 'panic', 'panicking', 'interview', 'first day', 'big day'],
+    replies: ["you've got this", "it'll be ok", "we're here for you", 'one step at a time', "you'll do great", "breathe, it'll be fine", 'rooting for you', "you're more ready than you think"] },
+  { name: 'Drinks', rank: 50, words: ['coffee', 'tea', 'drink', 'drinks', 'beer', 'energy drink', 'monster', 'soda', 'water', 'boba', '☕', '🍺', 'juice', 'milk', 'latte', 'starbucks', 'wine', 'red bull', 'thirsty', 'caffeine'],
+    replies: ['coffee is life ☕', 'hydrate!', 'grab me one too', 'what are we drinking', 'cheers 🥂', 'make it a double', 'I need caffeine too', 'hydration check 💧'] },
+  { name: 'Weather', rank: 50, words: ['weather', 'rain', 'raining', 'snow', 'snowing', 'hot', 'cold', 'freezing', 'sunny', 'storm', 'windy', '❄️', '☀️', 'heat', 'humid', 'cloudy', 'thunder', 'lightning', 'tornado', 'hurricane', 'fog', 'chilly', 'warm'],
+    replies: ["it's so cold here too", 'perfect stay inside weather', 'stay safe out there', 'the weather is wild today', 'I love this weather honestly', 'bring a jacket', 'blanket weather', 'too hot to function'] },
+  { name: 'Work and school', rank: 50, words: ['work', 'working', 'job', 'boss', 'meeting', 'shift', 'school', 'class', 'homework', 'exam', 'study', 'studying', 'project', 'deadline', 'office', 'coworker', 'coworkers', 'manager', 'teacher', 'college', 'university', 'essay', 'quiz', 'grades', 'overtime', 'monday'],
+    replies: ['ugh work', "you'll crush it", 'almost the weekend', 'did you finish it?', 'grind time', 'you got this', 'is it the weekend yet', 'take a break soon', 'we believe in you', "don't work too hard"] },
+  { name: 'Sleep', rank: 45, words: ['sleep', 'nap', 'bed', 'bedtime', 'awake', 'insomnia', "can't sleep", 'cant sleep', '😴', 'sleeping', 'tired af', 'woke up', 'just woke', 'alarm', 'dream', 'dreams', 'snooze'],
+    replies: ['sleep is for the weak (I need sleep)', 'go to bed lol', 'nap time sounds good', 'same, I should be asleep', 'go sleep!!', 'sweet dreams', "I'm up too", 'sleep schedule? never heard of her'] },
+  { name: 'Pets', rank: 50, words: ['dog', 'dogs', 'cat', 'cats', 'puppy', 'kitten', 'pet', 'pets', 'doggo', '🐶', '🐱', 'bird', 'fish', 'hamster', 'bunny', 'rabbit', 'lizard', 'snake', 'vet', 'walk the dog', 'meow', 'woof'],
+    replies: ["pics or it didn't happen 📸", 'pet tax please', 'awww', 'give them a pat from me', 'what is their name?', 'I need to meet them', 'cutest member of the server', 'protect them at all costs'] },
+  { name: 'Sports', rank: 50, words: ['football', 'soccer', 'basketball', 'nba', 'nfl', 'baseball', 'hockey', 'score', 'team', 'playoffs', 'super bowl', 'goal', 'touchdown', 'world cup', 'f1', 'ufc', 'boxing', 'golf', 'tennis'],
+    replies: ['did you see that game?', 'my team is cooked', "who's winning?", 'that was a wild one', 'what a game', 'refs were blind', "we're so back", "it's so over"] },
+  { name: 'Plans', rank: 55, words: ['weekend', 'friday', 'saturday', 'sunday', 'tonight', 'tomorrow', 'plans', 'hang out', 'free later', 'this weekend', 'next week', 'later today', 'anyone free', 'what should we do', 'road trip', 'vacation', 'trip'],
+    replies: ['any plans?', "I'm free tonight", 'count me in', 'sounds like a plan', "I'm down", "what's the plan?", "let's do it", 'send details'] },
+  { name: 'Money', rank: 50, words: ['money', 'broke', 'paid', 'payday', 'expensive', 'cheap', 'sale', 'rent', 'bills', '💸', '💰', 'cash', 'bucks', 'dollars', 'price', 'deal', 'buy'],
+    replies: ["I'm so broke", "payday can't come soon enough", 'treat yourself', 'wallet is crying', 'money comes and goes', 'that is a lot', 'worth it', 'take my money'] },
+  { name: 'Tech trouble', rank: 35, words: ['pc', 'computer', 'laptop', 'update', 'lag', 'laggy', 'internet', 'wifi', 'crash', 'crashed', 'crashing', 'bug', 'broken', 'not working', 'glitch', 'frozen', 'freezing up', 'error', 'blue screen', 'reboot', 'restart', 'ping is', 'high ping', 'fps', 'drivers'],
+    replies: ['have you tried turning it off and on again', 'my wifi is suffering too', 'rip', 'tech hates us all', 'did you try restarting', 'classic', 'tech support has entered the chat', 'ugh I hate when that happens'] },
+  { name: 'Voice chat', rank: 45, words: ['voice', 'vc', 'call', 'join', 'hop in', 'lounge', 'talk', '🎧', '🎤', 'hop on vc', 'get in vc', 'mic', 'muted', 'unmute', 'deafened', 'can you hear me', 'headset', 'screen share', 'stream it'],
+    replies: ['joining in a sec', "I'll hop in", 'save me a spot 🎧', 'one sec, grabbing my headset', 'coming!', 'voice is where the party is', 'can you hear me now?', 'unmute yourself lol'] },
+  { name: 'Memes', rank: 65, words: ['meme', 'memes', 'gif', 'gifs', 'based', 'cringe', 'sus', 'ratio', 'bruh', 'lmao this', 'shitpost', 'copium', 'skill issue', 'npc behavior', 'rizz', 'mid', 'touch grass', 'ong', 'no cap', 'cap'],
+    replies: ['that is so sus', 'cringe 😬', 'based', 'bruh moment', 'skill issue', 'touch grass', 'no cap', 'mid', 'L + ratio'] },
+  { name: 'Surprise', rank: 68, words: ['wow', 'omg', 'whoa', 'woah', 'no way', 'wtf', 'what?!', 'holy', 'yikes', '😳', '😮', '🤯', 'what the', 'are you serious', 'seriously', 'for real?', 'insane', 'crazy', 'jeez', 'dang', 'damn'],
+    replies: ['NO WAY', 'omg', 'wait what', '😳', 'NO WAYYY', 'are you serious', 'I am shook', 'what is happening'] },
+  { name: 'Agreeing', rank: 75, words: ['yes', 'yeah', 'yea', 'yep', 'yup', 'true', 'facts', 'exactly', 'agreed', 'same', 'fr', 'real', 'yessir', 'absolutely', 'definitely', 'for sure', 'totally', 'ikr', 'i know right', 'right', 'correct', 'same here', '100%'],
+    replies: ['same', 'real', 'exactly', 'fr fr', '100%', "couldn't agree more", 'say it louder', 'ikr', 'true true'] },
+  { name: 'Disagreeing', rank: 76, words: ['no', 'nope', 'nah', 'wrong', 'false', 'disagree', 'not really', 'nuh uh', 'no way jose', 'i doubt it', 'not true', 'cap', 'thats cap', "that's cap"],
+    replies: ['nah?', 'hmm fair', 'agree to disagree', 'ok maybe', 'are you sure?', "I don't know about that", 'hmm I see it differently', 'bold take'] },
+  { name: 'Short answers', rank: 80, words: ['ok', 'okay', 'k', 'kk', 'cool', 'alright', 'bet', 'sure', '👍', 'okie', 'okk', 'aight', 'gotcha', 'got it', 'sounds good', 'noted', 'fine', 'mhm', 'hmm', 'yeah ok'],
+    replies: ['bet', '👍', 'cool cool', 'sounds good', 'ok!', 'alright', 'gotcha', '👌', 'nice'] },
+  // ---- added in the third round ----
+  // No words: these join the general replies for messages that match nothing.
+  { name: 'Anything else', rank: 999, words: [],
+    replies: ['interesting', 'tell me more', 'hmm', 'fair enough', 'I feel that', 'go on...', 'noted', 'big if true', 'real', "can't argue with that", 'mood', 'say less'] },
+  { name: 'Good morning', rank: 12, words: ['good morning', 'gm', 'morning all', 'morning everyone', 'rise and shine', 'just woke up'],
+    replies: ['good morning! ☀️', 'gm gm', 'morning! coffee first', 'rise and grind', 'morning sunshine'] },
+  { name: 'Good night', rank: 12, words: ['good night', 'goodnight', 'gn', 'nighty night', 'going to bed', 'off to bed', 'heading to bed'],
+    replies: ['good night! 🌙', 'sleep well', 'nighty night', 'sweet dreams', "gn! don't let the bugs bite"] },
+  { name: 'Opinions', rank: 15, words: ['what do you think', 'thoughts?', 'your opinion', 'do you like', 'do you prefer', 'which is better', 'hot take'],
+    replies: ['honestly I like it', 'hmm, solid choice', "it's growing on me", "I'll go with the first one", 'controversial but yes', "I'm not a fan tbh"] },
+  { name: 'Favorites', rank: 15, words: ['favorite', 'favourite', 'fav', 'fave', 'best ever', 'goat'],
+    replies: ['tough one, too many to pick', 'mine changes every week', "that's a good pick", "you're asking the real questions", 'pizza. the answer is always pizza'] },
+  { name: 'Bored', rank: 18, words: ['bored', 'boring', 'nothing to do', 'so bored', 'entertain me'],
+    replies: ["let's play something", 'hop in voice', 'watch something together?', 'same honestly', 'boredom is a skill issue jk'] },
+  { name: 'Help', rank: 18, words: ['help', 'need help', 'can someone help', 'help me', 'any ideas', 'advice'],
+    replies: ["what's up? I'll try", 'what do you need?', 'I can try!', 'someone help this person', 'describe the problem 🕵️'] },
+  { name: 'Holidays', rank: 50, words: ['christmas', 'xmas', 'thanksgiving', 'halloween', 'new year', 'new years', 'easter', 'holiday', 'holidays', 'turkey', 'presents', 'gifts', '🎄', '🎃'],
+    replies: ['happy holidays!', 'so ready for it', 'what are you doing for it?', 'best time of the year', 'save me some leftovers'] },
+  { name: 'Cars and driving', rank: 50, words: ['car', 'cars', 'drive', 'driving', 'traffic', 'road', 'gas', 'parking', 'commute', '🚗'],
+    replies: ['traffic is the worst', 'drive safe!', 'road trip?', 'gas prices are wild', 'nice ride'] },
+  { name: 'Health and gym', rank: 50, words: ['gym', 'workout', 'working out', 'lifting', 'run', 'running', 'cardio', 'gains', 'diet', 'healthy', 'protein', '💪'],
+    replies: ['gains 💪', 'proud of you', 'leg day?', 'I should go too... tomorrow', 'beast mode'] },
+  { name: 'Shopping', rank: 50, words: ['shopping', 'bought', 'ordered', 'package', 'delivery', 'new shoes', 'new phone', 'amazon', 'black friday'],
+    replies: ['what did you get?', 'show us!', 'treat yourself', 'my wallet could never', 'nice pickup'] },
+  { name: 'Space and science', rank: 50, words: ['space', 'planet', 'stars', 'moon', 'nasa', 'rocket', 'alien', 'aliens', 'science', 'universe', '🚀', '🌙'],
+    replies: ['space is so cool', 'aliens are real, trust me', 'to infinity and beyond 🚀', 'the universe is wild', 'we are all stardust'] },
+  { name: 'Cooking', rank: 50, words: ['cook', 'cooked', 'baking', 'baked', 'recipe', 'kitchen', 'oven', 'chef'],
+    replies: ['chef mode 👨‍🍳', 'save me a plate', "what's on the menu?", 'recipe please', 'smells good from here'] },
+  { name: 'The app', rank: 45, words: ['chatward', 'this app', 'the app', 'new update', 'new feature', 'lcars', 'skin', 'theme'],
+    replies: ['this app is so good', 'love the new look', 'the skins are 🔥', 'best app ever, no bias', 'the devs are geniuses'] },
+  { name: 'Late night', rank: 45, words: ['3am', '2am', '4am', 'late night', 'still up', 'still awake', 'up late'],
+    replies: ['why are we all awake', 'night owls unite 🦉', 'go to sleep lol', 'the best convos happen late'] },
+  { name: 'Hungry for snacks', rank: 52, words: ['snack time', 'munchies', 'popcorn', 'gummies', 'cereal'],
+    replies: ['popcorn ready 🍿', 'snack break!', 'pass the snacks', 'cereal at any hour is valid'] },
+  { name: 'Emoji reactions', rank: 85, words: ['👀', '🤔', '😅', '🙃', '😎', '🤷', '🙄', '🫠'],
+    replies: ['👀', '🤔', '😅', '😎', '🤷'] },
+  { name: 'Excited for something', rank: 58, words: ["can't wait", 'cant wait', 'so excited', 'soon', 'coming out', 'release', 'tomorrow!'],
+    replies: ['same!!', 'the hype is real', 'counting down', "it's going to be so good"] },
+  { name: 'Lost and confused', rank: 72, words: ['confused', 'lost', 'huh', 'wait what', "i don't get it", 'i dont get it', 'what do you mean', '???'],
+    replies: ['same, I am lost', 'explain like I am 5', "you're not alone", 'wait now I am confused too', 'huh?'] },
+];
+export const CHATTER_REPLIES = [...CHATTER_GENERAL, ...CHATTER_TOPICS.flatMap((t) => t.replies)];
+
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+/** Each topic's words as one pattern, its first reply's index, and its rank; checked lowest rank first. */
+const TOPIC_MATCHERS = (() => {
+  let start = CHATTER_GENERAL.length;
+  const out = CHATTER_TOPICS.map((t) => {
+    const words = t.words.map((w) => (/^[\w' ]+$/.test(w) ? `\\b${escapeRe(w)}\\b` : escapeRe(w)));
+    const m = { re: words.length ? new RegExp(words.join('|')) : null, start, count: t.replies.length, rank: t.rank };
+    start += t.replies.length;
+    return m;
+  });
+  return out.sort((a, b) => a.rank - b.rank);
+})();
+/** Replies for a message no topic matches: the general ones plus every topic without words. */
+const FALLBACK = [
+  ...CHATTER_GENERAL.map((_, i) => i),
+  ...TOPIC_MATCHERS.filter((t) => !t.re).flatMap((t) => Array.from({ length: t.count }, (_, i) => t.start + i)),
+];
+
+/**
+ * The index in CHATTER_REPLIES of a reply that fits `text`, avoiding the indexes in `avoid` (recent replies) while
+ * there are others left. `matched` says whether a topic matched rather than the general replies.
+ */
+export function chatterReply(text: string, avoid: number[] = []): { line: number; matched: boolean } {
+  const lower = text.toLowerCase().replace(/[’‘]/g, "'");
+  const m = TOPIC_MATCHERS.find((t) => t.re?.test(lower));
+  const all = m ? Array.from({ length: m.count }, (_, i) => m.start + i) : FALLBACK;
+  const fresh = all.filter((i) => !avoid.includes(i));
+  const pool = fresh.length ? fresh : all;
+  return { line: pool[Math.floor(Math.random() * pool.length)], matched: !!m };
+}
+
+/** Which of `names` the text calls by name, as an index into names, or -1. */
+export function chatterNamed(text: string, names: string[]): number {
+  const lower = text.toLowerCase();
+  return names.findIndex((n) => /^\w+$/.test(n) && new RegExp(`\\b${n.toLowerCase()}\\b`).test(lower));
+}
 /** Waits, in ms, as [min, max]. A wait is min + random * (max - min). */
 export const CHATTER_TIMING = {
   firstLine: [8_000, 8_000],
