@@ -1,0 +1,159 @@
+/* Phone building blocks: the bottom sheet (Sheet.tsx), list rows, the full-screen page used by Settings, the "You"
+   sheet, the notifications prompt and the call controls. Colours, fonts and corners come from the theme tokens, so
+   every skin restyles them; the doubled :root only lifts these rules over skins that restyle every button. */
+
+/* ---- bottom sheet ---- */
+.cw-sheet-layer { position: fixed; inset: 0; z-index: 120; display: flex; flex-direction: column; justify-content: flex-end; }
+.cw-sheet-scrim { position: absolute; inset: 0; background: var(--backdrop); animation: cw-sheet-fade .2s ease; }
+.cw-sheet {
+  position: relative; display: flex; flex-direction: column; max-height: calc(100% - env(safe-area-inset-top) - 24px);
+  margin: 0 env(safe-area-inset-right) 0 env(safe-area-inset-left);
+  background: var(--bg-2); color: var(--text); outline: none;
+  border-radius: calc(var(--radius-modal) + 4px) calc(var(--radius-modal) + 4px) 0 0;
+  border-top: 1px solid var(--border); box-shadow: 0 -10px 40px rgba(0, 0, 0, .35);
+  padding-bottom: env(safe-area-inset-bottom);
+  animation: cw-sheet-up .26s cubic-bezier(.2, .8, .2, 1);
+  transition: transform .2s ease;
+}
+.cw-sheet.cw-sheet-dragging { transition: none; }
+:root .cw-sheet:focus, :root .cw-sheet:focus-visible { outline: none; }
+.cw-sheet-full { height: calc(100% - env(safe-area-inset-top) - 24px); }
+.cw-sheet-grab { flex: none; touch-action: none; padding: 6px 0 0; cursor: grab; }
+.cw-sheet-handle { display: block; width: 38px; height: 5px; margin: 0 auto 4px; border-radius: 3px; background: var(--bg-hover); }
+.cw-sheet-head { display: flex; align-items: center; justify-content: space-between; padding: 2px 8px 6px 18px; }
+.cw-sheet-head strong { color: var(--text-strong); font-size: 17px; }
+:root:root button.cw-sheet-done {
+  min-height: 44px; padding: 0 12px; background: transparent; box-shadow: none;
+  color: var(--accent); font-weight: 700; font-size: 15px;
+}
+.cw-sheet-body {
+  flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
+  display: flex; flex-direction: column; gap: 14px; padding: 6px 14px 14px;
+}
+@keyframes cw-sheet-up { from { transform: translateY(100%); } to { transform: none; } }
+@keyframes cw-sheet-fade { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .cw-sheet, .cw-sheet-scrim { animation: none; } }
+
+/* ---- grouped list rows, like the iPhone Settings app ---- */
+.cw-row-group {
+  display: flex; flex-direction: column; overflow: hidden;
+  background: var(--bg-1); border: 1px solid var(--border); border-radius: var(--radius);
+}
+:root:root button.cw-row {
+  display: flex; align-items: center; gap: 12px; width: 100%; min-height: 50px; padding: 0 14px;
+  background: transparent; box-shadow: none; border-radius: 0; color: var(--text-strong);
+  font-size: 15.5px; text-align: left; -webkit-tap-highlight-color: transparent;
+}
+:root:root button.cw-row + button.cw-row { border-top: 1px solid var(--border); }
+:root:root button.cw-row:active { background: var(--bg-hover); }
+:root:root button.cw-row.cw-row-danger { color: var(--danger); }
+.cw-row-icon {
+  flex: none; display: inline-grid; place-items: center; width: 30px; height: 30px;
+  border-radius: min(var(--radius-sm), 8px); background: var(--accent-tint); color: var(--accent);
+}
+.cw-row-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cw-row-detail { color: var(--text-muted); font-size: 14px; }
+.cw-row-chevron { color: var(--text-muted); font-size: 22px; line-height: 1; margin-right: -2px; }
+
+/* ---- the long-press action sheet ---- */
+.cw-action-sheet .cw-sheet-body { gap: 10px; }
+.cw-action-preview {
+  padding: 2px 4px 4px; font-size: 14px; color: var(--text); overflow: hidden;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+}
+.cw-action-preview strong { color: var(--text-strong); }
+:root:root button.cw-action { justify-content: center; text-align: center; font-size: 17px; }
+:root:root button.cw-action .cw-row-label { flex: none; }
+:root:root button.cw-action-cancel { font-weight: 700; }
+
+/* ---- full-screen page (Settings on a phone) ---- */
+.cw-page {
+  position: fixed; inset: 0; z-index: 110; display: flex; flex-direction: column;
+  background: var(--bg-2); color: var(--text);
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left);
+  animation: cw-page-in .22s cubic-bezier(.2, .8, .2, 1);
+}
+:root[data-skin='lebserver'] .cw-page { background: var(--lb-ground, #000); }
+.cw-page-head {
+  flex: none; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; min-height: 52px; padding: 0 4px;
+  border-bottom: 1px solid var(--border); background: var(--bg-1);
+}
+.cw-page-head strong { color: var(--text-strong); font-size: 17px; text-align: center; white-space: nowrap; }
+.cw-page-head > :last-child { justify-self: end; }
+:root:root button.cw-page-back {
+  justify-self: start; min-height: 44px; padding: 0 10px; background: transparent; box-shadow: none;
+  color: var(--accent); font-size: 15px; font-weight: 600; white-space: nowrap;
+}
+.cw-page-body.settings-body {
+  flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+  display: flex; flex-direction: column; gap: 18px; padding: 16px 14px calc(24px + env(safe-area-inset-bottom));
+}
+.cw-page-body .setting-section { margin-bottom: 4px; }
+.cw-page-body .setting-row { flex-wrap: wrap; min-height: 50px; }
+.cw-page-body .setting-row .slider { flex: 1 1 160px; min-width: 0; }
+.cw-page-body .setting-row input[type='range'] { flex: 1; width: auto; min-width: 0; }
+.cw-page-body .row-actions button, .cw-page-body .setting-section button { min-height: 44px; }
+.cw-page-body .choice-group { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+@keyframes cw-page-in { from { transform: translateY(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .cw-page { animation: none; } }
+
+/* ---- the "You" sheet ---- */
+.cw-me-card { display: flex; align-items: center; gap: 14px; padding: 4px 4px 0; }
+.cw-me-card .cw-avatar-wrap { position: relative; display: inline-flex; }
+.cw-me-card .cw-dot { position: absolute; right: 0; bottom: 0; width: 14px; height: 14px; }
+.cw-me-who { min-width: 0; display: flex; flex-direction: column; }
+.cw-me-who strong { color: var(--text-strong); font-size: 19px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cw-segment {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; padding: 3px;
+  background: var(--bg-0); border: 1px solid var(--border); border-radius: var(--radius-sm);
+}
+:root:root .cw-segment button {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 40px; padding: 0 4px;
+  background: transparent; box-shadow: none; color: var(--text-muted); font-size: 13px; font-weight: 600; white-space: nowrap;
+  border-radius: max(0px, calc(var(--radius-sm) - 3px));
+}
+:root:root .cw-segment button.on { background: var(--bg-3); color: var(--text-strong); box-shadow: inset 0 0 0 1px var(--border); }
+.cw-dot-inline { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.cw-dot-inline.online { background: var(--ok); }
+.cw-dot-inline.idle { background: var(--warn); }
+.cw-dot-inline.dnd { background: var(--danger); }
+.cw-me-brand:empty { display: none; }
+.cw-me-brand .cw-powered { margin: 0 -14px -14px; }
+
+/* ---- notifications ---- */
+.cw-push-panel {
+  display: flex; flex-direction: column; gap: 12px; padding: 14px;
+  background: var(--bg-1); border: 1px solid var(--border); border-radius: var(--radius);
+}
+.cw-push-head { display: flex; gap: 12px; align-items: flex-start; }
+.cw-push-text { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.cw-push-text strong { color: var(--text-strong); font-size: 15.5px; }
+.cw-push-text .muted { font-size: 13.5px; }
+.cw-push-btn, .cw-push-actions button { min-height: 44px; }
+.cw-push-actions { display: flex; gap: 8px; }
+.cw-push-actions button { flex: 1; }
+.cw-push-msg { margin: 0; font-size: 13px; }
+
+.cw-notify-prompt {
+  flex: none; display: flex; align-items: center; gap: 10px; padding: 8px 6px 8px 14px;
+  background: var(--accent-tint); color: var(--text-strong); border-bottom: 1px solid var(--border); font-size: 13.5px;
+}
+.cw-notify-prompt > svg { flex: none; color: var(--accent); }
+.cw-notify-text { flex: 1; min-width: 0; }
+.cw-notify-prompt button.primary { min-height: 34px; padding: 0 14px; flex: none; }
+:root:root .cw-notify-prompt button.cw-notify-x { min-width: 36px; min-height: 36px; box-shadow: none; color: var(--text-muted); }
+
+/* ---- call controls under the Voice view ---- */
+.cw-call-phone {
+  flex: none; display: flex; flex-direction: column; gap: 8px; padding: 10px 12px 12px;
+  background: var(--bg-1); border-top: 1px solid var(--border);
+}
+.cw-call-phone-status { display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--text-strong); }
+.cw-call-phone-row { display: flex; justify-content: center; flex-wrap: wrap; gap: 12px; }
+.cw-call-phone-row [role='group'], .cw-call-phone-row [role='group'] > div { display: contents !important; }
+.cw-call-phone-row button {
+  width: 54px; height: 54px; min-height: 0; padding: 0; display: inline-grid; place-items: center;
+  border-radius: 50%;
+}
+:root[data-skin='lebserver'] .cw-call-phone-row button { border-radius: 0; }
+.cw-call-phone-row button svg { width: 22px; height: 22px; }

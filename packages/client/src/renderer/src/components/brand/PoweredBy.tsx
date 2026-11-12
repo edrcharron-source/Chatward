@@ -1,4 +1,5 @@
 import { useSession } from '../../state/session';
+import { usePhone } from '../../web/usePhone';
 import './brand.css';
 
 // Shown only when the app is pointed at a lebserver.com server, so other Chatward hosts stay unbranded.
@@ -11,9 +12,11 @@ export function isLebserver(serverUrl: string): boolean {
   }
 }
 
-export default function PoweredBy() {
+/** On a phone the strip sits in the "You" sheet instead (`force`), so it never takes room under the tab bar. */
+export default function PoweredBy({ force = false }: { force?: boolean } = {}) {
   const show = useSession((s) => isLebserver(s.serverUrl));
-  if (!show) return null;
+  const phone = usePhone();
+  if (!show || (phone && !force)) return null;
   return (
     <footer className="cw-powered" aria-label="Powered by Lebserver">
       <span className="cw-powered-cap" aria-hidden="true" />

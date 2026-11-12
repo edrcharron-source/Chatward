@@ -13,6 +13,7 @@ import { CATEGORY_TAG, categoryOf } from './sort/clues';
 import { needsSort, sortItem } from './sort/sorter';
 import { canQueueToWatchParty, queueToWatchParty } from '../watchparty/bridge';
 import { vaultItem } from '../watchparty/sync';
+import { usePhone } from '../../web/usePhone';
 import './vault.css';
 
 /** Tiles drawn at first and added per "Show more"; albums and filters still cover the whole Vault. */
@@ -270,6 +271,10 @@ export default function VaultView({ serverId, keyChannelId, canModerate, chatCha
     } catch (e) { setError((e as Error).message); }
   }
 
+  // Phones: a long press on a picture starts selecting with that picture picked, like the Photos app.
+  const phone = usePhone();
+  const startSelecting = (id: string) => { setSelecting(true); setSelected(new Set([id])); };
+
   return (
     <section className="cw-vault" aria-label="Vault">
       <header className="cw-vault-head">
@@ -281,7 +286,7 @@ export default function VaultView({ serverId, keyChannelId, canModerate, chatCha
           ? <button type="button" title="Stop sorting" onClick={() => { if (sortRun.current) sortRun.current.stop = true; }}>{sorting} Stop</button>
           : toSort.length > 0 && <button type="button" title="Sort photos into Memes, Screenshots and Real photos on this device. Nothing is sent to the server." onClick={() => void sortVault()}>Sort {toSort.length} into albums</button>}
         {items.length > 0 && <button type="button" aria-pressed={selecting} onClick={() => { setSelecting((v) => !v); setSelected(new Set()); }}>{selecting ? 'Done' : 'Select'}</button>}
-        <button type="button" className="primary" disabled={!keyChannelId || (status !== null && !status.startsWith('Added to'))} onClick={() => fileInput.current?.click()}>Add photos or videos</button>
+        <button type="button" className="primary cw-vault-add" disabled={!keyChannelId || (status !== null && !status.startsWith('Added to'))} onClick={() => fileInput.current?.click()}>{phone ? '+ Add' : 'Add photos or videos'}</button>
         <input ref={fileInput} type="file" multiple accept="image/*,video/*" hidden onChange={(e) => void upload(e.target.files)} />
       </header>
       {status && <p className="muted">{status}</p>}
@@ -338,7 +343,7 @@ export default function VaultView({ serverId, keyChannelId, canModerate, chatCha
         </div>
       )}
       <div className="cw-vault-grid">
-        {shown.slice(0, visible).map((item) => <Tile key={item.id} item={item} selecting={selecting} selected={selected.has(item.id)} onToggle={() => toggle(item.id)} onOpen={(d) => setOpen({ item, d })} />)}
+        {shown.slice(0, visible).map((item) => <Tile key={item.id} item={item} selecting={selecting} selected={selected.has(item.id)} onToggle={() => toggle(item.id)} onOpen={(d) => setOpen({ item, d })} onLongPress={!selecting && phone ? () => startSelecting(item.id) : undefined} />)}
       </div>
       {shown.length > visible && <button type="button" className="cw-vault-more" onClick={() => setVisible((n) => n + TILE_STEP)}>Show more ({shown.length - visible} left)</button>}
       {shown.length <= visible && hasMore && <button type="button" className="cw-vault-more" onClick={() => void loadMore()}>Load older</button>}
@@ -359,8 +364,12 @@ export default function VaultView({ serverId, keyChannelId, canModerate, chatCha
   );
 }
 
-function Tile({ item, onOpen, selecting = false, selected = false, onToggle }: { item: VaultItem; onOpen: (d: VaultDescriptor) => void; selecting?: boolean; selected?: boolean; onToggle?: () => void }) {
+function Tile({ item, onOpen, selecting = false, selected = false, onToggle, onLongPress }: { item: VaultItem; onOpen: (d: VaultDescriptor) => void; selecting?: boolean; selected?: boolean; onToggle?: () => void; onLongPress?: () => void }) {
   const [d, setD] = useState<VaultDescriptor | null>(null);
+  const press = useRef<{ timer: ReturnType<typeof setTimeout>; x: number; y: number } | null>(null);
+  const longPressed = useRef(false);
+  const cancelPress = () => { if (press.current) clearTimeout(press.current.timer); press.current = null; };
+  useEffect(() => cancelPress, []);
   const [url, setUrl] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
   // Keys can arrive after the gallery (a new device still syncing), so retry when they do.
@@ -380,7 +389,16 @@ function Tile({ item, onOpen, selecting = false, selected = false, onToggle }: {
   }, [item, tries]);
   return (
     <button type="button" className={`cw-vault-tile${selected ? ' selected' : ''}`} disabled={!d && !selecting} aria-pressed={selecting ? selected : undefined}
-      onClick={() => (selecting ? onToggle?.() : d && onOpen(d))} title={d?.name}>
+      onPointerDown={(e) => {
+        longPressed.current = false;
+        if (e.pointerType !== 'touch' || !onLongPress) return;
+        const { clientX: x, clientY: y } = e;
+        press.current = { x, y, timer: setTimeout(() => { press.current = null; longPressed.current = true; navigator.vibrate?.(10); onLongPress(); }, 450) };
+      }}
+      onPointerMove={(e) => { if (press.current && Math.hypot(e.clientX - press.current.x, e.clientY - press.current.y) > 8) cancelPress(); }}
+      onPointerUp={cancelPress} onPointerCancel={cancelPress}
+      onContextMenu={(e) => { if (onLongPress || longPressed.current) e.preventDefault(); }}
+      onClick={() => { if (longPressed.current) { longPressed.current = false; return; } if (selecting) onToggle?.(); else if (d) onOpen(d); }} title={d?.name}>
       {url ? <img src={url} alt={d?.name ?? ''} /> : <span className="muted">{failed ? 'Locked' : '…'}</span>}
       {selecting && <span className="cw-vault-check" aria-hidden="true">{selected ? '✓' : ''}</span>}
       {d?.kind === 'video' && <span className="cw-vault-badge">▶{d.durationSec ? ` ${Math.floor(d.durationSec / 60)}:${String(d.durationSec % 60).padStart(2, '0')}` : ''}</span>}

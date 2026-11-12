@@ -329,7 +329,13 @@ export type ClientFrame =
   | { t: 'presence'; status: 'online' | 'idle' | 'dnd' }
   /** null clears it. */
   | { t: 'activity'; activity: Activity | null }
-  | { t: 'ping' };
+  | { t: 'ping' }
+  /**
+   * Whether someone is looking at this app right now (window visible and focused, used in the last few minutes).
+   * Phone notifications for chat go out only while none of the person's apps are in use. A client that never sends it
+   * counts as in use, as older apps did.
+   */
+  | { t: 'focus'; active: boolean };
 
 // Server -> client frames
 export type ServerFrame =

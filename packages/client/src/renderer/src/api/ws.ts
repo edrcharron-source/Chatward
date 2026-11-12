@@ -1,6 +1,7 @@
 import type { ClientFrame, ServerFrame } from '@chatward/shared';
 import { useSession } from '../state/session';
 import { api, ApiError } from './http';
+import { isAppActive, onAppActiveChange } from './focus';
 
 type Handler = (f: ServerFrame) => void;
 const handlers = new Set<Handler>();
@@ -29,6 +30,8 @@ export function connectWs() {
     opened = true;
     retry = 0;
     lastHeard = Date.now();
+    // Tell the server whether this app is in use, so it knows when to send phone notifications instead.
+    sendFrame({ t: 'focus', active: isAppActive() });
     clearInterval(pingTimer);
     pingTimer = setInterval(() => {
       if (Date.now() - lastHeard > PING_TIMEOUT_MS) { dropSocket(ws); return; }
@@ -81,6 +84,7 @@ function wake() {
   connectWs();
 }
 if (typeof document !== 'undefined') {
+  onAppActiveChange((active) => sendFrame({ t: 'focus', active }));
   document.addEventListener('visibilitychange', wake);
   window.addEventListener('pageshow', wake);
   window.addEventListener('online', wake);

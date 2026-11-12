@@ -53,3 +53,24 @@ export async function disablePush(): Promise<PushState> {
 }
 
 export const testPush = () => api.post<{ delivered: boolean }>('/api/push/test');
+
+/**
+ * Run when the app opens. If notifications were turned on here, make sure the server still has this device's
+ * subscription: iPhone can replace it, and the server drops ones that stopped working. Also clears the app icon's badge
+ * and the notifications already on screen, since the app is now open.
+ */
+export async function syncPush(): Promise<void> {
+  if (!supported() || Notification.permission !== 'granted') return;
+  const reg = await navigator.serviceWorker.ready;
+  const sub = await reg.pushManager.getSubscription();
+  if (sub) await api.post('/api/push/subscribe', sub.toJSON());
+  else await enablePush();
+}
+
+export async function clearNotifications(): Promise<void> {
+  if (__CHATWARD_BUILD__.web !== true) return;
+  try { await (navigator as { clearAppBadge?: () => Promise<void> }).clearAppBadge?.(); } catch { /* not supported */ }
+  if (!('serviceWorker' in navigator)) return;
+  const reg = await navigator.serviceWorker.getRegistration();
+  for (const n of (await reg?.getNotifications()) ?? []) n.close();
+}

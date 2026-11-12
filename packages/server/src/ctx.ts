@@ -35,6 +35,11 @@ export interface Ctx {
    * so voice cleanup can wait for the right one to go.
    */
   onDisconnect: ((userId: string, deviceId: string | null, online: { device: boolean; user: boolean }) => void)[];
+  /**
+   * True while the person has one of their apps open and in use (see the 'focus' frame). Phone notifications for chat
+   * are held back only then, so an open but idle desktop app no longer swallows them.
+   */
+  isUserActive: (userId: string) => boolean;
   /** callbacks fired when a user opens a socket, including a reconnect */
   onConnect: ((userId: string, deviceId: string | null) => void)[];
   getUser: (userId: string) => User | null;

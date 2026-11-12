@@ -16,6 +16,8 @@ import MessageText, { isEmojiOnly } from './MessageText';
 import ProfileTrigger from '../profile/ProfileTrigger';
 import JamCards, { jamLinks } from '../spotify/JamCard';
 import ListenAlongCard from '../spotify/ListenAlongCard';
+import ActionSheet from '../phone/ActionSheet';
+import { usePhone } from '../../web/usePhone';
 
 interface Props {
   message: Message;
@@ -34,6 +36,8 @@ interface Props {
 /** How far (px) a message must be swiped left on a touch screen to start a reply. */
 const SWIPE_REPLY_PX = 64;
 const SWIPE_MAX_PX = 90;
+/** Holding a finger on a message this long (ms) opens its actions, since phones have no right-click or hover. */
+const LONG_PRESS_MS = 450;
 /** Right-clicks on these keep their own menu (pictures) or the normal one (text boxes). */
 const OWN_MENU = 'img.media-image, img.media-gif, textarea, input';
 
@@ -64,6 +68,12 @@ export default function MessageItem({ message, payload, author, grouped, canEdit
   const canStartEdit = canEdit && payload != null;
   const canReply = payload != null;
   const [menu, setMenu] = useState<{ doc: Document; x: number; y: number } | null>(null);
+  // Phones: a long press opens the actions as a sheet from the bottom instead of the right-click menu.
+  const phone = usePhone();
+  const [sheet, setSheet] = useState(false);
+  const press = useRef<{ timer: ReturnType<typeof setTimeout>; x: number; y: number } | null>(null);
+  const pressed = useRef(false);
+  const cancelPress = () => { if (press.current) clearTimeout(press.current.timer); press.current = null; };
 
   const reply = () => {
     if (!payload) return;
@@ -76,19 +86,42 @@ export default function MessageItem({ message, payload, author, grouped, canEdit
   };
 
   const onContextMenu = (e: ReactMouseEvent<HTMLDivElement>) => {
+    if (!e.currentTarget.contains(e.target as Node)) return;
     if (editing || (e.target as Element).closest?.(OWN_MENU)) return;
     e.preventDefault();
+    if (phone) { setSheet(true); return; }
     setMenu({ doc: e.currentTarget.ownerDocument, x: e.clientX, y: e.clientY });
   };
 
   // Phones: swipe a message to the left to reply to it (like other chat apps). Only touches count, not a mouse.
   const swipe = useRef<{ id: number; x: number; y: number; on: boolean } | null>(null);
   const [dx, setDx] = useState(0);
+  // The action sheet is drawn in a portal, but React still bubbles its events up to this message; ignore those.
+  const fromHere = (e: { currentTarget: HTMLElement; target: EventTarget }) => e.currentTarget.contains(e.target as Node);
   const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
-    if (e.pointerType !== 'touch' || !canReply || editing) return;
+    if (e.pointerType !== 'touch' || editing || !fromHere(e)) return;
+    pressed.current = false;
+    cancelPress();
+    if (!(e.target as Element).closest?.('textarea, input, a, video')) {
+      const doc = e.currentTarget.ownerDocument;
+      const { clientX: x, clientY: y } = e;
+      press.current = {
+        x, y,
+        timer: setTimeout(() => {
+          press.current = null;
+          swipe.current = null;
+          setDx(0);
+          pressed.current = true;
+          navigator.vibrate?.(10);
+          if (phone) setSheet(true); else setMenu({ doc, x, y });
+        }, LONG_PRESS_MS),
+      };
+    }
+    if (!canReply) return;
     swipe.current = { id: e.pointerId, x: e.clientX, y: e.clientY, on: false };
   };
   const onPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (press.current && Math.hypot(e.clientX - press.current.x, e.clientY - press.current.y) > 8) cancelPress();
     const s = swipe.current;
     if (!s || s.id !== e.pointerId) return;
     const mx = e.clientX - s.x;
@@ -103,6 +136,7 @@ export default function MessageItem({ message, payload, author, grouped, canEdit
     setDx(Math.max(-SWIPE_MAX_PX, Math.min(0, mx)));
   };
   const endSwipe = (e: ReactPointerEvent<HTMLDivElement>) => {
+    cancelPress();
     const s = swipe.current;
     if (!s || s.id !== e.pointerId) return;
     swipe.current = null;
@@ -197,6 +231,8 @@ export default function MessageItem({ message, payload, author, grouped, canEdit
       onPointerMove={onPointerMove}
       onPointerUp={endSwipe}
       onPointerCancel={endSwipe}
+      // The tap that ends a long press must not also open a picture or a link under the finger.
+      onClickCapture={(e) => { if (pressed.current && fromHere(e)) { pressed.current = false; e.preventDefault(); e.stopPropagation(); } }}
       style={swiping ? { transform: `translateX(${dx}px)` } : undefined}
     >
       {swiping && (
@@ -249,6 +285,10 @@ export default function MessageItem({ message, payload, author, grouped, canEdit
             <button className="icon" title="Delete" aria-label="Delete message" onClick={remove}>🗑</button>
           )}
         </div>
+      )}
+      {sheet && menuItems.length > 0 && (
+        <ActionSheet actions={menuItems} onClose={() => { pressed.current = false; setSheet(false); }}
+          preview={<><strong>{author?.displayName ?? 'Message'}</strong>{payload?.text ? <span className="muted"> {payload.text.length > 140 ? `${payload.text.slice(0, 139)}…` : payload.text}</span> : null}</>} />
       )}
       {menu && menuItems.length > 0 && <MessageMenu doc={menu.doc} x={menu.x} y={menu.y} items={menuItems} onClose={() => setMenu(null)} />}
     </div>
