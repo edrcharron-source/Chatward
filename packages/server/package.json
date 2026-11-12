@@ -19,7 +19,7 @@
     "helmet": "^8.0.0",
     "jsonwebtoken": "^9.0.2",
     "livekit-server-sdk": "^2.7.0",
-    "web-push": "^3.6.7",
+    "web-push": "^4.0.0",
     "ws": "^8.18.0"
   },
   "devDependencies": {
