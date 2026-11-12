@@ -282,3 +282,32 @@
   white-space: nowrap;
 }
 .cw-watch-mini .watch-party-vault { display: none; }
+
+/* ---- Phones (the iPhone home-screen app) ----
+   The panel fills the tab instead of sitting in a card, the video runs edge to edge, the link box takes its own row with
+   the buttons under it, and every button is big enough for a thumb. The corner preview shown on other tabs sits small in
+   the top right, under the top bar, clear of the message box and the tab bar. */
+@media (max-width: 700px) {
+  .cw-phone .watch-party { min-height: 100%; padding: 10px 12px 16px; gap: 12px; border: 0; border-radius: 0; }
+  .watch-party-head { gap: 8px; }
+  .watch-party-head > span:first-child { white-space: nowrap; }
+  .watch-party-head-actions button, .watch-party-bar button { min-height: 40px; white-space: nowrap; }
+  .cw-phone .watch-party-frame { width: auto; margin: 0 -12px; border-radius: 0; }
+  .watch-party-form { flex-wrap: wrap; }
+  .watch-party-form input { flex: 1 1 100%; min-height: 44px; }
+  .watch-party-form button { flex: 1 1 0; min-height: 44px; white-space: nowrap; padding: 0 8px; }
+  .watch-party-vault-head { flex-wrap: wrap; }
+  .watch-party-vault-head > span { flex: 1 1 100%; }
+  .watch-party-vault-head button { flex: 1 1 0; min-height: 40px; }
+  .watch-party-vault-list { max-height: 50vh; }
+  .watch-party .watch-party-vault-list button { min-height: 52px; }
+  .watch-party-queue button { min-height: 40px; }
+  .cw-phone .cw-split-pane.cw-watch-mini {
+    top: calc(env(safe-area-inset-top) + 60px) !important; right: 8px !important; left: auto !important; bottom: auto !important;
+    width: min(52vw, 230px) !important; height: auto !important; aspect-ratio: 16 / 9;
+  }
+  .cw-phone .cw-watch-mini .cw-float-resize { display: none; }
+  .cw-phone .cw-watch-mini .watch-party { min-height: 0; padding: 0; }
+  .cw-phone .cw-watch-mini .watch-party-frame { margin: 0; }
+  .cw-phone .cw-watch-mini .watch-party-hint { display: none; }
+}

@@ -87,3 +87,13 @@ html.cw-kb .cw-call-pill { display: none; }
    does, so the tab bar steps aside. */
 .cw-phone:has(.media-sheet) > .cw-phone-bottom, .cw-phone:has(.media-sheet) > .cw-call-pill { display: none; }
 
+
+/* A screen share shown while another tab is open: small in the top left, under the top bar (the watch party's preview
+   takes the top right, watchparty.css). */
+@media (max-width: 700px) {
+  .cw-phone .cw-split-pane.cw-stream-mini {
+    top: calc(env(safe-area-inset-top) + 60px) !important; left: 8px !important; right: auto !important; bottom: auto !important;
+    width: min(42vw, 190px) !important; height: auto !important; aspect-ratio: 16 / 9;
+  }
+  .cw-phone .cw-stream-mini .cw-float-resize { display: none; }
+}
