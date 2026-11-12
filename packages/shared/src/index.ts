@@ -381,7 +381,43 @@ export const CHATTER_LINES = [
   'anyone seen the patch notes?', 'lol that is so true', 'brb getting snacks', 'gg that was close',
   'who wants to hop in the Lounge', 'this app feels snappy 👀', 'not gonna lie, that gif got me', 'ok I am back',
 ];
-export const CHATTER_REPLIES = ['lol', 'ha yes', 'agreed 😂', 'nice one', 'wait say that again', 'ok fair'];
+/**
+ * Replies by topic. A guest answering a message uses the first topic whose words appear in it, or the general replies.
+ * Order matters: earlier topics win. Saved messages name a reply by its index in CHATTER_REPLIES, so add new
+ * replies as a new topic at the end, never inside an existing list.
+ */
+const CHATTER_GENERAL = ['lol', 'ha yes', 'agreed 😂', 'nice one', 'wait say that again', 'ok fair'];
+const CHATTER_TOPICS: { words: RegExp; replies: string[] }[] = [
+  { words: /\b(bots?|robots?|ai|are you real|you real|npc)\b/, replies: ['beep boop 🤖', 'I am 100% a real person', 'no comment', 'I have feelings too you know'] },
+  { words: /\b(thanks|thank you|thx|ty|tysm|appreciate it)\b/, replies: ['np!', 'anytime', 'you got it 👍', 'of course'] },
+  { words: /\b(bye|goodbye|gn|good ?night|night|cya|see ya|later|gotta go|heading out|logging off)\b/, replies: ['night!', 'see ya 👋', 'later!', 'cya tomorrow', 'sleep well'] },
+  { words: /\b(hi|hey+|hello|yo|sup|wassup|whats up|what's up|howdy|good morning|morning|evening)\b/, replies: ['hey!', 'yo 👋', 'heyy', "what's up", 'oh hi', 'hiii'] },
+  { words: /(\b(lol|lmao|lmfao|haha\w*|rofl|dead|dying)\b|😂|🤣|💀)/, replies: ['LMAO', 'lol same', "I can't 😂", 'stop 😭', 'crying rn'] },
+  { words: /\b(food|eat|eating|hungry|starving|pizza|dinner|lunch|breakfast|snacks?|tacos?|burgers?|fries|sushi)\b/, replies: ['now I am hungry', 'save me some 🍕', 'what are we ordering', 'ooh what kind'] },
+  { words: /\b(game|games|gaming|play|playing|gg|match|ranked|queue|hop on|lobby|win|won|lost|lose)\b/, replies: ["I'm down to play later", 'one more game?', 'gg honestly', "queue up, I'm in", 'carry me pls'] },
+  { words: /\b(movie|movies|watch|watching|show|episode|season|youtube|video|song|music|playlist|spotify|album)\b/, replies: ['put it on Watch together', 'is it any good?', 'add it to the queue', 'no spoilers!!'] },
+  { words: /\b(tired|sleepy|exhausted|sad|ugh|sick|bad day|stressed|bored)\b/, replies: ['oof, hang in there', 'take it easy', 'big mood', 'sending good vibes'] },
+  { words: /(\b(let'?s go+|nice|awesome|amazing|yay|finally|hype|pog)\b|🎉|🔥)/, replies: ["LET'S GO", 'huge', 'love that', 'W'] },
+  { words: /(\?|\b(what|why|how|when|who|where|anyone|should)\b)/, replies: ['good question', 'no idea tbh', 'hmm let me think', 'probably?', "don't ask me lol"] },
+];
+export const CHATTER_REPLIES = [...CHATTER_GENERAL, ...CHATTER_TOPICS.flatMap((t) => t.replies)];
+
+/** The index in CHATTER_REPLIES of a reply that fits `text`. */
+export function chatterReply(text: string): number {
+  const lower = text.toLowerCase();
+  let start = CHATTER_GENERAL.length;
+  for (const t of CHATTER_TOPICS) {
+    if (t.words.test(lower)) return start + Math.floor(Math.random() * t.replies.length);
+    start += t.replies.length;
+  }
+  return Math.floor(Math.random() * CHATTER_GENERAL.length);
+}
+
+/** Which of `names` the text calls by name, as an index into names, or -1. */
+export function chatterNamed(text: string, names: string[]): number {
+  const lower = text.toLowerCase();
+  return names.findIndex((n) => /^\w+$/.test(n) && new RegExp(`\\b${n.toLowerCase()}\\b`).test(lower));
+}
 /** Waits, in ms, as [min, max]. A wait is min + random * (max - min). */
 export const CHATTER_TIMING = {
   firstLine: [8_000, 8_000],

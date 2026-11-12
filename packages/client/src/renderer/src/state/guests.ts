@@ -10,6 +10,8 @@ import {
   CHATTER_REPLIES,
   CHATTER_TIMING,
   chatterClip,
+  chatterNamed,
+  chatterReply,
   chatterWait,
   GUESTS_MAX,
   type ChatterTag,
@@ -147,7 +149,7 @@ function readTag(m: Message, payload: MessagePayload | null, live: boolean) {
   const meId = useSession.getState().user?.id;
   if (!serverId || !meId) return;
   if (!tag) {
-    if (live) answer(serverId, m.channelId);
+    if (live) answer(serverId, m.channelId, payload?.text ?? '');
     return;
   }
   if (live && tag.kind !== 'line' && m.authorId !== meId) unbump(m.channelId);
@@ -211,12 +213,13 @@ function sendRoster(serverId: string) {
   if (channelId) void sendTag(channelId, { kind: 'roster', session: SESSION, roster: useGuests.getState().mine[serverId] ?? [] });
 }
 
-function say(serverId: string, channelId: string, reply: boolean) {
+/** A guest says something: a random line, or reply number `reply`. `guest` picks who, if they are still here. */
+function say(serverId: string, channelId: string, reply?: number, guest?: number) {
   const mine = useGuests.getState().mine[serverId] ?? [];
   if (!mine.length) return;
-  const guest = mine[Math.floor(Math.random() * mine.length)];
-  const line = Math.floor(Math.random() * (reply ? CHATTER_REPLIES.length : CHATTER_LINES.length));
-  void sendTag(channelId, { kind: 'line', session: SESSION, roster: mine, guest, line, reply });
+  const who = guest !== undefined && mine.includes(guest) ? guest : mine[Math.floor(Math.random() * mine.length)];
+  const line = reply ?? Math.floor(Math.random() * CHATTER_LINES.length);
+  void sendTag(channelId, { kind: 'line', session: SESSION, roster: mine, guest: who, line, reply: reply !== undefined });
 }
 
 // ---------- hosting ----------
@@ -241,7 +244,7 @@ function stopHosting(serverId: string) {
 function startHosting(serverId: string) {
   const textLoop = () => {
     const channels = textChannels(serverId);
-    if (channels.length) say(serverId, channels[Math.floor(Math.random() * channels.length)], false);
+    if (channels.length) say(serverId, channels[Math.floor(Math.random() * channels.length)]);
     later(serverId, chatterWait(CHATTER_TIMING.nextLine), textLoop);
   };
   later(serverId, chatterWait(CHATTER_TIMING.firstLine), textLoop);
@@ -252,14 +255,19 @@ function startHosting(serverId: string) {
   later(serverId, chatterWait(CHATTER_TIMING.firstClip), voiceLoop);
 }
 
-/** Someone wrote in a text channel: like the demo, one guest answers. Only one host answers, so it is one reply. */
-function answer(serverId: string, channelId: string) {
-  const mine = useGuests.getState().mine[serverId] ?? [];
+/**
+ * Someone wrote in a text channel: one guest answers with a reply that fits the words. A guest called by name answers
+ * themselves; otherwise one host answers for everyone, so it is one reply.
+ */
+function answer(serverId: string, channelId: string, text: string) {
   const meId = useSession.getState().user?.id;
-  if (!mine.length || !meId) return;
-  const lead = [...new Set(currentSeats(serverId).map((s) => s.host))].sort()[0];
-  if (lead !== meId) return;
-  later(serverId, chatterWait(CHATTER_TIMING.replyPause) + chatterWait(CHATTER_TIMING.replyTyping), () => say(serverId, channelId, true));
+  const seats = currentSeats(serverId);
+  if (!seats.length || !meId) return;
+  const named = seats[chatterNamed(text, seats.map((s) => GUEST_USERS[s.guest]?.displayName ?? ''))];
+  const host = named ? named.host : [...new Set(seats.map((s) => s.host))].sort()[0];
+  if (host !== meId) return;
+  const reply = chatterReply(text);
+  later(serverId, chatterWait(CHATTER_TIMING.replyPause) + chatterWait(CHATTER_TIMING.replyTyping), () => say(serverId, channelId, reply, named?.guest));
 }
 
 function setMine(serverId: string, guests: number[]) {

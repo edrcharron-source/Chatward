@@ -1,7 +1,8 @@
 // Offline stand-in for the server. Implements docs/CONTRACT.md REST routes and the WS frame stream in memory.
-import { CHATTER_LINES, CHATTER_REPLIES, CHATTER_TIMING, chatterWait, DEFAULT_VOICE_BITRATE_KBPS, LIMITS, VOICE_BITRATES_KBPS, type Channel, type Member, type Message, type LibraryGif, type ServerFrame, type SoundboardSound, type User } from '@chatward/shared';
+import { CHATTER_LINES, CHATTER_REPLIES, CHATTER_TIMING, chatterNamed, chatterReply, chatterWait, DEFAULT_VOICE_BITRATE_KBPS, LIMITS, VOICE_BITRATES_KBPS, type Channel, type Member, type Message, type LibraryGif, type ServerFrame, type SoundboardSound, type User } from '@chatward/shared';
 import { avatarPng } from './assets';
 import { createWorld, makeMessage, newId, SERVER_ID, YOU_ID } from './world';
+import { demoDecode } from '../codec';
 
 export const DEMO_TOKEN = 'demo-token';
 
@@ -128,12 +129,15 @@ function postBotMessage(channelId: string, authorId: string, text: string) {
   emit({ t: 'message.new', message });
 }
 
-function botReplyToUser(channelId: string) {
-  const bot = randomBot();
+/** A bot answers what you wrote with a fitting reply. A bot called by name answers themselves. */
+function botReplyToUser(channelId: string, text: string) {
+  const bots = activeBots();
+  const bot = bots[chatterNamed(text, bots.map((b) => b.user.displayName))] ?? randomBot();
   if (!bot) return;
+  const reply = CHATTER_REPLIES[chatterReply(text)];
   later(chatterWait(CHATTER_TIMING.replyPause), () => {
     emit({ t: 'typing', channelId, userId: bot.user.id });
-    later(chatterWait(CHATTER_TIMING.replyTyping), () => postBotMessage(channelId, bot.user.id, pick(CHATTER_REPLIES)));
+    later(chatterWait(CHATTER_TIMING.replyTyping), () => postBotMessage(channelId, bot.user.id, reply));
   });
 }
 
@@ -362,7 +366,7 @@ on('POST', /^\/api\/channels\/([^/]+)\/messages$/, (r) => {
   };
   (world.messages[ch.id] ??= []).push(message);
   emit({ t: 'message.new', message });
-  botReplyToUser(ch.id);
+  botReplyToUser(ch.id, demoDecode(body.ciphertext)?.text ?? '');
   return json({ message }, 201);
 });
 on('PATCH', /^\/api\/messages\/([^/]+)$/, (r) => {
