@@ -46,7 +46,7 @@
     "@vitejs/plugin-react": "^4.3.2",
     "electron": "^44.10.0",
     "electron-builder": "^25.1.8",
-    "electron-vite": "^2.3.0",
+    "electron-vite": "^6.0.0",
     "emoji-picker-element": "^1.26.0",
     "emoji-picker-element-data": "^1.6.0",
     "gifenc": "^1.0.3",
