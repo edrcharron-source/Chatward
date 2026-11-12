@@ -223,8 +223,10 @@ export default function VaultView({ serverId, keyChannelId, canModerate, chatCha
   async function upload(files: FileList | null) {
     if (!files?.length || !keyChannelId) return;
     setError(null);
+    // One file that won't go in is skipped; the rest keep going, and the misses are listed at the end.
+    const skipped: string[] = [];
     for (const [i, file] of [...files].entries()) {
-      if (usage.max > 0 && file.size > usage.max) { setError(`${file.name} is over the ${mb(usage.max)} limit.`); continue; }
+      if (usage.max > 0 && file.size > usage.max) { skipped.push(`${file.name} (over the ${mb(usage.max)} limit)`); continue; }
       const label = `${file.name} (${i + 1}/${files.length})`;
       setStatus(`Reading ${label}…`);
       try {
@@ -241,8 +243,9 @@ export default function VaultView({ serverId, keyChannelId, canModerate, chatCha
         if (activeManual) await albumsApi.change(activeManual.id, [item.id]).then(putAlbum).catch(() => {});
         // Sort it on this device in the background; a failure just leaves it unsorted.
         void openDescriptor(item).then((d) => (d ? sortItem(item, d, me, undefined) : null)).catch(() => {});
-      } catch (e) { setError((e as Error).message); }
+      } catch (e) { skipped.push(`${file.name} (${(e as Error).message})`); }
     }
+    if (skipped.length) setError(`${skipped.length} of ${files.length} couldn't be added: ${skipped.join('; ')}`);
     setStatus(null);
     if (fileInput.current) fileInput.current.value = '';
   }

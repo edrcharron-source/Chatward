@@ -20,22 +20,60 @@ function drawThumb(source: CanvasImageSource, w: number, h: number): Promise<Blo
   return toBlob(canvas);
 }
 
-/** Loads the first moments of a video to get its size, length and a still frame. */
+/** How long to wait for the phone or browser to show a video's first frame before giving up on a still. */
+const VIDEO_WAIT_MS = 15_000;
+
+/** Resolves when `ok` fires, rejects on `bad`, and gives up after a while so a quiet video can't stall the queue. */
+function waitFor(v: HTMLVideoElement, ok: 'loadedmetadata' | 'loadeddata' | 'seeked'): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    const done = (fn: () => void) => () => { clearTimeout(timer); v.removeEventListener(ok, onOk); v.removeEventListener('error', onBad); fn(); };
+    const onOk = done(resolve);
+    const onBad = done(() => reject(new Error("Couldn't read that video")));
+    const timer = setTimeout(done(() => reject(new Error('The video took too long to open'))), VIDEO_WAIT_MS);
+    v.addEventListener(ok, onOk);
+    v.addEventListener('error', onBad);
+  });
+}
+
+/** A plain dark square, used when a video plays fine but its first frame can't be drawn (often on iPhone). */
+function blankThumb(): Promise<Blob> {
+  const canvas = document.createElement('canvas');
+  canvas.width = THUMB_EDGE; canvas.height = THUMB_EDGE;
+  const g = canvas.getContext('2d')!;
+  g.fillStyle = '#222'; g.fillRect(0, 0, THUMB_EDGE, THUMB_EDGE);
+  return toBlob(canvas);
+}
+
+/**
+ * Loads the first moments of a video to get its size, length and a still frame.
+ * iPhone Safari sometimes never delivers a frame for a video that isn't on screen, so each step
+ * has a time limit, and a video whose frame can't be drawn still goes in with a plain still.
+ */
 async function videoInfo(file: File): Promise<{ w: number; h: number; durationSec: number; thumb: Blob }> {
   const url = URL.createObjectURL(file);
+  const v = document.createElement('video');
   try {
-    const v = document.createElement('video');
     v.muted = true;
+    v.playsInline = true;
+    v.setAttribute('playsinline', '');
     v.preload = 'auto';
+    const meta = waitFor(v, 'loadedmetadata');
     v.src = url;
-    await new Promise<void>((resolve, reject) => {
-      v.onloadeddata = () => resolve();
-      v.onerror = () => reject(new Error("Couldn't read that video"));
-    });
-    v.currentTime = Math.min(1, (v.duration || 1) / 2);
-    await new Promise<void>((resolve) => { v.onseeked = () => resolve(); });
-    return { w: v.videoWidth, h: v.videoHeight, durationSec: Math.round(v.duration || 0), thumb: await drawThumb(v, v.videoWidth, v.videoHeight) };
+    v.load();
+    await meta;
+    const facts = { w: v.videoWidth || THUMB_EDGE, h: v.videoHeight || THUMB_EDGE, durationSec: Math.round(Number.isFinite(v.duration) ? v.duration : 0) };
+    try {
+      if (v.readyState < 2) await waitFor(v, 'loadeddata');
+      const seeked = waitFor(v, 'seeked');
+      v.currentTime = Math.min(1, (v.duration || 1) / 2);
+      await seeked;
+      return { ...facts, thumb: await drawThumb(v, v.videoWidth || facts.w, v.videoHeight || facts.h) };
+    } catch {
+      return { ...facts, thumb: await blankThumb() };
+    }
   } finally {
+    v.removeAttribute('src');
+    v.load();
     URL.revokeObjectURL(url);
   }
 }
