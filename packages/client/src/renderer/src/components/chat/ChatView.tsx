@@ -70,21 +70,35 @@ export default function ChatView({ channel }: { channel: Channel }) {
     const markRead = () => { if (!doc.hidden) useSession.getState().clearUnread(channel.id); };
     // Coming back after a while (a phone reopening the app, say) starts at the newest messages, not wherever the
     // reader had scrolled to before leaving. A quick look at another app keeps their place.
+    // iPhone can also freeze the app without saying it was hidden first, so a clock that stopped ticking for that
+    // long counts as being away too: the ticker below notices the gap when the app wakes up.
     let hiddenAt = doc.hidden ? Date.now() : 0;
+    let lastTick = Date.now();
+    const toNewest = () => {
+      const el = listRef.current;
+      if (!el) return;
+      stick.current = true;
+      el.scrollTop = el.scrollHeight;
+    };
     const onVisibility = () => {
       markRead();
       if (doc.hidden) { hiddenAt = Date.now(); return; }
-      const el = listRef.current;
-      if (el && hiddenAt && Date.now() - hiddenAt >= AWAY_MS) {
-        stick.current = true;
-        el.scrollTop = el.scrollHeight;
-      }
+      if (hiddenAt && Date.now() - hiddenAt >= AWAY_MS) toNewest();
       hiddenAt = 0;
     };
+    const onShow = () => { if (!doc.hidden && Date.now() - lastTick >= AWAY_MS) toNewest(); };
+    const ticker = win.setInterval(() => {
+      const t = Date.now();
+      if (!doc.hidden && t - lastTick >= AWAY_MS) toNewest();
+      lastTick = t;
+    }, 1000);
     doc.addEventListener('visibilitychange', onVisibility);
+    win.addEventListener('pageshow', onShow);
     win.addEventListener('focus', markRead);
     return () => {
+      win.clearInterval(ticker);
       doc.removeEventListener('visibilitychange', onVisibility);
+      win.removeEventListener('pageshow', onShow);
       win.removeEventListener('focus', markRead);
     };
   }, [channel.id]);
