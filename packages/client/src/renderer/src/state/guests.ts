@@ -256,8 +256,8 @@ function startHosting(serverId: string) {
 }
 
 /**
- * Someone wrote in a text channel: one guest answers with a reply that fits the words. A guest called by name answers
- * themselves; otherwise one host answers for everyone, so it is one reply.
+ * Someone wrote in a text channel: one guest answers with a reply that fits the words, and sometimes a second guest
+ * chimes in. A guest called by name answers themselves; otherwise one host answers for everyone.
  */
 function answer(serverId: string, channelId: string, text: string) {
   const meId = useSession.getState().user?.id;
@@ -266,8 +266,30 @@ function answer(serverId: string, channelId: string, text: string) {
   const named = seats[chatterNamed(text, seats.map((s) => GUEST_USERS[s.guest]?.displayName ?? ''))];
   const host = named ? named.host : [...new Set(seats.map((s) => s.host))].sort()[0];
   if (host !== meId) return;
-  const reply = chatterReply(text);
-  later(serverId, chatterWait(CHATTER_TIMING.replyPause) + chatterWait(CHATTER_TIMING.replyTyping), () => say(serverId, channelId, reply, named?.guest));
+  const mine = useGuests.getState().mine[serverId] ?? [];
+  if (!mine.length) return;
+  const firstGuest = named?.guest ?? mine[Math.floor(Math.random() * mine.length)];
+  const first = chatterReply(text, recent);
+  remember(first.line);
+  const wait = chatterWait(CHATTER_TIMING.replyPause) + chatterWait(CHATTER_TIMING.replyTyping);
+  later(serverId, wait, () => say(serverId, channelId, first.line, firstGuest));
+  // Now and then a second guest chimes in on the same topic, so it feels like a group.
+  if (!first.matched || mine.length < 2 || Math.random() >= CHIME_IN) return;
+  const second = chatterReply(text, recent);
+  remember(second.line);
+  later(serverId, wait + chatterWait(CHATTER_TIMING.replyPause) + chatterWait(CHATTER_TIMING.replyTyping), () => {
+    const others = (useGuests.getState().mine[serverId] ?? []).filter((g) => g !== firstGuest);
+    say(serverId, channelId, second.line, others[Math.floor(Math.random() * others.length)]);
+  });
+}
+
+/** How often a second guest also answers. */
+const CHIME_IN = 0.3;
+/** Replies sent lately, so guests do not repeat themselves. */
+const recent: number[] = [];
+function remember(line: number) {
+  recent.push(line);
+  if (recent.length > 12) recent.shift();
 }
 
 function setMine(serverId: string, guests: number[]) {

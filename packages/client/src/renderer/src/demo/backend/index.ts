@@ -129,15 +129,32 @@ function postBotMessage(channelId: string, authorId: string, text: string) {
   emit({ t: 'message.new', message });
 }
 
-/** A bot answers what you wrote with a fitting reply. A bot called by name answers themselves. */
+const recentReplies: number[] = [];
+
+/** A bot answers what you wrote with a fitting reply, and sometimes a second bot chimes in. A bot called by name answers. */
 function botReplyToUser(channelId: string, text: string) {
   const bots = activeBots();
   const bot = bots[chatterNamed(text, bots.map((b) => b.user.displayName))] ?? randomBot();
   if (!bot) return;
-  const reply = CHATTER_REPLIES[chatterReply(text)];
+  const pickReply = () => {
+    const r = chatterReply(text, recentReplies);
+    recentReplies.push(r.line);
+    if (recentReplies.length > 12) recentReplies.shift();
+    return r;
+  };
+  const first = pickReply();
+  const second = first.matched && bots.length > 1 && Math.random() < 0.3 ? pickReply() : null;
+  const other = pick(bots.filter((b) => b !== bot));
   later(chatterWait(CHATTER_TIMING.replyPause), () => {
     emit({ t: 'typing', channelId, userId: bot.user.id });
-    later(chatterWait(CHATTER_TIMING.replyTyping), () => postBotMessage(channelId, bot.user.id, reply));
+    later(chatterWait(CHATTER_TIMING.replyTyping), () => {
+      postBotMessage(channelId, bot.user.id, CHATTER_REPLIES[first.line]);
+      if (!second || !other) return;
+      later(chatterWait(CHATTER_TIMING.replyPause), () => {
+        emit({ t: 'typing', channelId, userId: other.user.id });
+        later(chatterWait(CHATTER_TIMING.replyTyping), () => postBotMessage(channelId, other.user.id, CHATTER_REPLIES[second.line]));
+      });
+    });
   });
 }
 
