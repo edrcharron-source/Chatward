@@ -14,6 +14,7 @@ import {
   chatterClip,
   chatterNamed,
   chatterReply,
+  chatterText,
   chatterWait,
   GUESTS_MAX,
   type ChatterTag,
@@ -151,7 +152,7 @@ function readTag(m: Message, payload: MessagePayload | null, live: boolean) {
   const meId = useSession.getState().user?.id;
   if (!serverId || !meId) return;
   if (!tag) {
-    if (live) answer(serverId, m.channelId, payload?.text ?? '');
+    if (live && payload) answer(serverId, m.channelId, payload);
     return;
   }
   if (live && tag.kind !== 'line' && m.authorId !== meId) unbump(m.channelId);
@@ -281,13 +282,17 @@ function startHosting(serverId: string) {
 
 /**
  * Someone wrote in a text channel: one guest answers with a reply that fits the words, and sometimes a second guest
- * chimes in. A guest called by name answers themselves; otherwise one host answers for everyone.
+ * chimes in. A guest replied to, mentioned or called by name answers themselves; otherwise one host answers for everyone.
  */
-function answer(serverId: string, channelId: string, text: string) {
+function answer(serverId: string, channelId: string, payload: MessagePayload) {
   const meId = useSession.getState().user?.id;
   const seats = currentSeats(serverId);
   if (!seats.length || !meId) return;
-  const named = seats[chatterNamed(text, seats.map((s) => GUEST_USERS[s.guest]?.displayName ?? ''))];
+  const text = chatterText(payload);
+  // A guest replied to, @mentioned or called by name answers.
+  const addressed = [payload.replyTo?.authorId, ...(payload.mentions?.userIds ?? [])];
+  const named = seats.find((s) => addressed.includes(GUEST_USERS[s.guest]?.id))
+    ?? seats[chatterNamed(text, seats.map((s) => GUEST_USERS[s.guest]?.displayName ?? ''))];
   const host = named ? named.host : [...new Set(seats.map((s) => s.host))].sort()[0];
   if (host !== meId) return;
   const mine = useGuests.getState().mine[serverId] ?? [];

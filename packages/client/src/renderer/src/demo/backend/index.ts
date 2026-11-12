@@ -1,5 +1,5 @@
 // Offline stand-in for the server. Implements docs/CONTRACT.md REST routes and the WS frame stream in memory.
-import { CHATTER_CHATS, CHATTER_REPLIES, CHATTER_TIMING, chatterNamed, chatterReply, chatterWait, DEFAULT_VOICE_BITRATE_KBPS, LIMITS, VOICE_BITRATES_KBPS, type Channel, type Member, type Message, type LibraryGif, type ServerFrame, type SoundboardSound, type User } from '@chatward/shared';
+import { CHATTER_CHATS, CHATTER_REPLIES, CHATTER_TIMING, chatterNamed, chatterReply, chatterText, chatterWait, DEFAULT_VOICE_BITRATE_KBPS, LIMITS, VOICE_BITRATES_KBPS, type Channel, type Member, type Message, type LibraryGif, type MessagePayload, type ServerFrame, type SoundboardSound, type User } from '@chatward/shared';
 import { avatarPng } from './assets';
 import { createWorld, makeMessage, newId, SERVER_ID, YOU_ID } from './world';
 import { demoDecode } from '../codec';
@@ -152,10 +152,15 @@ function postBotMessage(channelId: string, authorId: string, text: string) {
 
 const recentReplies: number[] = [];
 
-/** A bot answers what you wrote with a fitting reply, and sometimes a second bot chimes in. A bot called by name answers. */
-function botReplyToUser(channelId: string, text: string) {
+/**
+ * A bot answers what you wrote with a fitting reply, and sometimes a second bot chimes in.
+ * A bot replied to, mentioned or called by name answers.
+ */
+function botReplyToUser(channelId: string, payload: MessagePayload | null) {
+  const text = chatterText(payload);
   const bots = activeBots();
-  const bot = bots[chatterNamed(text, bots.map((b) => b.user.displayName))] ?? randomBot();
+  const addressed = [payload?.replyTo?.authorId, ...(payload?.mentions?.userIds ?? [])];
+  const bot = bots.find((b) => addressed.includes(b.user.id)) ?? bots[chatterNamed(text, bots.map((b) => b.user.displayName))] ?? randomBot();
   if (!bot) return;
   const pickReply = () => {
     const r = chatterReply(text, recentReplies);
@@ -404,7 +409,7 @@ on('POST', /^\/api\/channels\/([^/]+)\/messages$/, (r) => {
   };
   (world.messages[ch.id] ??= []).push(message);
   emit({ t: 'message.new', message });
-  botReplyToUser(ch.id, demoDecode(body.ciphertext)?.text ?? '');
+  botReplyToUser(ch.id, demoDecode(body.ciphertext));
   return json({ message }, 201);
 });
 on('PATCH', /^\/api\/messages\/([^/]+)$/, (r) => {

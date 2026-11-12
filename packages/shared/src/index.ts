@@ -555,6 +555,10 @@ export const CHATTER_TOPICS: { name: string; rank: number; words: string[]; repl
     replies: ['same!!', 'the hype is real', 'counting down', "it's going to be so good"] },
   { name: 'Lost and confused', rank: 72, words: ['confused', 'lost', 'huh', 'wait what', "i don't get it", 'i dont get it', 'what do you mean', '???'],
     replies: ['same, I am lost', 'explain like I am 5', "you're not alone", 'wait now I am confused too', 'huh?'] },
+  // ---- added in the fourth round ----
+  // `[media]` is never typed: chatterText adds it for a message with a GIF, picture or video, so text topics win first.
+  { name: 'GIFs and pictures', rank: 95, words: ['[media]'],
+    replies: ['LMAO that gif', 'that gif is perfect', 'ok that one got me 😂', 'saving that one', 'where do you find these', 'beautiful', 'the quality 👌', 'frame it'] },
 ];
 export const CHATTER_REPLIES = [...CHATTER_GENERAL, ...CHATTER_TOPICS.flatMap((t) => t.replies)];
 
@@ -587,6 +591,12 @@ export function chatterReply(text: string, avoid: number[] = []): { line: number
   const fresh = all.filter((i) => !avoid.includes(i));
   const pool = fresh.length ? fresh : all;
   return { line: pool[Math.floor(Math.random() * pool.length)], matched: !!m };
+}
+
+/** What chatterReply should read for a message: its text, plus a marker when it carries a GIF, picture or video. */
+export function chatterText(p: Pick<MessagePayload, 'text' | 'gif' | 'attachments' | 'vault'> | null | undefined): string {
+  if (!p) return '';
+  return p.gif || p.attachments?.length || p.vault?.length ? `${p.text ?? ''} [media]` : p.text ?? '';
 }
 
 /** Which of `names` the text calls by name, as an index into names, or -1. */
