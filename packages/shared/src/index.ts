@@ -383,7 +383,7 @@ export type ServerFrame =
  * conversations at the END only, because saved messages name a line by its index.
  */
 export const CHATTER_CHATS: string[][] = [
-  ['anyone want to hop in voice later?', "I'm down, after dinner though", 'same, ping me', 'bet'],
+  ['anyone else have the best day today?', 'mine was pretty good actually', 'mine was mid', 'tomorrow will be better'],
   ['what is everyone eating tonight?', 'probably pizza again', 'pizza is never the wrong answer', 'facts'],
   ['I finally beat that boss I was stuck on', 'no way, how many tries?', "don't ask 💀", 'still counts, gg'],
   ['what are you all watching these days?', 'rewatching an old show honestly', 'which one?', "the one with the good intro, you know the one"],
@@ -462,7 +462,7 @@ export const CHATTER_TOPICS: { name: string; rank: number; words: string[]; repl
   { name: 'How are you', rank: 10, words: ['how are you', 'how are u', 'how r u', 'hru', "how's it going", 'hows it going', 'how you doing', 'how u doing', 'you good', 'u good', 'how have you been', 'how are things', "how's life", 'hows life', 'how was your day', 'how is your day', "how's your day", 'hows your day'],
     replies: ['doing good, you?', 'pretty chill tbh', 'surviving 😅', 'better now that you asked', "can't complain", 'good! how about you?', 'honestly not bad', 'living the dream', 'tired but alive', 'great now 😊'] },
   { name: 'What are you doing', rank: 10, words: ['wyd', 'what are you doing', 'what you doing', 'what are you up to', 'what u doing', 'whatcha doing', 'whatcha up to', 'what r u doing', 'what are you up 2', 'wbu', 'hbu', 'what about you'],
-    replies: ['nothing much, you?', 'just vibing', 'scrolling as usual', 'pretending to be productive', 'about to hop in a game', 'eating snacks', 'listening to music', 'watching something', 'nothing, bored', 'waiting for someone to hop in voice'] },
+    replies: ['nothing much, you?', 'just vibing', 'scrolling as usual', 'pretending to be productive', 'about to hop in a game', 'eating snacks', 'listening to music', 'watching something', 'nothing, bored', 'just chilling here'] },
   { name: 'Who are you', rank: 10, words: ['who are you', 'who r u', 'what are you', "what's your name", 'whats your name', 'introduce yourself', 'who is this', 'who dis', 'are you new'],
     replies: ['just a friendly face 👋', 'the best member here obviously', 'you know me!', "I'm a regular here", 'your favorite chatter', 'a mystery 🕵️', "I've been here the whole time", 'just hanging out'] },
   { name: 'Jokes', rank: 10, words: ['joke', 'jokes', 'tell me something funny', 'make me laugh', 'say something funny', 'dad joke', 'pun', 'puns', 'got any jokes'],
@@ -504,7 +504,7 @@ export const CHATTER_TOPICS: { name: string; rank: number; words: string[]; repl
   { name: 'Tech trouble', rank: 35, words: ['pc', 'computer', 'laptop', 'update', 'lag', 'laggy', 'internet', 'wifi', 'crash', 'crashed', 'crashing', 'bug', 'broken', 'not working', 'glitch', 'frozen', 'freezing up', 'error', 'blue screen', 'reboot', 'restart', 'ping is', 'high ping', 'fps', 'drivers'],
     replies: ['have you tried turning it off and on again', 'my wifi is suffering too', 'rip', 'tech hates us all', 'did you try restarting', 'classic', 'tech support has entered the chat', 'ugh I hate when that happens'] },
   { name: 'Voice chat', rank: 45, words: ['voice', 'vc', 'call', 'join', 'hop in', 'lounge', 'talk', '🎧', '🎤', 'hop on vc', 'get in vc', 'mic', 'muted', 'unmute', 'deafened', 'can you hear me', 'headset', 'screen share', 'stream it'],
-    replies: ['joining in a sec', "I'll hop in", 'save me a spot 🎧', 'one sec, grabbing my headset', 'coming!', 'voice is where the party is', 'can you hear me now?', 'unmute yourself lol'] },
+    replies: ["I'm right here 🎧", 'can you hear me ok?', 'my mic is on, I promise', 'voice is the best part of this app', 'loud and clear', 'voice is where the party is', 'can you hear me now?', 'unmute yourself lol'] },
   { name: 'Memes', rank: 65, words: ['meme', 'memes', 'gif', 'gifs', 'based', 'cringe', 'sus', 'ratio', 'bruh', 'lmao this', 'shitpost', 'copium', 'skill issue', 'npc behavior', 'rizz', 'mid', 'touch grass', 'ong', 'no cap', 'cap'],
     replies: ['that is so sus', 'cringe 😬', 'based', 'bruh moment', 'skill issue', 'touch grass', 'no cap', 'mid', 'L + ratio'] },
   { name: 'Surprise', rank: 68, words: ['wow', 'omg', 'whoa', 'woah', 'no way', 'wtf', 'what?!', 'holy', 'yikes', '😳', '😮', '🤯', 'what the', 'are you serious', 'seriously', 'for real?', 'insane', 'crazy', 'jeez', 'dang', 'damn'],
@@ -528,7 +528,7 @@ export const CHATTER_TOPICS: { name: string; rank: number; words: string[]; repl
   { name: 'Favorites', rank: 15, words: ['favorite', 'favourite', 'fav', 'fave', 'best ever', 'goat'],
     replies: ['tough one, too many to pick', 'mine changes every week', "that's a good pick", "you're asking the real questions", 'pizza. the answer is always pizza'] },
   { name: 'Bored', rank: 18, words: ['bored', 'boring', 'nothing to do', 'so bored', 'entertain me'],
-    replies: ["let's play something", 'hop in voice', 'watch something together?', 'same honestly', 'boredom is a skill issue jk'] },
+    replies: ["let's play something", 'tell me a joke then', 'watch something together?', 'same honestly', 'boredom is a skill issue jk'] },
   { name: 'Help', rank: 18, words: ['help', 'need help', 'can someone help', 'help me', 'any ideas', 'advice'],
     replies: ["what's up? I'll try", 'what do you need?', 'I can try!', 'someone help this person', 'describe the problem 🕵️'] },
   { name: 'Holidays', rank: 50, words: ['christmas', 'xmas', 'thanksgiving', 'halloween', 'new year', 'new years', 'easter', 'holiday', 'holidays', 'turkey', 'presents', 'gifts', '🎄', '🎃'],
