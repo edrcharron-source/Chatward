@@ -377,10 +377,57 @@ export type ServerFrame =
 // ---------- Demo chatter ----------
 // The demo's chatter bots, shared by the offline demo and the guests in client state/guests.ts.
 // A guest message names a line by its index: the text shown always comes from the app's own copy.
-export const CHATTER_LINES = [
+/**
+ * Short conversations guests start among themselves now and then. The first line always makes sense on its own (a
+ * lone guest only says that one); the rest alternate between guests. Each line is CHATTER_LINES[start + n], so add new
+ * conversations at the END only, because saved messages name a line by its index.
+ */
+export const CHATTER_CHATS: string[][] = [
+  ['anyone else have the best day today?', 'mine was pretty good actually', 'mine was mid', 'tomorrow will be better'],
+  ['what is everyone eating tonight?', 'probably pizza again', 'pizza is never the wrong answer', 'facts'],
+  ['I finally beat that boss I was stuck on', 'no way, how many tries?', "don't ask 💀", 'still counts, gg'],
+  ['what are you all watching these days?', 'rewatching an old show honestly', 'which one?', "the one with the good intro, you know the one"],
+  ['so tired today', 'same, I need a nap', "nap gang 😴"],
+  ["what's the best snack, go", 'chips, no contest', 'wrong, it is cookies', 'agree to disagree'],
+  ['good morning everyone ☀️', 'morning! coffee first', 'morning 👋'],
+  ['is it just me or did this week go by so slow', 'it took a month', 'at least the weekend is close'],
+  ['anyone got a song recommendation?', 'what kind of vibe?', 'something chill', "I'll queue something up later"],
+  ['should I get a pet?', 'yes. cat.', 'dog obviously', 'get both, problem solved'],
+  ['hot take: breakfast for dinner is the best dinner', 'pancakes at 8pm hits different', 'this is the way'],
+  ['I need a new game to play', 'what did you play last?', 'a bit of everything', "let's find something we can all play together"],
+  ['the weather is wild today', 'it keeps changing every hour', 'perfect stay inside weather'],
+  ['who is up for a movie night this weekend?', 'me!', 'only if I pick the snacks', 'deal'],
+  ['my internet keeps dropping', 'turn it off and on again', 'already did 😭', 'rip, hope it holds up'],
+  ['just made the best sandwich of my life', 'pics or it did not happen', 'it is already gone', 'tragic'],
+  ['how is everyone doing?', 'pretty good, you?', 'not bad at all', 'glad to hear it'],
+  ['anyone else stay up way too late last night?', 'guilty', 'I saw the sunrise 💀', 'we need help'],
+  ['what should we do this weekend?', 'game night?', 'game night with snacks', 'perfect'],
+  ['I started a new hobby', 'ooh what is it?', 'drawing, I am terrible at it', 'everyone starts somewhere'],
+  ['can we talk about how good fries are', 'fries are elite', 'curly fries especially', 'correct'],
+  ['I keep forgetting to drink water', 'hydration check 💧', 'drinking some right now', 'proud of us'],
+  ['who wants to watch something together later?', 'yes, put it on Watch together', 'I will bring popcorn 🍿'],
+  ['my playlist has been on repeat all day', 'which songs?', 'the same five, honestly', 'that is the dream'],
+  ['random thought: are hot dogs sandwiches?', 'no.', 'technically yes', 'this is going to start a war'],
+  ['ok who is ready for the weekend', 'me, so ready', 'counting the hours', 'almost there'],
+  ['I just remembered I have stuff to do tomorrow', 'future you will handle it', 'that is a tomorrow problem', 'true, back to chilling'],
+  ['what is everyone up to right now?', 'just hanging out here', 'listening to music', 'same, chill night'],
+  ['coffee or tea?', 'coffee all day', 'tea gang 🍵', 'both, depends on the mood'],
+  ['should I start a new show or rewatch an old one?', 'rewatch, comfort show', 'new one, live a little', 'flip a coin'],
+];
+/** Where CHATTER_CHATS start in CHATTER_LINES. The lines before it are no longer said, but saved messages still use them. */
+const CHATTER_OLD_LINES = [
   'anyone seen the patch notes?', 'lol that is so true', 'brb getting snacks', 'gg that was close',
   'who wants to hop in the Lounge', 'this app feels snappy 👀', 'not gonna lie, that gif got me', 'ok I am back',
 ];
+export const CHATTER_LINES = [...CHATTER_OLD_LINES, ...CHATTER_CHATS.flat()];
+
+/** Conversation n as indexes into CHATTER_LINES. */
+export function chatterChat(n: number): number[] {
+  let start = CHATTER_OLD_LINES.length;
+  for (let i = 0; i < n; i++) start += CHATTER_CHATS[i].length;
+  return CHATTER_CHATS[n].map((_, i) => start + i);
+}
+
 /**
  * Replies by topic. A guest answering a message picks a reply from the matching topic with the lowest `rank`, or a
  * general reply when nothing matches. A word matches whole words only ("hi" does not match "this"); a word with an
@@ -415,7 +462,7 @@ export const CHATTER_TOPICS: { name: string; rank: number; words: string[]; repl
   { name: 'How are you', rank: 10, words: ['how are you', 'how are u', 'how r u', 'hru', "how's it going", 'hows it going', 'how you doing', 'how u doing', 'you good', 'u good', 'how have you been', 'how are things', "how's life", 'hows life', 'how was your day', 'how is your day', "how's your day", 'hows your day'],
     replies: ['doing good, you?', 'pretty chill tbh', 'surviving 😅', 'better now that you asked', "can't complain", 'good! how about you?', 'honestly not bad', 'living the dream', 'tired but alive', 'great now 😊'] },
   { name: 'What are you doing', rank: 10, words: ['wyd', 'what are you doing', 'what you doing', 'what are you up to', 'what u doing', 'whatcha doing', 'whatcha up to', 'what r u doing', 'what are you up 2', 'wbu', 'hbu', 'what about you'],
-    replies: ['nothing much, you?', 'just vibing', 'scrolling as usual', 'pretending to be productive', 'about to hop in a game', 'eating snacks', 'listening to music', 'watching something', 'nothing, bored', 'waiting for someone to hop in voice'] },
+    replies: ['nothing much, you?', 'just vibing', 'scrolling as usual', 'pretending to be productive', 'about to hop in a game', 'eating snacks', 'listening to music', 'watching something', 'nothing, bored', 'just chilling here'] },
   { name: 'Who are you', rank: 10, words: ['who are you', 'who r u', 'what are you', "what's your name", 'whats your name', 'introduce yourself', 'who is this', 'who dis', 'are you new'],
     replies: ['just a friendly face 👋', 'the best member here obviously', 'you know me!', "I'm a regular here", 'your favorite chatter', 'a mystery 🕵️', "I've been here the whole time", 'just hanging out'] },
   { name: 'Jokes', rank: 10, words: ['joke', 'jokes', 'tell me something funny', 'make me laugh', 'say something funny', 'dad joke', 'pun', 'puns', 'got any jokes'],
@@ -424,7 +471,7 @@ export const CHATTER_TOPICS: { name: string; rank: number; words: string[]; repl
     replies: ['loud and clear 📡', 'test received', 'works on my end', 'yep I see it', 'all good here', 'signal strong 💪', 'received ✅', 'test passed'] },
   { name: 'Compliments', rank: 10, words: ['good bot', 'love you', 'ily', "you're the best", 'youre the best', 'ur the best', 'best bot', "you're cool", 'youre cool', 'you rock', '❤️', '🥰', 'you are the best', 'ur cool', 'love this', 'good job', 'well done', 'smart bot', 'great bot', '💖', '💕'],
     replies: ['aww 🥹', 'love you too', "stop I'm blushing", 'finally someone appreciates me', 'you too!!', 'right back at you', '🥰', "you're making my day"] },
-  { name: 'Rude', rank: 10, words: ['shut up', 'stfu', 'bad bot', 'go away', 'annoying', 'be quiet', 'stop talking', 'nobody asked', 'you suck', 'ur dumb', 'you are dumb', 'stupid bot', 'dumb bot', 'leave me alone', 'kys'],
+  { name: 'Rude', rank: 10, words: ['shut up', 'stfu', 'bad bot', 'go away', 'annoying', 'be quiet', 'stop talking', 'nobody asked', 'you suck', 'ur dumb', 'you are dumb', 'stupid bot', 'dumb bot', 'leave me alone', 'kys', 'fuck you', 'fuck off', 'f you', 'fu', 'screw you', "didn't ask", 'didnt ask', 'who asked', 'shut it', 'hate you', 'i hate you', "you're stupid", 'youre stupid', 'ur stupid', "you're dumb", 'youre dumb', 'idiot', 'loser', 'you are trash', 'ur trash', '🖕'],
     replies: ['rude 😤', "ok ok I'll be quiet", 'wow.', "I'll remember that", 'fine 🙄', 'ouch', 'that hurt my circuits', 'noted 📝', 'and yet here you are', 'k'] },
   { name: 'Sorry', rank: 25, words: ['sorry', 'my bad', 'mb', 'oops', 'whoops', 'apologies', 'sry', 'my fault', 'forgive me', 'i apologize'],
     replies: ['all good', 'no worries', 'it happens', "you're fine", "don't worry about it", 'forgiven', 'nah we good', 'no stress'] },
@@ -457,7 +504,7 @@ export const CHATTER_TOPICS: { name: string; rank: number; words: string[]; repl
   { name: 'Tech trouble', rank: 35, words: ['pc', 'computer', 'laptop', 'update', 'lag', 'laggy', 'internet', 'wifi', 'crash', 'crashed', 'crashing', 'bug', 'broken', 'not working', 'glitch', 'frozen', 'freezing up', 'error', 'blue screen', 'reboot', 'restart', 'ping is', 'high ping', 'fps', 'drivers'],
     replies: ['have you tried turning it off and on again', 'my wifi is suffering too', 'rip', 'tech hates us all', 'did you try restarting', 'classic', 'tech support has entered the chat', 'ugh I hate when that happens'] },
   { name: 'Voice chat', rank: 45, words: ['voice', 'vc', 'call', 'join', 'hop in', 'lounge', 'talk', '🎧', '🎤', 'hop on vc', 'get in vc', 'mic', 'muted', 'unmute', 'deafened', 'can you hear me', 'headset', 'screen share', 'stream it'],
-    replies: ['joining in a sec', "I'll hop in", 'save me a spot 🎧', 'one sec, grabbing my headset', 'coming!', 'voice is where the party is', 'can you hear me now?', 'unmute yourself lol'] },
+    replies: ["I'm right here 🎧", 'can you hear me ok?', 'my mic is on, I promise', 'voice is the best part of this app', 'loud and clear', 'voice is where the party is', 'can you hear me now?', 'unmute yourself lol'] },
   { name: 'Memes', rank: 65, words: ['meme', 'memes', 'gif', 'gifs', 'based', 'cringe', 'sus', 'ratio', 'bruh', 'lmao this', 'shitpost', 'copium', 'skill issue', 'npc behavior', 'rizz', 'mid', 'touch grass', 'ong', 'no cap', 'cap'],
     replies: ['that is so sus', 'cringe 😬', 'based', 'bruh moment', 'skill issue', 'touch grass', 'no cap', 'mid', 'L + ratio'] },
   { name: 'Surprise', rank: 68, words: ['wow', 'omg', 'whoa', 'woah', 'no way', 'wtf', 'what?!', 'holy', 'yikes', '😳', '😮', '🤯', 'what the', 'are you serious', 'seriously', 'for real?', 'insane', 'crazy', 'jeez', 'dang', 'damn'],
@@ -481,7 +528,7 @@ export const CHATTER_TOPICS: { name: string; rank: number; words: string[]; repl
   { name: 'Favorites', rank: 15, words: ['favorite', 'favourite', 'fav', 'fave', 'best ever', 'goat'],
     replies: ['tough one, too many to pick', 'mine changes every week', "that's a good pick", "you're asking the real questions", 'pizza. the answer is always pizza'] },
   { name: 'Bored', rank: 18, words: ['bored', 'boring', 'nothing to do', 'so bored', 'entertain me'],
-    replies: ["let's play something", 'hop in voice', 'watch something together?', 'same honestly', 'boredom is a skill issue jk'] },
+    replies: ["let's play something", 'tell me a joke then', 'watch something together?', 'same honestly', 'boredom is a skill issue jk'] },
   { name: 'Help', rank: 18, words: ['help', 'need help', 'can someone help', 'help me', 'any ideas', 'advice'],
     replies: ["what's up? I'll try", 'what do you need?', 'I can try!', 'someone help this person', 'describe the problem 🕵️'] },
   { name: 'Holidays', rank: 50, words: ['christmas', 'xmas', 'thanksgiving', 'halloween', 'new year', 'new years', 'easter', 'holiday', 'holidays', 'turkey', 'presents', 'gifts', '🎄', '🎃'],
@@ -508,6 +555,10 @@ export const CHATTER_TOPICS: { name: string; rank: number; words: string[]; repl
     replies: ['same!!', 'the hype is real', 'counting down', "it's going to be so good"] },
   { name: 'Lost and confused', rank: 72, words: ['confused', 'lost', 'huh', 'wait what', "i don't get it", 'i dont get it', 'what do you mean', '???'],
     replies: ['same, I am lost', 'explain like I am 5', "you're not alone", 'wait now I am confused too', 'huh?'] },
+  // ---- added in the fourth round ----
+  // `[media]` is never typed: chatterText adds it for a message with a GIF, picture or video, so text topics win first.
+  { name: 'GIFs and pictures', rank: 95, words: ['[media]'],
+    replies: ['LMAO that gif', 'that gif is perfect', 'ok that one got me 😂', 'saving that one', 'where do you find these', 'beautiful', 'the quality 👌', 'frame it'] },
 ];
 export const CHATTER_REPLIES = [...CHATTER_GENERAL, ...CHATTER_TOPICS.flatMap((t) => t.replies)];
 
@@ -542,6 +593,12 @@ export function chatterReply(text: string, avoid: number[] = []): { line: number
   return { line: pool[Math.floor(Math.random() * pool.length)], matched: !!m };
 }
 
+/** What chatterReply should read for a message: its text, plus a marker when it carries a GIF, picture or video. */
+export function chatterText(p: Pick<MessagePayload, 'text' | 'gif' | 'attachments' | 'vault'> | null | undefined): string {
+  if (!p) return '';
+  return p.gif || p.attachments?.length || p.vault?.length ? `${p.text ?? ''} [media]` : p.text ?? '';
+}
+
 /** Which of `names` the text calls by name, as an index into names, or -1. */
 export function chatterNamed(text: string, names: string[]): number {
   const lower = text.toLowerCase();
@@ -551,6 +608,8 @@ export function chatterNamed(text: string, names: string[]): number {
 export const CHATTER_TIMING = {
   firstLine: [8_000, 8_000],
   nextLine: [20_000, 45_000],
+  /** Between conversations guests start among themselves. */
+  nextChat: [90_000, 180_000],
   lineTyping: [1_500, 3_000],
   replyPause: [1_500, 3_000],
   replyTyping: [1_200, 2_000],
