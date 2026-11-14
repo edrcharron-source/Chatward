@@ -7,3 +7,4 @@ data
 release
 /deploy/updates/
 /deploy/backups/
+/packages/client/build/chatward-app-audio.exe

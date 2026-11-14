@@ -19,6 +19,21 @@ const api = {
   getScreenSources: (): Promise<{ id: string; name: string; thumbnail: string; appIcon: string | null; isScreen: boolean }[]> =>
     ipcRenderer.invoke('screen:sources'),
   selectScreenSource: (id: string): Promise<void> => ipcRenderer.invoke('screen:select', id),
+  // Sharing one window with sound: only that app's sound, as raw 48 kHz stereo 16-bit PCM (see main/appAudio.ts).
+  appAudio: {
+    start: (sourceId: string): Promise<'ok' | 'unsupported' | 'own-app' | 'failed'> => ipcRenderer.invoke('app-audio:start', sourceId),
+    stop: (): void => ipcRenderer.send('app-audio:stop'),
+    onData: (cb: (pcm: Uint8Array) => void): (() => void) => {
+      const listener = (_e: Electron.IpcRendererEvent, pcm: Uint8Array) => cb(pcm);
+      ipcRenderer.on('app-audio:data', listener);
+      return () => { ipcRenderer.removeListener('app-audio:data', listener); };
+    },
+    onEnded: (cb: () => void): (() => void) => {
+      const listener = () => cb();
+      ipcRenderer.on('app-audio:ended', listener);
+      return () => { ipcRenderer.removeListener('app-audio:ended', listener); };
+    },
+  },
   // Flashes the taskbar button until the window is focused. The main process ignores it while the window has focus.
   flashWindow: (): void => ipcRenderer.send('window:flash'),
   // The app's own title bar (no system frame). `target` names a pop-out window this page opened; leave it out for this window.
