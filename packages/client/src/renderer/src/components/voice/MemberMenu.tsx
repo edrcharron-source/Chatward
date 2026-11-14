@@ -3,6 +3,8 @@ import { api } from '../../api/http';
 import { DEMO_URL } from '../../demo';
 import { useSession } from '../../state/session';
 import { useSettings } from '../../state/settings';
+import { useVoice } from '../../state/voice';
+import { Track } from 'livekit-client';
 import { errorText, isAdmin } from '../servers/util';
 
 interface Target {
@@ -35,6 +37,16 @@ function MemberMenu({ x, y, userId, channelId, serverId, onClose }: Target & { x
   const muted = useSettings((s) => s.mutedUsers[userId] === true);
   const setUserVolume = useSettings((s) => s.setUserVolume);
   const setUserMuted = useSettings((s) => s.setUserMuted);
+  const streamVolume = useSettings((s) => s.streamVolumes[userId] ?? 1);
+  const setStreamVolume = useSettings((s) => s.setStreamVolume);
+  // their screen share's sound gets its own slider, shown while they are sharing with sound
+  // re-read on room changes; their shares are read from the room below
+  useVoice((s) => s.version);
+  const room = useVoice((s) => s.room);
+  const setWatching = useVoice((s) => s.setWatching);
+  const them = room?.remoteParticipants.get(userId);
+  const share = them?.getTrackPublication(Track.Source.ScreenShare);
+  const sharingSound = !!them?.getTrackPublication(Track.Source.ScreenShareAudio) && share?.isDesired !== false;
 
   // close on an outside click or Escape
   useEffect(() => {
@@ -55,6 +67,7 @@ function MemberMenu({ x, y, userId, channelId, serverId, onClose }: Target & { x
   // mirrors the server rule; the server checks again, so this only decides whether to show the item
   const canKick = !demo && isAdmin(me) && userId !== selfId && targetRole !== 'owner' && !(targetRole === 'admin' && me?.role !== 'owner');
   const pct = Math.round(volume * 100);
+  const streamPct = Math.round(streamVolume * 100);
 
   async function kick() {
     setError(null);
@@ -99,6 +112,23 @@ function MemberMenu({ x, y, userId, channelId, serverId, onClose }: Target & { x
         />
         <span style={{ width: 40, textAlign: 'right' }}>{pct}%</span>
       </label>
+      {share && (
+        <button role="menuitem" type="button" onClick={() => { setWatching(userId, !share.isDesired); onClose(); }} style={{ textAlign: 'left' }}>
+          {share.isDesired ? 'Stop watching stream' : 'Watch stream'}
+        </button>
+      )}
+      {sharingSound && (
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, padding: '4px 8px' }}>
+          <span className="muted">Stream</span>
+          <input
+            type="range" min={0} max={300} step={5} value={streamPct}
+            onChange={(e) => setStreamVolume(userId, Number(e.target.value) / 100)}
+            aria-label={`${name} stream volume`}
+            style={{ flex: 1 }}
+          />
+          <span style={{ width: 40, textAlign: 'right' }}>{streamPct}%</span>
+        </label>
+      )}
       {canKick && (
         <button role="menuitem" type="button" className="danger" onClick={() => void kick()} style={{ textAlign: 'left' }}>
           Kick from call
