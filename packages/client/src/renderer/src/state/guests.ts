@@ -229,13 +229,47 @@ function say(serverId: string, channelId: string, reply?: number, guest?: number
 
 const timers = new Map<string, number[]>();
 
-function later(serverId: string, ms: number, fn: () => void) {
+function later(serverId: string, ms: number, fn: () => void): number {
   const list = timers.get(serverId) ?? [];
   const t = window.setTimeout(() => {
     timers.set(serverId, (timers.get(serverId) ?? []).filter((x) => x !== t));
     if ((useGuests.getState().mine[serverId] ?? []).length) fn();
   }, ms);
   timers.set(serverId, [...list, t]);
+  return t;
+}
+
+/**
+ * channelId -> what guests are about to say there. Newer talk replaces it, so a burst of messages gets one answer
+ * rather than a stack of them. `addressed` is true when a guest was called on, which an unaddressed message won't replace;
+ * `chat` is true for a conversation guests started among themselves, which any message from a person cuts short.
+ */
+const queued = new Map<string, { timers: number[]; addressed: boolean; chat: boolean; until: number }>();
+/** channelId -> when a person last wrote there. */
+const lastHuman = new Map<string, number>();
+/** Guests don't start a conversation of their own this soon after a person wrote. */
+const QUIET_MS = 30_000;
+
+/** Notes lines a guest will say in a channel, the last one `ms` from now. */
+function queue(channelId: string, kind: 'chat' | 'reply' | 'called', ts: number[], ms: number) {
+  queued.set(channelId, { timers: ts, addressed: kind === 'called', chat: kind === 'chat', until: Date.now() + ms });
+}
+
+/** What guests are still about to say in a channel, if anything. */
+function pending(channelId: string) {
+  const q = queued.get(channelId);
+  if (q && q.until > Date.now()) return q;
+  queued.delete(channelId);
+  return undefined;
+}
+
+/** Drops what guests were about to say in a channel. */
+function hush(channelId: string) {
+  const q = pending(channelId);
+  if (!q) return;
+  queued.delete(channelId);
+  for (const t of q.timers) window.clearTimeout(t);
+  for (const [serverId, list] of timers) timers.set(serverId, list.filter((t) => !q.timers.includes(t)));
 }
 
 function stopHosting(serverId: string) {
@@ -248,6 +282,8 @@ const recentChats: number[] = [];
 
 /** Guests start a short conversation among themselves: each line by a different guest than the one before. */
 function converse(serverId: string, channelId: string) {
+  // Don't talk over people: skip while a reply is on its way or someone wrote here lately.
+  if (pending(channelId) || Date.now() - (lastHuman.get(channelId) ?? 0) < QUIET_MS) return;
   const fresh = CHATTER_CHATS.map((_, i) => i).filter((i) => !recentChats.includes(i));
   const n = fresh[Math.floor(Math.random() * fresh.length)];
   recentChats.push(n);
@@ -256,13 +292,15 @@ function converse(serverId: string, channelId: string) {
   const lines = mine.length > 1 ? chatterChat(n) : chatterChat(n).slice(0, 1);
   let at = 0;
   let speaker = -1;
+  const ts: number[] = [];
   for (const line of lines) {
     const others = mine.filter((g) => g !== speaker);
     const guest = others[Math.floor(Math.random() * others.length)];
     speaker = guest;
     at += at ? chatterWait(CHATTER_TIMING.replyPause) + chatterWait(CHATTER_TIMING.replyTyping) : 0;
-    later(serverId, at, () => say(serverId, channelId, undefined, guest, line));
+    ts.push(later(serverId, at, () => say(serverId, channelId, undefined, guest, line)));
   }
+  queue(channelId, 'chat', ts, at);
 }
 
 /** A short conversation in a random text channel now and then, and clips in our call. */
@@ -282,9 +320,12 @@ function startHosting(serverId: string) {
 
 /**
  * Someone wrote in a text channel: one guest answers with a reply that fits the words, and sometimes a second guest
- * chimes in. A guest replied to, mentioned or called by name answers themselves; otherwise one host answers for everyone.
+ * chimes in. A guest replied to, mentioned or called by name answers themselves; otherwise one host answers for everyone,
+ * and only when a topic fits (no filler). A newer message replaces a reply still on its way, so a burst of messages
+ * gets one answer, except that a guest who was called on still answers the one who called.
  */
 function answer(serverId: string, channelId: string, payload: MessagePayload) {
+  lastHuman.set(channelId, Date.now());
   const meId = useSession.getState().user?.id;
   const seats = currentSeats(serverId);
   if (!seats.length || !meId) return;
@@ -297,19 +338,29 @@ function answer(serverId: string, channelId: string, payload: MessagePayload) {
   if (host !== meId) return;
   const mine = useGuests.getState().mine[serverId] ?? [];
   if (!mine.length) return;
-  const firstGuest = named?.guest ?? mine[Math.floor(Math.random() * mine.length)];
+  if (pending(channelId)?.addressed && !named) return;
   const first = chatterReply(text, recent);
+  if (!named && !first.matched) {
+    // Nothing fitting to say, but a reply already on its way to an earlier message still goes out.
+    if (pending(channelId)?.chat) hush(channelId);
+    return;
+  }
+  hush(channelId);
   remember(first.line);
+  const firstGuest = named?.guest ?? mine[Math.floor(Math.random() * mine.length)];
   const wait = chatterWait(CHATTER_TIMING.replyPause) + chatterWait(CHATTER_TIMING.replyTyping);
-  later(serverId, wait, () => say(serverId, channelId, first.line, firstGuest));
-  // Now and then a second guest chimes in on the same topic, so it feels like a group.
-  if (!first.matched || mine.length < 2 || Math.random() >= CHIME_IN) return;
-  const second = chatterReply(text, recent);
-  remember(second.line);
-  later(serverId, wait + chatterWait(CHATTER_TIMING.replyPause) + chatterWait(CHATTER_TIMING.replyTyping), () => {
-    const others = (useGuests.getState().mine[serverId] ?? []).filter((g) => g !== firstGuest);
-    say(serverId, channelId, second.line, others[Math.floor(Math.random() * others.length)]);
-  });
+  const ts = [later(serverId, wait, () => say(serverId, channelId, first.line, firstGuest))];
+  // Now and then a second guest chimes in on the same topic, so it feels like a group (not when one was called on).
+  if (!named && mine.length > 1 && Math.random() < CHIME_IN) {
+    const second = chatterReply(text, recent);
+    remember(second.line);
+    const wait2 = wait + chatterWait(CHATTER_TIMING.replyPause) + chatterWait(CHATTER_TIMING.replyTyping);
+    ts.push(later(serverId, wait2, () => {
+      const others = (useGuests.getState().mine[serverId] ?? []).filter((g) => g !== firstGuest);
+      say(serverId, channelId, second.line, others[Math.floor(Math.random() * others.length)]);
+    }));
+    queue(channelId, 'reply', ts, wait2);
+  } else queue(channelId, named ? 'called' : 'reply', ts, wait);
 }
 
 /** How often a second guest also answers. */
