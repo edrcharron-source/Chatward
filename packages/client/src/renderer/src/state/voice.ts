@@ -41,6 +41,11 @@ export interface VoiceState {
   setCamera: (on: boolean) => Promise<void>;
   setScreen: (on: boolean, sourceId?: string) => Promise<void>;
   setTheater: (key: string | null) => void;
+  /**
+   * Stops or starts receiving someone's screen share (picture and sound) on this PC only. Stopping saves the download;
+   * the share stays listed so it can be watched again. A new share from them starts watched.
+   */
+  setWatching: (userId: string, on: boolean) => void;
 }
 
 // Waits before each retry of a rejoin that failed for a reason other than the server refusing the slot. A rejoin that
@@ -303,7 +308,7 @@ export const useVoice = create<VoiceState>((set, get) => {
         bump();
       })
       .on(RoomEvent.TrackSubscribed, (track, pub, p) => {
-        if (current() && track.kind === Track.Kind.Audio) attachRemote(pub.trackSid, p.identity, track.mediaStreamTrack);
+        if (current() && track.kind === Track.Kind.Audio) attachRemote(pub.trackSid, p.identity, track.mediaStreamTrack, pub.source === Track.Source.ScreenShareAudio);
         bump();
       })
       .on(RoomEvent.TrackUnsubscribed, (_track, pub) => {
@@ -461,6 +466,13 @@ export const useVoice = create<VoiceState>((set, get) => {
 
     // deafen implies mute; undeafening unmutes, as Discord does
     setTheater: (key) => set({ theaterKey: key }),
+    setWatching: (userId, on) => {
+      const p = get().room?.remoteParticipants.get(userId);
+      if (!p) return;
+      for (const source of [Track.Source.ScreenShare, Track.Source.ScreenShareAudio]) p.getTrackPublication(source)?.setSubscribed(on);
+      if (!on && get().theaterKey === `${userId}:screen`) set({ theaterKey: null });
+      bump();
+    },
 
     toggleDeafen: () => {
       const deafened = !get().deafened;

@@ -1,6 +1,6 @@
 // Audio graphs for a voice call (voice-core).
 //   outgoing: mic -> micGain -> mixIn (soundboard connects here) -> micGate -> published track
-//   incoming: each remote track -> per-user gain -> master (volume / deafen) -> output device
+//   incoming: each remote track -> per-user gain (voice) or per-user stream gain (screen share sound) -> master (volume / deafen) -> output device
 // Mic and playback use separate AudioContexts so the playback one can take setSinkId.
 import { useSettings } from './settings';
 
@@ -28,7 +28,7 @@ let playCtx: SinkContext | null = null;
 let master: GainNode | null = null;
 let deafened = false;
 /** keyed by LiveKit track sid */
-const remotes = new Map<string, { userId: string; source: MediaStreamAudioSourceNode; gain: GainNode; meter: AnalyserNode; sink: HTMLAudioElement }>();
+const remotes = new Map<string, { userId: string; screenSound: boolean; source: MediaStreamAudioSourceNode; gain: GainNode; meter: AnalyserNode; sink: HTMLAudioElement }>();
 
 // Browser-side processing only: auto gain would fight the mic boost setting.
 function captureConstraints(deviceId: string): MediaTrackConstraints {
@@ -96,7 +96,8 @@ export function voiceLevel(userId: string, local: boolean): number | null {
   if (local) return micMeter ? micLevel() : null;
   let level: number | null = null;
   for (const r of remotes.values()) {
-    if (r.userId !== userId) continue;
+    // only their voice moves the meter, not the sound of a screen share
+    if (r.userId !== userId || r.screenSound) continue;
     r.meter.getFloatTimeDomainData(remoteBuf);
     let sum = 0;
     for (const v of remoteBuf) sum += v * v;
@@ -190,7 +191,8 @@ async function applyOutputDevice(): Promise<void> {
   }
 }
 
-export function attachRemote(key: string, userId: string, track: MediaStreamTrack): void {
+/** `screenSound` marks the sound of a screen share, which has its own volume apart from the person's voice. */
+export function attachRemote(key: string, userId: string, track: MediaStreamTrack, screenSound = false): void {
   if (!playCtx || !master) return;
   detachRemote(key);
   const stream = new MediaStream([track]);
@@ -207,7 +209,7 @@ export function attachRemote(key: string, userId: string, track: MediaStreamTrac
   sink.muted = true;
   sink.srcObject = stream;
   void sink.play().catch(() => {});
-  remotes.set(key, { userId, source, gain, meter, sink });
+  remotes.set(key, { userId, screenSound, source, gain, meter, sink });
   applyLevels();
 }
 
@@ -228,11 +230,12 @@ export function setDeafened(on: boolean): void {
 
 function applyLevels(): void {
   if (!playCtx || !master) return;
-  const { masterVolume, userVolumes, mutedUsers } = useSettings.getState();
+  const { masterVolume, userVolumes, mutedUsers, streamVolumes } = useSettings.getState();
   const t = playCtx.currentTime;
   master.gain.setTargetAtTime(deafened ? 0 : masterVolume, t, 0.02);
   for (const r of remotes.values()) {
-    r.gain.gain.setTargetAtTime(mutedUsers[r.userId] ? 0 : (userVolumes[r.userId] ?? 1), t, 0.02);
+    const level = r.screenSound ? (streamVolumes[r.userId] ?? 1) : mutedUsers[r.userId] ? 0 : (userVolumes[r.userId] ?? 1);
+    r.gain.gain.setTargetAtTime(level, t, 0.02);
   }
 }
 
@@ -265,5 +268,5 @@ useSettings.subscribe((s, prev) => {
     setInputDevice(s.inputDeviceId).catch((e) => console.warn('mic change failed', e));
   }
   if (s.outputDeviceId !== prev.outputDeviceId) void applyOutputDevice();
-  if (s.masterVolume !== prev.masterVolume || s.userVolumes !== prev.userVolumes || s.mutedUsers !== prev.mutedUsers) applyLevels();
+  if (s.masterVolume !== prev.masterVolume || s.userVolumes !== prev.userVolumes || s.mutedUsers !== prev.mutedUsers || s.streamVolumes !== prev.streamVolumes) applyLevels();
 });

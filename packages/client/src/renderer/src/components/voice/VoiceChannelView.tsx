@@ -1,10 +1,11 @@
 import { Fragment, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type RefObject } from 'react';
-import { Track, type Participant } from 'livekit-client';
+import { RemoteTrackPublication, Track, type Participant } from 'livekit-client';
 import type { Channel, User } from '@chatward/shared';
 import { fetchObjectUrl } from '../../api/http';
 import { DEMO_URL } from '../../demo';
 import { demoVoice } from '../../demo/voice';
 import { useSession } from '../../state/session';
+import { useSettings } from '../../state/settings';
 import { useVoice } from '../../state/voice';
 import { GUEST_USERS, isGuest, useGuests, useGuestsInVoice } from '../../state/guests';
 import ProfileTrigger from '../profile/ProfileTrigger';
@@ -64,6 +65,10 @@ interface Entry {
   micOff: boolean;
   camera?: Feed;
   screen?: Feed;
+  /** their screen share is sending sound too */
+  screenAudio?: boolean;
+  /** they are sharing their screen but you chose not to watch it */
+  screenOff?: boolean;
 }
 
 /** A muted camera keeps its last frame on the publication, so only a live, unmuted one counts as video. */
@@ -73,6 +78,7 @@ function cameraFeed(p: Participant): Feed | undefined {
 }
 
 function liveEntry(p: Participant, local: boolean): Entry {
+  const share = p.getTrackPublication(Track.Source.ScreenShare);
   return {
     id: p.identity,
     joined: true,
@@ -80,6 +86,8 @@ function liveEntry(p: Participant, local: boolean): Entry {
     micOff: !p.isMicrophoneEnabled,
     camera: cameraFeed(p),
     screen: p.getTrackPublication(Track.Source.ScreenShare)?.track,
+    screenAudio: !!p.getTrackPublication(Track.Source.ScreenShareAudio),
+    screenOff: !local && !!share && share instanceof RemoteTrackPublication && !share.isDesired,
   };
 }
 
@@ -94,6 +102,7 @@ export default function VoiceChannelView({ channel }: { channel: Channel }) {
   const inCall = useVoice((s) => s.channelId === channel.id);
   const theaterKey = useVoice((s) => s.theaterKey);
   const setTheater = useVoice((s) => s.setTheater);
+  const setWatching = useVoice((s) => s.setWatching);
   const status = useVoice((s) => s.status);
   const error = useVoice((s) => s.error);
   const room = useVoice((s) => s.room);
@@ -136,10 +145,16 @@ export default function VoiceChannelView({ channel }: { channel: Channel }) {
     const tiles: Spec[] = [
       { key: e.id, props: { ...base, video: e.camera } },
     ];
-    if (e.screen) {
+    if (e.screenOff) {
+      tiles.push({ key: screenKey, props: { ...base, screen: true, onWatch: () => setWatching(e.id, true) } });
+    } else if (e.screen) {
       tiles.push({
         key: screenKey,
-        props: { ...base, video: e.screen, screen: true, onTheater: () => setTheater(theaterKey === screenKey ? null : screenKey) },
+        props: {
+          ...base, video: e.screen, screen: true, streamSound: !e.local && e.screenAudio,
+          onTheater: () => setTheater(theaterKey === screenKey ? null : screenKey),
+          onStopWatching: e.local ? undefined : () => setWatching(e.id, false),
+        },
       });
     }
     return tiles;
@@ -242,9 +257,15 @@ interface TileProps {
   cell?: boolean;
   /** toggles theater mode for this share */
   onTheater?: () => void;
+  /** this share sends sound you can turn up or down, apart from the person's voice */
+  streamSound?: boolean;
+  /** stops receiving this share (someone else's) */
+  onStopWatching?: () => void;
+  /** set on a share you chose not to watch: shows a Watch button in place of the picture */
+  onWatch?: () => void;
 }
 
-function Tile({ user, joined, local, micOff, speaking, screen, video, onMenu, theater = false, fill = false, cell = false, onTheater }: TileProps) {
+function Tile({ user, joined, local, micOff, speaking, screen, video, onMenu, theater = false, fill = false, cell = false, onTheater, streamSound = false, onStopWatching, onWatch }: TileProps) {
   const name = user?.displayName ?? user?.username ?? 'Unknown';
   const frame = useRef<HTMLDivElement>(null);
   const full = useFullscreen(frame);
@@ -257,7 +278,7 @@ function Tile({ user, joined, local, micOff, speaking, screen, video, onMenu, th
       <div
         ref={frame}
         className="cv-tile-frame"
-        onDoubleClick={screen ? () => void toggleFullscreen(frame.current) : undefined}
+        onDoubleClick={screen && video ? () => void toggleFullscreen(frame.current) : undefined}
         style={{
           position: 'relative', aspectRatio: expanded || cell ? undefined : '16 / 9', borderRadius: full ? 0 : 8, overflow: 'hidden',
           // the single cell is pinned to the frame's size; an auto-sized cell grows to the video's own height in a
@@ -269,16 +290,34 @@ function Tile({ user, joined, local, micOff, speaking, screen, video, onMenu, th
       >
         {video
           ? <VideoView feed={video} mirror={local && !screen} />
+          : onWatch
+            ? (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: 8, textAlign: 'center' }}>
+                <span className="muted" style={{ fontSize: 12 }}>You are not watching this stream</span>
+                <button type="button" onClick={onWatch}>Watch stream</button>
+              </div>
+            )
           : user
             ? <ProfileTrigger user={user}><Avatar user={user} size={64} /></ProfileTrigger>
             : <Avatar user={user} size={64} />}
-        {!video && art && joined && <div className="cv-tile-meter"><AsciiMeter speaking={speaking} userId={user?.id} local={local} live={!micOff} /></div>}
+        {!video && !onWatch && art && joined && <div className="cv-tile-meter"><AsciiMeter speaking={speaking} userId={user?.id} local={local} live={!micOff} /></div>}
         <div className="cv-tile-name" style={{ position: 'absolute', left: 8, bottom: 6, fontSize: 12, color: '#fff', textShadow: '0 1px 2px #000' }}>
           <span className="cv-tile-who">{name}{local ? ' (you)' : ''}</span>
           {screen && <span className="cv-tile-state"> · screen</span>}
           {micOff && !screen && <span className="cv-tile-state"> · muted</span>}
         </div>
-        {screen && (
+        {onStopWatching && (
+          <button
+            className="icon"
+            aria-label="Stop watching"
+            title="Stop watching this stream (you can watch it again any time)"
+            onClick={() => { if (full) void toggleFullscreen(frame.current); onStopWatching(); }}
+            style={{ position: 'absolute', top: 6, left: 6, background: 'var(--overlay-bg)', color: 'var(--overlay-text)' }}
+          >
+            ✕
+          </button>
+        )}
+        {screen && video && (
           <button
             className="icon"
             aria-label={full ? 'Exit fullscreen' : 'Fullscreen'}
@@ -301,8 +340,69 @@ function Tile({ user, joined, local, micOff, speaking, screen, video, onMenu, th
             ▭
           </button>
         )}
+        {streamSound && user && <StreamVolume userId={user.id} name={name} right={onTheater ? 74 : 40} />}
       </div>
       {!joined && <span className="muted" style={{ fontSize: 12 }}>Join to hear {name}</span>}
+    </div>
+  );
+}
+
+/**
+ * Speaker button on someone else's screen share: opens a slider for the share's sound only, so a loud game or video can
+ * be turned down without turning their voice down (their voice volume stays in the right-click menu). Yours only.
+ */
+function StreamVolume({ userId, name, right }: { userId: string; name: string; right: number }) {
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  const volume = useSettings((s) => s.streamVolumes[userId] ?? 1);
+  const setStreamVolume = useSettings((s) => s.setStreamVolume);
+  const pct = Math.round(volume * 100);
+
+  // close on an outside click or Escape
+  useEffect(() => {
+    if (!open) return;
+    const doc = box.current?.ownerDocument ?? document;
+    const onDown = (e: MouseEvent) => { if (!box.current?.contains(e.target as Node)) setOpen(false); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    doc.addEventListener('mousedown', onDown);
+    doc.addEventListener('keydown', onKey);
+    return () => {
+      doc.removeEventListener('mousedown', onDown);
+      doc.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  return (
+    <div ref={box} className="cv-stream-volume" style={{ position: 'absolute', top: 6, right }} onDoubleClick={(e) => e.stopPropagation()}>
+      <button
+        className="icon"
+        aria-label="Stream volume"
+        aria-expanded={open}
+        title={`Stream volume (${pct}%)`}
+        onClick={() => setOpen(!open)}
+        style={{ background: 'var(--overlay-bg)', color: 'var(--overlay-text)' }}
+      >
+        {volume === 0 ? '🔇' : '🔊'}
+      </button>
+      {open && (
+        <label
+          className="cv-stream-volume-pop"
+          style={{
+            position: 'absolute', top: 'calc(100% + 6px)', right: 0, width: 220, padding: '8px 10px', borderRadius: 8,
+            display: 'flex', alignItems: 'center', gap: 8, fontSize: 12,
+            background: 'var(--overlay-bg)', color: 'var(--overlay-text)', zIndex: 2,
+          }}
+        >
+          <span>Stream</span>
+          <input
+            type="range" min={0} max={300} step={5} value={pct}
+            onChange={(e) => setStreamVolume(userId, Number(e.target.value) / 100)}
+            aria-label={`${name} stream volume`}
+            style={{ flex: 1 }}
+          />
+          <span style={{ width: 40, textAlign: 'right' }}>{pct}%</span>
+        </label>
+      )}
     </div>
   );
 }
