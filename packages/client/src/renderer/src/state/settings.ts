@@ -38,8 +38,11 @@ export interface Settings {
   userVolumes: Record<string, number>;
   /** people you have muted for yourself only; keyed by userId */
   mutedUsers: Record<string, boolean>;
-  set: (patch: Partial<Omit<Settings, 'set' | 'setUserVolume' | 'setUserMuted'>>) => void;
+  /** volume 0..3 of the sound in each remote user's screen share, separate from their voice; keyed by userId */
+  streamVolumes: Record<string, number>;
+  set: (patch: Partial<Omit<Settings, 'set' | 'setUserVolume' | 'setUserMuted' | 'setStreamVolume'>>) => void;
   setUserVolume: (userId: string, v: number) => void;
+  setStreamVolume: (userId: string, v: number) => void;
   setUserMuted: (userId: string, muted: boolean) => void;
 }
 
@@ -49,6 +52,7 @@ const defaults = {
   masterVolume: 1, micGain: 1, noiseSuppression: true, echoCancellation: true,
   messageSounds: true, voiceJoinLeaveSounds: true, silenceAll: false, soundVolume: 0.6,
   autoLoadEmbeds: false, linkPreviews: true, confirmDeleteMessages: true, userVolumes: {} as Record<string, number>, mutedUsers: {} as Record<string, boolean>,
+  streamVolumes: {} as Record<string, number>,
 };
 const saved = (() => { try { return JSON.parse(localStorage.getItem(LS) ?? '{}'); } catch { return {}; } })();
 // Settings saved before the tabs layout existed have no layout. Their empty skin is the old default rather than a
@@ -59,11 +63,12 @@ export const useSettings = create<Settings>((set, get) => ({
   ...defaults, ...saved,
   set: (patch) => { set(patch); persist(get()); },
   setUserVolume: (userId, v) => { set({ userVolumes: { ...get().userVolumes, [userId]: v } }); persist(get()); },
+  setStreamVolume: (userId, v) => { set({ streamVolumes: { ...get().streamVolumes, [userId]: v } }); persist(get()); },
   setUserMuted: (userId, muted) => { set({ mutedUsers: { ...get().mutedUsers, [userId]: muted } }); persist(get()); },
 }));
 
 function persist(s: Settings) {
-  const { set: _s, setUserVolume: _u, setUserMuted: _m, ...data } = s;
+  const { set: _s, setUserVolume: _u, setUserMuted: _m, setStreamVolume: _v, ...data } = s;
   localStorage.setItem(LS, JSON.stringify(data));
 }
 
