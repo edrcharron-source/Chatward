@@ -448,7 +448,7 @@ export const CHATTER_TOPICS: { name: string; rank: number; words: string[]; repl
     replies: ['beep boop 🤖', 'I am 100% a real person', 'no comment', 'I have feelings too you know', 'what gave it away', 'shh, our secret 🤫', 'definitely not a robot. *whirr*', 'I passed the captcha, I swear'] },
   { name: 'Thanks', rank: 30, words: ['thanks', 'thank you', 'thx', 'ty', 'tysm', 'appreciate it', 'thank u', 'thanks a lot', 'much appreciated', 'cheers', 'ty so much'],
     replies: ['np!', 'anytime', 'you got it 👍', 'of course', 'happy to help', 'no problem!', 'for you? always', 'np np'] },
-  { name: 'Goodbye', rank: 30, words: ['bye', 'goodbye', 'gn', 'good night', 'goodnight', 'night', 'cya', 'see ya', 'later', 'gotta go', 'heading out', 'logging off', 'bye bye', 'gtg', 'g2g', 'peace', 'peace out', 'ttyl', 'see you', 'nighty night', 'off to bed', 'signing off'],
+  { name: 'Goodbye', rank: 30, words: ['bye', 'goodbye', 'gn', 'good night', 'goodnight', 'night', 'cya', 'see ya', 'see you later', 'later guys', 'later all', 'talk later', 'gotta go', 'heading out', 'logging off', 'bye bye', 'gtg', 'g2g', 'peace', 'peace out', 'ttyl', 'see you', 'nighty night', 'off to bed', 'signing off'],
     replies: ['night!', 'see ya 👋', 'later!', 'cya tomorrow', 'sleep well', 'bye!!', 'take care', 'peace ✌️', 'ttyl', "don't be a stranger"] },
   { name: 'Hello', rank: 30, words: ['hi', 'hey', 'heyy', 'heyyy', 'hello', 'yo', 'sup', 'wassup', 'whats up', "what's up", 'howdy', 'good morning', 'morning', 'gm', 'evening', 'hiya', 'heya', 'greetings', 'good afternoon', 'whats good', "what's good", 'ello', '👋'],
     replies: ['hey!', 'yo 👋', 'heyy', "what's up", 'oh hi', 'hiii', 'hello hello', 'look who it is 👀', 'heyo', 'sup!', 'hey stranger'] },
@@ -464,10 +464,10 @@ export const CHATTER_TOPICS: { name: string; rank: number; words: string[]; repl
     replies: ['oof, hang in there', 'take it easy', 'big mood', 'sending good vibes', 'want to talk about it?', 'that sucks, sorry', 'rest up', "you've got this", 'virtual hug 🫂'] },
   { name: 'Hype', rank: 70, words: ["let's go", 'lets go', 'letsgo', 'lets goo', 'lets gooo', 'nice', 'awesome', 'amazing', 'yay', 'finally', 'hype', 'pog', 'sick play', '🎉', '🔥', '🥳', 'sheesh', 'goated', 'insane', 'incredible', 'clean', 'woo', 'woohoo', 'epic', '💯', '🙌'],
     replies: ["LET'S GO", 'huge', 'love that', 'W', 'HUGE W', "that's insane", 'massive', 'yesss', 'legend'] },
-  { name: 'Questions', rank: 90, words: ['?', 'what', 'why', 'how', 'when', 'who', 'where', 'anyone', 'should', 'which', 'can someone', 'does anyone', 'is anyone', 'do you', 'can you', 'would you', 'wanna'],
+  { name: 'Questions', rank: 90, words: ['?', 'what', 'why', 'how', 'when', 'who', 'where', 'anyone', 'should', 'which', 'can someone', 'does anyone', 'is anyone', 'do you', 'can you', 'would you', 'wanna', 'are you', 'are u', 'r u', 'will you', 'did you', 'is it', 'is that'],
     replies: ['good question', 'no idea tbh', 'hmm let me think', 'probably?', "don't ask me lol", 'ooh good one', 'depends honestly', "I'd say yes", "maybe? I'm not sure", 'why do you ask 👀', 'someone smarter than me should answer that'] },
   // ---- added in the second round ----
-  { name: 'How are you', rank: 10, words: ['how are you', 'how are u', 'how r u', 'hru', "how's it going", 'hows it going', 'how you doing', 'how u doing', 'you good', 'u good', 'how have you been', 'how are things', "how's life", 'hows life', 'how was your day', 'how is your day', "how's your day", 'hows your day'],
+  { name: 'How are you', rank: 10, words: ['how are you', 'how are u', 'how r u', 'hru', "how's it going", 'hows it going', 'how you doing', 'how u doing', 'you good', 'u good', 'how have you been', 'how are things', "how's life", 'hows life', 'how was your day', 'how is your day', 'are you ok', 'are you okay', 'you ok', 'you okay', 'u ok', 'r u ok', "how's your day", 'hows your day'],
     replies: ['doing good, you?', 'pretty chill tbh', 'surviving 😅', 'better now that you asked', "can't complain", 'good! how about you?', 'honestly not bad', 'living the dream', 'tired but alive', 'great now 😊'] },
   { name: 'What are you doing', rank: 10, words: ['wyd', 'what are you doing', 'what you doing', 'what are you up to', 'what u doing', 'whatcha doing', 'whatcha up to', 'what r u doing', 'what are you up 2', 'wbu', 'hbu', 'what about you'],
     replies: ['nothing much, you?', 'just vibing', 'scrolling as usual', 'pretending to be productive', 'about to hop in a game', 'eating snacks', 'listening to music', 'watching something', 'nothing, bored', 'just chilling here'] },
@@ -477,7 +477,7 @@ export const CHATTER_TOPICS: { name: string; rank: number; words: string[]; repl
     replies: ["why don't skeletons fight? they don't have the guts", "I told my wifi a joke. it didn't get the connection", "I'm reading a book on anti-gravity. can't put it down", 'why did the scarecrow win an award? he was outstanding in his field', "what do you call a fake noodle? an impasta", 'why did the computer go to the doctor? it had a virus', 'what do you call a bear with no teeth? a gummy bear', "why can't you trust stairs? they're always up to something", 'what did the ocean say to the beach? nothing, it just waved', "I'd tell you a UDP joke but you might not get it"] },
   { name: 'Testing', rank: 10, words: ['test', 'testing', 'test test', 'mic check', 'can you see this', 'does this work', 'ping', 'hello?', 'is this thing on', 'anyone there', 'anybody there', 'can anyone see this'],
     replies: ['loud and clear 📡', 'test received', 'works on my end', 'yep I see it', 'all good here', 'signal strong 💪', 'received ✅', 'test passed'] },
-  { name: 'Compliments', rank: 10, words: ['good bot', 'love you', 'ily', "you're the best", 'youre the best', 'ur the best', 'best bot', "you're cool", 'youre cool', 'you rock', '❤️', '🥰', 'you are the best', 'ur cool', 'love this', 'good job', 'well done', 'smart bot', 'great bot', '💖', '💕'],
+  { name: 'Compliments', rank: 10, words: ['good bot', 'love you', 'ily', "you're the best", 'youre the best', 'ur the best', 'best bot', "you're cool", 'youre cool', 'you rock', '❤️', '🥰', 'you are the best', 'ur cool', 'love this', 'good job', 'well done', 'smart bot', 'great bot', '💖', '💕', 'favorite bot', 'favourite bot', 'fav bot', 'you my favorite', 'you my fav', "you're my favorite", 'youre my favorite', 'ur my favorite', 'my favorite bot', 'love u', "you're awesome", 'youre awesome', 'ur awesome', 'you are awesome'],
     replies: ['aww 🥹', 'love you too', "stop I'm blushing", 'finally someone appreciates me', 'you too!!', 'right back at you', '🥰', "you're making my day"] },
   { name: 'Rude', rank: 10, words: ['shut up', 'stfu', 'bad bot', 'go away', 'annoying', 'be quiet', 'stop talking', 'nobody asked', 'you suck', 'ur dumb', 'you are dumb', 'stupid bot', 'dumb bot', 'leave me alone', 'kys', 'fuck you', 'fuck off', 'f you', 'fu', 'screw you', "didn't ask", 'didnt ask', 'who asked', 'shut it', 'hate you', 'i hate you', "you're stupid", 'youre stupid', 'ur stupid', "you're dumb", 'youre dumb', 'idiot', 'loser', 'you are trash', 'ur trash', '🖕'],
     replies: ['rude 😤', "ok ok I'll be quiet", 'wow.', "I'll remember that", 'fine 🙄', 'ouch', 'that hurt my circuits', 'noted 📝', 'and yet here you are', 'k'] },
@@ -567,6 +567,13 @@ export const CHATTER_TOPICS: { name: string; rank: number; words: string[]; repl
   // `[media]` is never typed: chatterText adds it for a message with a GIF, picture or video, so text topics win first.
   { name: 'GIFs and pictures', rank: 95, words: ['[media]'],
     replies: ['LMAO that gif', 'that gif is perfect', 'ok that one got me 😂', 'saving that one', 'where do you find these', 'beautiful', 'the quality 👌', 'frame it'] },
+  // ---- added in the fifth round ----
+  { name: 'Yes or no', rank: 5, words: ['yes or no', 'yes/no', 'y/n', 'y or n', 'yay or nay', 'true or false'],
+    replies: ['yes', 'no', 'yes!', 'hmm... no', 'definitely yes', 'nope', 'I say yes', "that's a no from me"] },
+  { name: 'Repeat after me', rank: 5, words: ['repeat after me', 'say after me', 'repeat this', 'now you say', 'you say it', 'say it back', 'say it with me', 'copy me', 'say what i say'],
+    replies: ['nice try 😏', "I'm not a parrot 🦜", 'not falling for that one', 'you first', 'I know this trick', 'nope, not saying it', "I'll pass 😌"] },
+  { name: 'About you', rank: 8, words: ['are you a girl', 'are you a boy', 'are you a guy', 'are you a man', 'are you a woman', 'are you male', 'are you female', 'boy or girl', 'girl or boy', 'your gender', 'how old are you', 'how old r u', 'your age', 'where are you from', 'where do you live', 'are you single', 'are you married', 'do you sleep', 'do you eat', 'are you alive', 'what do you look like'],
+    replies: ["I'm a bot, so... it's complicated 🤖", "bots don't really do that", "that's classified 🤫", "I'm just code with a name", 'ask whoever made me 😅', 'I plead the fifth', 'a lady never tells... wait, I mean a bot'] },
 ];
 export const CHATTER_REPLIES = [...CHATTER_GENERAL, ...CHATTER_TOPICS.flatMap((t) => t.replies)];
 
@@ -582,11 +589,14 @@ const TOPIC_MATCHERS = (() => {
   });
   return out.sort((a, b) => a.rank - b.rank);
 })();
-/** Replies for a message no topic matches: the general ones plus every topic without words. */
+/** Replies no longer picked (saved messages may still show them): they did not fit what they answered. */
+const RETIRED = new Set(['k', 'ha yes', 'agreed 😂', 'nice one', 'ok fair', 'noted', 'big if true', 'real', "can't argue with that", 'mood', 'say less']);
+const live = (i: number) => !RETIRED.has(CHATTER_REPLIES[i]);
+/** Replies for a message no topic matches: the general ones plus every topic without words, minus retired ones. */
 const FALLBACK = [
   ...CHATTER_GENERAL.map((_, i) => i),
   ...TOPIC_MATCHERS.filter((t) => !t.re).flatMap((t) => Array.from({ length: t.count }, (_, i) => t.start + i)),
-];
+].filter(live);
 
 /**
  * The index in CHATTER_REPLIES of a reply that fits `text`, avoiding the indexes in `avoid` (recent replies) while
@@ -595,7 +605,7 @@ const FALLBACK = [
 export function chatterReply(text: string, avoid: number[] = []): { line: number; matched: boolean } {
   const lower = text.toLowerCase().replace(/[’‘]/g, "'");
   const m = TOPIC_MATCHERS.find((t) => t.re?.test(lower));
-  const all = m ? Array.from({ length: m.count }, (_, i) => m.start + i) : FALLBACK;
+  const all = m ? Array.from({ length: m.count }, (_, i) => m.start + i).filter(live) : FALLBACK;
   const fresh = all.filter((i) => !avoid.includes(i));
   const pool = fresh.length ? fresh : all;
   return { line: pool[Math.floor(Math.random() * pool.length)], matched: !!m };
