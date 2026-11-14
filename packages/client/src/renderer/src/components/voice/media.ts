@@ -1,5 +1,6 @@
 // OWNER: voice-media thread. Called by state/voice.ts (voice-core). Contract:
-import { Track, VideoPresets, createLocalVideoTrack, type LocalVideoTrack, type Room } from 'livekit-client';
+import { RoomEvent, Track, VideoPresets, createLocalVideoTrack, type LocalTrackPublication, type LocalVideoTrack, type Room } from 'livekit-client';
+import { openAppAudio, type AppAudio } from './appAudio';
 
 export type ScreenHeight = 720 | 1080 | 2160;
 
@@ -64,23 +65,72 @@ export async function switchCamera(room: Room, deviceId: string): Promise<void> 
   await applyCameraChoice(room, deviceId);
 }
 
-/** sourceId from window.chatward.getScreenSources(); calls selectScreenSource then publishes screen (+system audio if available) */
-export async function startScreen(room: Room, sourceId: string): Promise<void> {
+// The sound of a shared app window while it is being sent (see appAudio.ts).
+let appAudio: { audio: AppAudio; room: Room; stop: () => void } | null = null;
+
+function closeAppAudio(): void {
+  const current = appAudio;
+  appAudio = null;
+  current?.stop();
+}
+
+/**
+ * Publishes one app window's own sound as the share's audio, and ends it with the share. Returns a notice for the
+ * user when that app's sound can't be shared on its own (the window is then shared without sound).
+ */
+async function shareAppAudio(room: Room, sourceId: string): Promise<string | null> {
+  const opened = await openAppAudio(sourceId, () => closeAppAudio());
+  if (typeof opened === 'string') return opened;
+  const published = room.localParticipant.publishTrack(opened.track, { source: Track.Source.ScreenShareAudio });
+  // Stopping the share (our button or Windows' own bar) or leaving the call unpublishes the picture; end the sound too.
+  const onUnpublished = (pub: LocalTrackPublication) => {
+    if (pub.source === Track.Source.ScreenShare || pub.source === Track.Source.ScreenShareAudio) closeAppAudio();
+  };
+  room.on(RoomEvent.LocalTrackUnpublished, onUnpublished).on(RoomEvent.Disconnected, closeAppAudio);
+  appAudio = {
+    audio: opened,
+    room,
+    stop: () => {
+      room.off(RoomEvent.LocalTrackUnpublished, onUnpublished).off(RoomEvent.Disconnected, closeAppAudio);
+      opened.close();
+      void published.then((pub) => { if (pub.track) void room.localParticipant.unpublishTrack(pub.track); }).catch(() => {});
+    },
+  };
+  try {
+    await published;
+  } catch {
+    closeAppAudio();
+    return "Couldn't send that app's sound, so the window is shared without sound.";
+  }
+  return null;
+}
+
+/**
+ * sourceId from window.chatward.getScreenSources(); calls selectScreenSource then publishes the screen. With sound on,
+ * a whole screen sends the computer's sound without Chatward's own (the voice chat), and a single window sends only
+ * that app's sound. Returns a notice for the user when the sound couldn't be shared as asked, or null.
+ */
+export async function startScreen(room: Room, sourceId: string): Promise<string | null> {
   const opts = screenOptions;
+  closeAppAudio();
+  const oneWindow = sourceId.startsWith('window:');
   // The main process reads the selected source when getDisplayMedia runs, so select it first.
   await window.chatward.selectScreenSource(sourceId);
   // The resolution is an ideal, not a minimum: Chromium never upscales, so a smaller screen or window is sent at its own size.
   await room.localParticipant.setScreenShareEnabled(
     true,
     {
-      audio: opts.systemAudio,
+      // restrictOwnAudio leaves this app's own sound out of the computer's sound, so the call isn't echoed back.
+      audio: opts.systemAudio && !oneWindow ? { restrictOwnAudio: true } : false,
       resolution: { width: SCREEN_WIDTH[opts.height], height: opts.height, frameRate: opts.frameRate },
       contentHint: opts.frameRate === 60 ? 'motion' : 'detail',
     },
     { screenShareEncoding: { maxBitrate: screenBitrate(opts), maxFramerate: opts.frameRate } },
   );
+  return opts.systemAudio && oneWindow ? shareAppAudio(room, sourceId) : null;
 }
 
 export async function stopScreen(room: Room): Promise<void> {
+  closeAppAudio();
   await room.localParticipant.setScreenShareEnabled(false);
 }

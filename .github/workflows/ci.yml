@@ -31,6 +31,32 @@ jobs:
       - run: npm run test:unit -w @chatward/client
       - run: npm run test:e2e -w @chatward/server
       - run: npm run test:e2e-client -w @chatward/client
+  # The small Windows helper that records one app's sound for window shares (packages/client/native/app-audio).
+  # Built on every PR so a change that breaks it shows up before the installer build.
+  app-audio:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: powershell -NoProfile -ExecutionPolicy Bypass -File packages/client/native/app-audio/build.ps1
+      - name: Refuses a window that doesn't exist
+        shell: pwsh
+        run: |
+          $p = Start-Process packages/client/build/chatward-app-audio.exe -ArgumentList '1', "$PID" -Wait -PassThru -NoNewWindow
+          if ($p.ExitCode -ne 2) { throw "expected exit 2, got $($p.ExitCode)" }
+      - name: Records an app's window (for information; runners may have no sound device)
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          $app = Start-Process notepad -PassThru
+          Start-Sleep -Seconds 3
+          $app.Refresh()
+          $hwnd = [int64]$app.MainWindowHandle
+          Write-Host "notepad window $hwnd"
+          $p = Start-Process packages/client/build/chatward-app-audio.exe -ArgumentList "$hwnd", "$PID" -PassThru -NoNewWindow -RedirectStandardOutput "$env:TEMP\app-audio.pcm"
+          Start-Sleep -Seconds 3
+          if ($p.HasExited) { Write-Host "helper exited with $($p.ExitCode)" } else { Write-Host 'helper is recording'; $p.Kill() }
+          Stop-Process -Id $app.Id -ErrorAction SilentlyContinue
+          Write-Host "bytes recorded: $((Get-Item "$env:TEMP\app-audio.pcm").Length)"
   # Unsigned installer for testing, built only after the checks above pass on develop or main (or a manual run).
   windows-exe:
     needs: [typecheck, e2e]
