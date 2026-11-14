@@ -10,6 +10,7 @@ import { setupUpdater } from './updater';
 import { APP_ORIGIN, buildCsp, loadServerOrigin, saveServerOrigin, serverOrigin } from './serverPolicy';
 import { fitWindow, isResizeEdge, resizeBounds } from './windowBounds';
 import { ResizePacer } from './resizePacing';
+import { startAppAudio, stopAppAudio } from './appAudio';
 
 // The page is served from app:// (not file://) so its Content-Security-Policy header can name the server.
 protocol.registerSchemesAsPrivileged([{ scheme: 'app', privileges: { standard: true, secure: true, corsEnabled: true } }]);
@@ -314,7 +315,9 @@ app.whenReady().then(() => {
     const sources = await desktopCapturer.getSources({ types: ['screen', 'window'] });
     const chosen = sources.find((s) => s.id === pendingSourceId);
     pendingSourceId = null;
-    // 'loopback' captures system audio on Windows; renderer drops the track if the user unticks it.
+    // 'loopback' captures system audio on Windows and is only used when the page asks for audio (whole-screen shares).
+    // The page asks with restrictOwnAudio, so Chromium leaves Chatward's own sound (the voice chat) out where Windows
+    // allows it. A shared window's sound comes from appAudio.ts instead, so only that app is heard.
     if (chosen) cb({ video: chosen, audio: 'loopback' });
     else cb({});
   });
@@ -348,6 +351,9 @@ app.whenReady().then(() => {
     return sources.map((s) => ({ id: s.id, name: s.name, thumbnail: s.thumbnail.toDataURL(), appIcon: s.appIcon?.toDataURL() ?? null, isScreen: s.id.startsWith('screen:') }));
   });
   ipcMain.handle('screen:select', (_e, id: string) => { pendingSourceId = id; });
+  // Sharing one window with sound: only that app's sound, recorded by a small helper (see appAudio.ts).
+  ipcMain.handle('app-audio:start', (e, id: unknown) => { fromApp(e); return startAppAudio(e.sender, String(id ?? '')); });
+  ipcMain.on('app-audio:stop', () => stopAppAudio());
   // The renderer asks for a taskbar flash only for messages the user should see. Skip it if they are already looking.
   ipcMain.on('window:flash', (e) => {
     const win = windowOf(e.sender);
@@ -418,3 +424,4 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
+app.on('will-quit', stopAppAudio);

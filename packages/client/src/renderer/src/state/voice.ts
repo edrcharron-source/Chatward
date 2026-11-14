@@ -496,7 +496,8 @@ export const useVoice = create<VoiceState>((set, get) => {
       if (!room) return;
       if (on) {
         if (!sourceId) throw new Error('No screen or window selected');
-        await startScreen(room, sourceId);
+        const notice = await startScreen(room, sourceId);
+        if (notice) set({ notice });
       } else {
         await stopScreen(room);
       }
