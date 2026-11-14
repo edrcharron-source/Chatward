@@ -34,7 +34,7 @@ import { onBeforeSignOut, useSession } from './session';
 import { useVoice } from './voice';
 import { attachRemote, detachRemote, voiceAudio } from './voiceAudio';
 
-interface Roster { session: string; guests: number[]; at: number }
+interface Roster { session: string; guests: number[]; at: number; textOnly: boolean }
 
 interface GuestsStore {
   /** serverId -> host userId -> that host's latest roster */
@@ -43,6 +43,13 @@ interface GuestsStore {
   mine: Record<string, number[]>;
   /** guest user ids playing a clip in our call (this app's guests only) */
   speaking: string[];
+  /** Our guests stay in text channels: they leave voice and play no clips. Remembered on this computer. */
+  textOnly: boolean;
+}
+
+const TEXT_ONLY_KEY = 'chatward.guests.textOnly';
+function savedTextOnly(): boolean {
+  try { return localStorage.getItem(TEXT_ONLY_KEY) === '1'; } catch { return false; }
 }
 
 /** One run of this app. A restarted app is a new session, so its earlier guests are gone. */
@@ -57,7 +64,7 @@ export const GUEST_USERS: User[] = BOT_SEEDS.slice(0, GUESTS_MAX).map((b) => ({
 const GUEST_MEMBERS: Member[] = GUEST_USERS.map((user) => ({ user, role: 'member', devices: [] }));
 const NONE: Member[] = [];
 
-export const useGuests = create<GuestsStore>(() => ({ hosts: {}, mine: {}, speaking: [] }));
+export const useGuests = create<GuestsStore>(() => ({ hosts: {}, mine: {}, speaking: [], textOnly: savedTextOnly() }));
 
 export const isGuest = (userId: string) => GUEST_USERS.some((u) => u.id === userId);
 /** A guest's member entry, also after they left, so their lines keep a name. */
@@ -65,14 +72,14 @@ export const guestMember = (userId: string) => GUEST_MEMBERS.find((m) => m.user.
 
 // ---------- who is here ----------
 
-interface Seat { guest: number; host: string; at: number }
+interface Seat { guest: number; host: string; at: number; textOnly: boolean }
 
 /** Guests on a server: this app's own, plus those of other hosts who are still online. */
 function seatsOf(serverId: string, g: GuestsStore, meId: string | undefined, presence: Record<string, string>): Seat[] {
-  const seats: Seat[] = (g.mine[serverId] ?? []).map((guest, i) => ({ guest, host: meId ?? '', at: i }));
+  const seats: Seat[] = (g.mine[serverId] ?? []).map((guest, i) => ({ guest, host: meId ?? '', at: i, textOnly: g.textOnly }));
   for (const [host, r] of Object.entries(g.hosts[serverId] ?? {})) {
     if (host === meId || (presence[host] ?? 'offline') === 'offline') continue;
-    for (const guest of r.guests) if (!seats.some((s) => s.guest === guest)) seats.push({ guest, host, at: r.at });
+    for (const guest of r.guests) if (!seats.some((s) => s.guest === guest)) seats.push({ guest, host, at: r.at, textOnly: r.textOnly });
   }
   return seats;
 }
@@ -104,6 +111,7 @@ export function useGuestVoice(serverId: string | undefined): Map<string, string>
   return useMemo(() => {
     const out = new Map<string, string>();
     for (const s of seats) {
+      if (s.textOnly) continue;
       const call = s.host === meId ? myCall : Object.keys(occupants).find((ch) => occupants[ch]?.includes(s.host));
       if (call && GUEST_USERS[s.guest]) out.set(GUEST_USERS[s.guest].id, call);
     }
@@ -160,8 +168,12 @@ function readTag(m: Message, payload: MessagePayload | null, live: boolean) {
     if (live && tag.host === meId && validGuest(tag.guest)) dismiss(serverId, tag.guest);
     return;
   }
+  if (tag.kind === 'textOnly') {
+    if (live && m.authorId !== meId && typeof tag.on === 'boolean') setTextOnly(tag.on);
+    return;
+  }
   if (typeof tag.session !== 'string' || !validRoster(tag.roster)) return;
-  const roster: Roster = { session: tag.session, guests: [...new Set(tag.roster)], at: m.createdAt };
+  const roster: Roster = { session: tag.session, guests: [...new Set(tag.roster)], at: m.createdAt, textOnly: tag.textOnly === true };
   if (m.authorId === meId) {
     if (tag.session !== SESSION && (leftovers.get(serverId)?.at ?? -1) < roster.at) leftovers.set(serverId, roster);
     return;
@@ -213,7 +225,7 @@ async function sendTag(channelId: string, tag: ChatterTag) {
 
 function sendRoster(serverId: string) {
   const channelId = textChannels(serverId)[0];
-  if (channelId) void sendTag(channelId, { kind: 'roster', session: SESSION, roster: useGuests.getState().mine[serverId] ?? [] });
+  if (channelId) void sendTag(channelId, { kind: 'roster', session: SESSION, roster: useGuests.getState().mine[serverId] ?? [], ...textOnlyMark() });
 }
 
 /** A guest says reply number `reply`, or line number `chatLine`. `guest` picks who, if they are still here. */
@@ -222,7 +234,7 @@ function say(serverId: string, channelId: string, reply?: number, guest?: number
   if (!mine.length) return;
   const who = guest !== undefined && mine.includes(guest) ? guest : mine[Math.floor(Math.random() * mine.length)];
   const line = reply ?? chatLine ?? 0;
-  void sendTag(channelId, { kind: 'line', session: SESSION, roster: mine, guest: who, line, reply: reply !== undefined });
+  void sendTag(channelId, { kind: 'line', session: SESSION, roster: mine, guest: who, line, reply: reply !== undefined, ...textOnlyMark() });
 }
 
 // ---------- hosting ----------
@@ -396,6 +408,32 @@ function addGuest(serverId: string) {
   setMine(serverId, [...(useGuests.getState().mine[serverId] ?? []), guest]);
 }
 
+/** Marks our rosters so other apps leave our guests out of voice too. */
+function textOnlyMark(): { textOnly?: true } {
+  return useGuests.getState().textOnly ? { textOnly: true } : {};
+}
+
+/** Our guests leave voice (or come back). Each host decides for its own guests and tells everyone in its roster. */
+function setTextOnly(on: boolean) {
+  if (useGuests.getState().textOnly === on) return;
+  useGuests.setState({ textOnly: on });
+  try { localStorage.setItem(TEXT_ONLY_KEY, on ? '1' : '0'); } catch { /* not remembered then */ }
+  if (on) stopVoice();
+  for (const serverId of Object.keys(useGuests.getState().mine)) {
+    if (useGuests.getState().mine[serverId]?.length) sendRoster(serverId);
+  }
+}
+
+/** Switches every guest on the server to text only, or back into voice: ours here, other hosts' by asking them. */
+function toggleTextOnly(serverId: string) {
+  const seats = currentSeats(serverId);
+  const on = seats.length ? !seats.every((s) => s.textOnly) : !useGuests.getState().textOnly;
+  setTextOnly(on);
+  const meId = useSession.getState().user?.id;
+  const channelId = textChannels(serverId)[0];
+  if (channelId && seats.some((s) => s.host !== meId)) void sendTag(channelId, { kind: 'textOnly', on });
+}
+
 /** Sends the newest guest away: our own if we host any, otherwise asks the host whose guest arrived last. */
 function removeGuest(serverId: string) {
   const mine = useGuests.getState().mine[serverId] ?? [];
@@ -466,7 +504,7 @@ async function play(guest: number, clip: number) {
  */
 async function speak(serverId: string): Promise<void> {
   const { room, status } = useVoice.getState();
-  if (useVoice.getState().serverId !== serverId || status !== 'connected' || !room) return;
+  if (useVoice.getState().serverId !== serverId || status !== 'connected' || !room || useGuests.getState().textOnly) return;
   const audio = await clipList();
   if (!audio) return;
   const idle = (useGuests.getState().mine[serverId] ?? []).filter((g) => {
@@ -491,7 +529,7 @@ function onClipData(payload: Uint8Array, from?: RemoteParticipant, _kind?: unkno
   try { msg = JSON.parse(new TextDecoder().decode(payload)) as typeof msg; } catch { return; }
   if (!validGuest(msg.guest) || !Number.isInteger(msg.clip)) return;
   const guest = msg.guest;
-  if (!currentSeats(serverId).some((s) => s.guest === guest && s.host === from.identity)) return;
+  if (!currentSeats(serverId).some((s) => s.guest === guest && s.host === from.identity && !s.textOnly)) return;
   void play(guest, msg.clip as number);
 }
 
@@ -548,7 +586,7 @@ function activeServer(): string | undefined {
   return activeServerId ?? servers[0]?.server.id;
 }
 
-/** Typed in the main window, outside any text box: - - - + and + + + -. */
+/** Typed in the main window, outside any text box: - - - + adds, + + + - removes, - + - + switches text only on or off. */
 export function installGuestKeys(win: Window = window): () => void {
   const onKey = (e: KeyboardEvent) => {
     if (e.key === 'Shift') return;
@@ -567,6 +605,9 @@ export function installGuestKeys(win: Window = window): () => void {
     } else if (typed === '+++-') {
       typed = '';
       if (serverId) removeGuest(serverId);
+    } else if (typed === '-+-+') {
+      typed = '';
+      if (serverId) toggleTextOnly(serverId);
     }
   };
   win.addEventListener('keydown', onKey);

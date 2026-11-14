@@ -143,9 +143,11 @@ export interface ReplyRef {
  * `session` is one run of the sender's app, so a restarted app can tell its old guests from its new ones.
  */
 export type ChatterTag =
-  | { kind: 'line'; session: string; roster: number[]; guest: number; line: number; reply: boolean }
-  | { kind: 'roster'; session: string; roster: number[] }
-  | { kind: 'remove'; host: string; guest: number };
+  | { kind: 'line'; session: string; roster: number[]; guest: number; line: number; reply: boolean; textOnly?: true }
+  | { kind: 'roster'; session: string; roster: number[]; textOnly?: true }
+  | { kind: 'remove'; host: string; guest: number }
+  /** Asks every host to keep its guests out of voice (true) or let them back in (false). */
+  | { kind: 'textOnly'; on: boolean };
 
 export interface Attachment {
   uploadId: string;
