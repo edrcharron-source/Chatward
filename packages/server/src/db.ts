@@ -133,6 +133,23 @@ export function openDb(): DB {
     updated_at INTEGER NOT NULL
   );
   CREATE INDEX IF NOT EXISTS idx_vault_albums_server ON vault_albums(server_id);
+  CREATE TABLE IF NOT EXISTS vault_likes (
+    item_id TEXT NOT NULL REFERENCES vault_items(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES users(id),
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (item_id, user_id)
+  );
+  CREATE TABLE IF NOT EXISTS vault_comments (
+    id TEXT PRIMARY KEY,
+    item_id TEXT NOT NULL REFERENCES vault_items(id) ON DELETE CASCADE,
+    server_id TEXT NOT NULL,
+    author_id TEXT NOT NULL REFERENCES users(id),
+    text TEXT NOT NULL,
+    gif TEXT,
+    created_at INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_vault_comments_item ON vault_comments(item_id, created_at);
+  CREATE INDEX IF NOT EXISTS idx_vault_comments_server ON vault_comments(server_id);
   CREATE TABLE IF NOT EXISTS vault_album_items (
     album_id TEXT NOT NULL REFERENCES vault_albums(id) ON DELETE CASCADE,
     item_id TEXT NOT NULL REFERENCES vault_items(id) ON DELETE CASCADE,

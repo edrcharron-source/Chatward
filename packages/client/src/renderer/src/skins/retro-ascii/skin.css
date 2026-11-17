@@ -139,3 +139,9 @@
   --ra-star: #c9a76a; --ra-star-mid: #b98b3e; --ra-star-bright: #a87422;
   --ra-scanline: rgba(150, 95, 10, .07); --ra-glow: none;
 }
+
+/* Scroll! button (components/scroll): a boxed amber label with the emoji after it, in brackets like the menu keys. */
+:root[data-skin='retro-ascii'] .cw-scroll-btn { background: var(--accent); color: var(--accent-text); box-shadow: 3px 3px 0 var(--border); border-radius: 0; text-transform: uppercase; letter-spacing: .06em; animation: none; }
+:root[data-skin='retro-ascii'] .cw-scroll-btn:hover { background: var(--accent-hover); }
+:root[data-skin='retro-ascii'] .cw-scroll-btn::before { content: '['; }
+:root[data-skin='retro-ascii'] .cw-scroll-btn::after { content: ']'; }
