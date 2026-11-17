@@ -1,31 +1,31 @@
 /* The Scroll feed. Base look: the app's own tokens. Each skin restyles only the button and the feed's chrome, in its own
    pack under skins/<id>/skin.css, and keeps the same controls (test/skins/inventory.ts). */
 
-.cw-scroll-btn {
+.cw-tool.cw-scroll-btn {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   font-weight: 800;
-  font-size: 15px;
+  font-size: 16px;
   letter-spacing: .01em;
   color: var(--accent-text);
   background: linear-gradient(135deg, var(--accent), var(--accent-hover));
   border: 0;
   border-radius: 999px;
-  padding: 6px 14px;
+  padding: 7px 16px;
   box-shadow: 0 0 0 0 var(--accent-tint);
   animation: cw-scroll-pulse 2.8s ease-in-out infinite;
 }
-.cw-scroll-btn:hover { background: linear-gradient(135deg, var(--accent-hover), var(--accent)); }
-.cw-scroll-btn:focus-visible { outline: 2px solid var(--text-strong); outline-offset: 2px; }
-.cw-scroll-btn-emoji { font-size: 17px; line-height: 1; }
+.cw-tool.cw-scroll-btn:hover { background: linear-gradient(135deg, var(--accent-hover), var(--accent)); }
+.cw-tool.cw-scroll-btn:focus-visible { outline: 2px solid var(--text-strong); outline-offset: 2px; }
+.cw-scroll-btn-emoji { font-size: 18px; line-height: 1; }
 
 @keyframes cw-scroll-pulse {
   0%, 100% { box-shadow: 0 0 0 0 var(--accent-tint); }
   50% { box-shadow: 0 0 0 6px var(--accent-tint); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .cw-scroll-btn { animation: none; }
+  .cw-tool.cw-scroll-btn { animation: none; }
 }
 
 .cw-scroll {
@@ -47,17 +47,30 @@
   background: var(--bg-1);
   border-bottom: 1px solid var(--border);
 }
+/* The header floats over the top of the feed, so each slide fills the whole window and snaps exactly. */
+.cw-scroll-top {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  background: var(--backdrop);
+  border-bottom: 0;
+}
 .cw-scroll-title { color: var(--text-strong); font-size: 16px; }
 .cw-scroll-empty { margin: auto; padding: 24px; text-align: center; color: var(--text-muted); }
+.cw-scroll > .cw-scroll-empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
 .cw-scroll-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
 .cw-scroll-feed {
-  flex: 1;
-  min-height: 0;
+  position: absolute;
+  inset: 0;
   overflow-y: auto;
   scroll-snap-type: y mandatory;
   overscroll-behavior: contain;
+  scrollbar-width: none;
 }
+.cw-scroll-feed::-webkit-scrollbar { display: none; }
 .cw-scroll-feed:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .cw-scroll-slide {
   position: relative;
