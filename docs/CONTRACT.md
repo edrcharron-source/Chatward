@@ -64,6 +64,7 @@ Desktop updates (module `updates`), public, no auth
 
 Voice (module `voice`)
 - POST /api/voice/token {channelId} -> {url, token}   LiveKit JWT (room = channelId, identity = userId). Env LIVEKIT_URL (default ws://localhost:7880), optional LIVEKIT_API_URL for the server's own calls to LiveKit (kicks; default LIVEKIT_URL as http://), LIVEKIT_API_KEY, LIVEKIT_API_SECRET. Outside production the keys default to devkey/secret; with NODE_ENV=production the server refuses to start unless both are set, the secret is 32+ characters, and neither is a default.
+- POST /api/voice/preview-token {channelId} -> {url, token}   hidden, watch-only LiveKit JWT (identity `preview:<userId>`, canPublish/canPublishData false, canSubscribe true, hidden true) so a member who has not joined can show the call's screen shares, blurred, behind the people in it. Takes no voice slot and nobody in the call sees it. 409 while a removal from that call is in force; any removal of the user from the room also ends their preview session.
 - POST /api/voice/leave {channelId} -> {ok}
 - POST /api/voice/state {channelId, muted, deafened} -> {ok}  (client reports its own mic/speaker state; muted or deafened users get 409 on sound-play)
 - GET  /api/servers/:id/voice-state -> {channels: Record<channelId, userId[]>}   who is in each voice channel

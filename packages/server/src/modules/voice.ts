@@ -14,6 +14,12 @@ const selfState = new Map<string, { muted: boolean; deafened: boolean }>(); // u
 const TOKEN_TTL = '10m';
 const TOKEN_TTL_MS = 10 * 60_000; // keep in step with TOKEN_TTL
 
+// A member who has not joined a call can preview its screen shares (blurred, behind the people in it) from a hidden,
+// watch-only LiveKit session. It has its own identity, so it never bumps the account's real call session, and it is not
+// a voice slot: nobody sees it in the call.
+const PREVIEW_PREFIX = 'preview:';
+const previewIdentity = (userId: string): string => `${PREVIEW_PREFIX}${userId}`;
+
 // A removed user's token from before the removal stays valid until it expires, and livekit-client reuses it to reconnect.
 // So after a removal, the room is cleared again every EVICT_EVERY_MS until that token is gone. A fresh token for the room
 // (the user is allowed back in) stops it early.
@@ -146,7 +152,9 @@ function isRemoved(ctx: Ctx, channelId: string, userId: string): boolean {
 /** False once the channel or the account is deleted: a removal for it could never clear, so nothing is recorded for it. */
 function removalTargetLive(ctx: Ctx, channelId: string, userId: string): boolean {
   const channelLive = ctx.db.prepare('SELECT 1 FROM channels WHERE id=?').get(channelId);
-  const userLive = ctx.db.prepare('SELECT 1 FROM users WHERE id=? AND deleted_at IS NULL').get(userId);
+  // a preview session's removal lives as long as its account does
+  const accountId = userId.startsWith(PREVIEW_PREFIX) ? userId.slice(PREVIEW_PREFIX.length) : userId;
+  const userLive = ctx.db.prepare('SELECT 1 FROM users WHERE id=? AND deleted_at IS NULL').get(accountId);
   return !!channelLive && !!userLive;
 }
 
@@ -270,6 +278,8 @@ function noteLookup(ctx: Ctx, result: 'in' | 'absent' | 'unknown'): void {
  * inside the window still keeps the user out.
  */
 function evictFromRoom(ctx: Ctx, channelId: string, userId: string): void {
+  // A removal ends the user's hidden preview of the room too (see /api/voice/preview-token).
+  if (!userId.startsWith(PREVIEW_PREFIX)) evictFromRoom(ctx, channelId, previewIdentity(userId));
   stopEviction(channelId, userId);
   // A room with no token that could still be reused cannot be rejoined on an old token, so one attempt is enough.
   if (!mayHoldToken(`${channelId}:${userId}`)) {
@@ -462,6 +472,39 @@ export function register(app: Express, ctx: Ctx): void {
         ttl: TOKEN_TTL,
       });
       at.addGrant({ roomJoin: true, room: channelId, canPublish: true, canSubscribe: true });
+      res.json({ url: ctx.config.livekit.url, token: await at.toJwt() });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // Watch-only, hidden token for previewing a call you have not joined: subscribe only, no publishing of any kind, and
+  // invisible to the people in the call. Refused while a removal from this call is in force, and ended with the user's
+  // own session by any later removal (evictFromRoom).
+  app.post('/api/voice/preview-token', ctx.requireAuth, perMember(60_000, 20), async (req, res, next) => {
+    try {
+      const userId = (req as AuthedRequest).userId;
+      const channelId = (req.body as { channelId?: unknown } | undefined)?.channelId;
+      if (typeof channelId !== 'string') { res.status(400).json({ error: 'channelId required' }); return; }
+
+      const serverId = ctx.serverIdForChannelMember(channelId, userId);
+      const channel = serverId ? ctx.getChannel(channelId) : null;
+      if (!channel) { res.status(404).json({ error: 'channel not found' }); return; }
+      if (channel.kind !== 'voice') { res.status(400).json({ error: 'not a voice channel' }); return; }
+      if (evictions.has(`${channelId}:${userId}`) || isRemoved(ctx, channelId, userId)) {
+        res.status(409).json({ error: 'You were removed from this call.' });
+        return;
+      }
+
+      const identity = previewIdentity(userId);
+      // As with a join token: a fresh token lifts an earlier removal of this preview session, and is remembered so a
+      // later removal knows the session may still be reusing it.
+      stopEviction(channelId, identity);
+      clearRemoved(ctx, channelId, identity);
+      lastToken.set(`${channelId}:${identity}`, Date.now());
+
+      const at = new AccessToken(ctx.config.livekit.apiKey, ctx.config.livekit.apiSecret, { identity, ttl: TOKEN_TTL });
+      at.addGrant({ roomJoin: true, room: channelId, canPublish: false, canPublishData: false, canSubscribe: true, hidden: true });
       res.json({ url: ctx.config.livekit.url, token: await at.toJwt() });
     } catch (err) {
       next(err);

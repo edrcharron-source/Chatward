@@ -587,6 +587,23 @@ async function main() {
     assert.equal((await api(bob.token, 'POST', '/api/voice/leave', { channelId: voiceChan })).status, 200);
     log('a rejoin after being removed from the call is refused until the user joins again');
 
+    // Previewing a call you have not joined: a hidden, watch-only token under its own identity, and no voice slot. It is
+    // refused while a removal from that call is in force, and a fresh join lifts the refusal.
+    const preview = await api(bob.token, 'POST', '/api/voice/preview-token', { channelId: voiceChan });
+    assert.equal(preview.status, 200, 'a member gets a preview token');
+    const claims = JSON.parse(Buffer.from((preview.json.token as string).split('.')[1], 'base64url').toString());
+    assert.equal(claims.sub, `preview:${bob.user as string}`, 'the preview has its own identity');
+    assert.deepEqual([claims.video.canPublish, claims.video.canPublishData, claims.video.canSubscribe, claims.video.hidden], [false, false, true, true], 'the preview is watch-only and hidden');
+    const previewState = await api(bob.token, 'GET', `/api/servers/${serverId}/voice-state`);
+    assert.ok(!((previewState.json.channels as Record<string, string[]>)[voiceChan] ?? []).includes(bob.user as string), 'a preview takes no voice slot');
+    assert.equal((await api(bob.token, 'POST', '/api/voice/token', { channelId: voiceChan })).status, 200, 'bob joins the call');
+    assert.equal((await api(alice.token, 'POST', '/api/voice/kick', { channelId: voiceChan, userId: bob.user })).status, 200, 'alice removes bob from the call');
+    assert.equal((await api(bob.token, 'POST', '/api/voice/preview-token', { channelId: voiceChan })).status, 409, 'a removed user cannot preview the call');
+    assert.equal((await api(bob.token, 'POST', '/api/voice/token', { channelId: voiceChan })).status, 200, 'bob joins again');
+    assert.equal((await api(bob.token, 'POST', '/api/voice/preview-token', { channelId: voiceChan })).status, 200, 'and can preview again');
+    assert.equal((await api(bob.token, 'POST', '/api/voice/leave', { channelId: voiceChan })).status, 200);
+    log('a call preview is hidden, watch-only and takes no slot, and a removal from the call refuses it');
+
     // A rejoin needs a recent token for that room. A voice channel bob never joined is refused, even though he is a member.
     const sideVoice = addChannel(serverId, 'side call', 'voice');
     assert.equal((await api(bob.token, 'POST', '/api/voice/rejoin', { channelId: sideVoice })).status, 409, 'a rejoin without a token for that room is refused');
