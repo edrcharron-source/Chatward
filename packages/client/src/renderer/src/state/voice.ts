@@ -194,7 +194,7 @@ let activeKeyId = '';
 // previous epoch's key stays in its own slot until the ring wraps, so frames already in flight still decrypt.
 const KEY_RING_SIZE = 16;
 
-class IndexedKeyProvider extends ExternalE2EEKeyProvider {
+export class IndexedKeyProvider extends ExternalE2EEKeyProvider {
   constructor() {
     super({ keyringSize: KEY_RING_SIZE });
   }
@@ -205,7 +205,7 @@ class IndexedKeyProvider extends ExternalE2EEKeyProvider {
   }
 }
 
-const keyBuffer = (key: Uint8Array): ArrayBuffer => key.buffer.slice(key.byteOffset, key.byteOffset + key.byteLength) as ArrayBuffer;
+export const keyBuffer = (key: Uint8Array): ArrayBuffer => key.buffer.slice(key.byteOffset, key.byteOffset + key.byteLength) as ArrayBuffer;
 const keyId = (key: Uint8Array): string => Array.from(key, (b) => b.toString(16).padStart(2, '0')).join('');
 
 // Rekeys run one at a time. Each reads the current key when its turn comes, so an older slow setKey cannot land last.

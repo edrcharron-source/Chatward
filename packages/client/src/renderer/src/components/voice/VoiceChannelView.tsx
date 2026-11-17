@@ -12,6 +12,7 @@ import ProfileTrigger from '../profile/ProfileTrigger';
 import { AsciiMeter, useLebaiArt } from '../lebai/AsciiArt';
 import './voice.css';
 import { useMemberMenu } from './MemberMenu';
+import { PREVIEW_FPS, useCallPreview, type PreviewShare } from '../../state/voicePreview';
 
 const NOBODY: string[] = [];
 const GRID_GAP = 12;
@@ -121,6 +122,8 @@ export default function VoiceChannelView({ channel }: { channel: Channel }) {
   const members = useSession((s) => s.servers.find((b) => b.server.id === channel.serverId)?.members);
   const menu = useMemberMenu();
   const [stageRef, stage] = useContentSize<HTMLDivElement>();
+  // someone is in the call and you are not: preview its screen shares behind their pictures
+  const previewShares = useCallPreview(!inCall && occupants.length > 0 ? channel.id : null, occupants);
 
   const users = new Map([...(members ?? []).map((m) => m.user), ...GUEST_USERS].map((u) => [u.id, u]));
   const feeds = demo && inCall ? demoVoice.snapshot() : null;
@@ -197,7 +200,7 @@ export default function VoiceChannelView({ channel }: { channel: Channel }) {
       <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
         <div ref={stageRef} style={{ flex: 1, minWidth: 0, overflow: 'auto', padding: 16 }}>
           {!inCall
-            ? <JoinPanel channelName={channel.name} people={entries.map((e) => users.get(e.id)).filter((u): u is User => !!u)}
+            ? <JoinPanel channelName={channel.name} people={entries.map((e) => users.get(e.id)).filter((u): u is User => !!u)} shares={previewShares}
                 onJoin={() => void join(channel.serverId, channel.id)} />
             : entries.length === 0
             ? <div className="muted" style={{ margin: 'auto', textAlign: 'center', paddingTop: 40 }}>Nobody is in this voice channel yet.</div>
@@ -218,23 +221,104 @@ export default function VoiceChannelView({ channel }: { channel: Channel }) {
   );
 }
 
-/** Before you join: who is already talking, and one big way in. */
-function JoinPanel({ channelName, people, onJoin }: { channelName: string; people: User[]; onJoin: () => void }) {
+/**
+ * Behind the pictures: every screen share in the call, heavily blurred, together filling the stage. Each share is drawn
+ * onto a small canvas PREVIEW_FPS times a second, so the blur is redone only that often.
+ */
+function StreamBackdrop({ shares, width, height }: { shares: PreviewShare[]; width: number; height: number }) {
+  if (shares.length === 0 || width === 0) return null;
+  const cols = gridColumns(shares.length, width, height);
+  const rows: PreviewShare[][] = [];
+  for (let i = 0; i < shares.length; i += cols) rows.push(shares.slice(i, i + cols));
+  return (
+    <div className="cv-join-backdrop" aria-hidden="true">
+      {rows.map((row, r) => (
+        <div key={r} className="cv-join-backdrop-row">
+          {row.map((s) => <div key={s.userId} className="cv-join-backdrop-cell"><BackdropFeed feed={s.feed} /></div>)}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** One share as a still that refreshes PREVIEW_FPS times a second. The video element only feeds the canvas. */
+function BackdropFeed({ feed }: { feed: Feed }) {
+  const video = useRef<HTMLVideoElement>(null);
+  const canvas = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const v = video.current;
+    const c = canvas.current;
+    if (!v || !c) return;
+    if (feed instanceof MediaStream) v.srcObject = feed;
+    else feed.attach(v);
+    void v.play().catch(() => {});
+    const g = c.getContext('2d');
+    const timer = setInterval(() => {
+      if (g && v.readyState >= 2) g.drawImage(v, 0, 0, c.width, c.height);
+    }, 1000 / PREVIEW_FPS);
+    return () => {
+      clearInterval(timer);
+      if (feed instanceof MediaStream) v.srcObject = null;
+      else feed.detach(v);
+    };
+  }, [feed]);
+  return (
+    <>
+      <video ref={video} className="cv-join-backdrop-source" autoPlay playsInline muted />
+      <canvas ref={canvas} width={160} height={90} />
+    </>
+  );
+}
+
+/** Columns that fit `count` square pictures, each with a name line under it, as large as possible in `width` x `height`. */
+function faceColumns(count: number, width: number, height: number): { cols: number; size: number } {
+  let best = { cols: 1, size: 0 };
+  for (let cols = 1; cols <= count; cols++) {
+    const rows = Math.ceil(count / cols);
+    const cellW = (width - (cols - 1) * FACE_GAP) / cols;
+    const cellH = (height - (rows - 1) * FACE_GAP) / rows - FACE_LABEL;
+    const size = Math.floor(Math.min(cellW, cellH, FACE_MAX));
+    if (size > best.size) best = { cols, size };
+  }
+  return best;
+}
+
+const FACE_GAP = 28;
+const FACE_LABEL = 34;
+const FACE_MAX = 220;
+/** Room kept under the pictures for the line of names, the note and the Join button. */
+const FOOT_HEIGHT = 190;
+/** Room kept at each side, so the pictures' rings stay clear of the stage's edge. */
+const SIDE_ROOM = 24;
+
+/** Before you join: the people already in the call, their pictures shown large across the stage, and one big way in. */
+function JoinPanel({ channelName, people, shares, onJoin }: { channelName: string; people: User[]; shares: PreviewShare[]; onJoin: () => void }) {
+  const [ref, area] = useContentSize<HTMLDivElement>();
   const names = people.map((u) => u.displayName || u.username);
   const who = names.length === 0 ? `Nobody is in ${channelName} yet.`
     : names.length === 1 ? `${names[0]} is in ${channelName}.`
     : names.length <= 3 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]} are in ${channelName}.`
     : `${names.slice(0, 2).join(', ')} and ${names.length - 2} others are in ${channelName}.`;
+  const { cols, size } = faceColumns(people.length, area.width - 2 * SIDE_ROOM, area.height - FOOT_HEIGHT);
   return (
-    <div className="cv-join">
-      {people.length > 0 && (
-        <div className="cv-join-faces" aria-hidden="true">
-          {people.slice(0, 6).map((u) => <Avatar key={u.id} user={u} size={56} />)}
-        </div>
+    <div className="cv-join" data-people={people.length || undefined}>
+      <div ref={ref} className="cv-join-measure" aria-hidden="true" />
+      <StreamBackdrop shares={shares} width={area.width} height={area.height} />
+      {people.length > 0 && size > 0 && (
+        <ul className="cv-join-faces" style={{ gridTemplateColumns: `repeat(${cols}, ${size}px)`, gap: FACE_GAP }}>
+          {people.map((u) => (
+            <li key={u.id} className="cv-join-face">
+              <ProfileTrigger user={u}><Avatar user={u} size={size} /></ProfileTrigger>
+              <span className="cv-join-name">{u.displayName || u.username}</span>
+            </li>
+          ))}
+        </ul>
       )}
-      <p className="cv-join-who">{who}</p>
-      <p className="muted cv-join-note">Calls are end-to-end encrypted. You can mute, share your screen or leave from the call controls once you're in.</p>
-      <button type="button" className="primary cv-join-button" onClick={onJoin}>Join voice</button>
+      <div className="cv-join-foot">
+        <p className="cv-join-who">{who}</p>
+        <p className="muted cv-join-note">Calls are end-to-end encrypted. You can mute, share your screen or leave from the call controls once you're in.</p>
+        <button type="button" className="primary cv-join-button" onClick={onJoin}>Join voice</button>
+      </div>
     </div>
   );
 }
