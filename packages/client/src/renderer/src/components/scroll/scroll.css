@@ -6,19 +6,20 @@
   align-items: center;
   gap: 6px;
   font-weight: 800;
-  font-size: 16px;
+  font-size: 14px;
+  line-height: 1.2;
   letter-spacing: .01em;
   color: var(--accent-text);
   background: linear-gradient(135deg, var(--accent), var(--accent-hover));
   border: 0;
   border-radius: 999px;
-  padding: 7px 16px;
+  padding: 3px 14px;
   box-shadow: 0 0 0 0 var(--accent-tint);
   animation: cw-scroll-pulse 2.8s ease-in-out infinite;
 }
 .cw-tool.cw-scroll-btn:hover { background: linear-gradient(135deg, var(--accent-hover), var(--accent)); }
 .cw-tool.cw-scroll-btn:focus-visible { outline: 2px solid var(--text-strong); outline-offset: 2px; }
-.cw-scroll-btn-emoji { font-size: 18px; line-height: 1; }
+.cw-scroll-btn-emoji { font-size: 16px; line-height: 1; }
 
 @keyframes cw-scroll-pulse {
   0%, 100% { box-shadow: 0 0 0 0 var(--accent-tint); }
