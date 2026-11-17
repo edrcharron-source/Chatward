@@ -26,6 +26,10 @@ const SKINS: TestSkin[] = [
   { id: 'test-layout', css: 'test/skins/fixtures/test-layout.css' },
   // the default look, so it must keep every feature too
   { id: 'lebserver', css: 'src/renderer/src/skins/lebserver/skin.css' },
+  // the Scroll! button and feed must keep every feature in each of these skins
+  { id: 'retro-ascii', css: 'src/renderer/src/skins/retro-ascii/skin.css' },
+  { id: 'lcars', css: 'src/renderer/src/skins/lcars/skin.css' },
+  { id: 'orbit', css: 'src/renderer/src/skins/orbit/skin.css' },
 ];
 // Skins that must fail: each one drops or hides something the check must notice.
 const BROKEN_SKINS: TestSkin[] = [{ id: 'hides-action', css: 'test/skins/broken/hides-action.css' }];
@@ -79,7 +83,7 @@ async function walk(page: Page, run: Run, shoot: (name: string) => Promise<void>
 
   await act(page, 'auth.try-demo');
   await page.getByText('This is the start of #general').waitFor();
-  for (const id of ['server.settings', 'settings.open', 'tab.voice', 'tab.watch', 'tab.vault',
+  for (const id of ['server.settings', 'settings.open', 'scroll.open', 'tab.voice', 'tab.watch', 'tab.vault',
     'chat.attach', 'chat.emoji', 'chat.gif', 'member.profile']) {
     await probe(page, id, run);
   }
@@ -89,6 +93,14 @@ async function walk(page: Page, run: Run, shoot: (name: string) => Promise<void>
   await page.getByLabel('Message', { exact: true }).fill('');
   await controls(page, 'chat', run);
   await shoot('chat');
+
+  // The Scroll! feed covers the window, so it is opened, fingerprinted and shot on its own, then closed with Escape.
+  await act(page, 'scroll.open');
+  await page.getByRole('dialog', { name: 'Scroll feed' }).waitFor();
+  await page.getByRole('img').or(page.locator('.cw-scroll-slide')).first().waitFor({ timeout: 15_000 }).catch(() => {});
+  await controls(page, 'scroll', run);
+  await shoot('scroll');
+  await closePopups(page);
 
   await act(page, 'chat.emoji');
   await probe(page, 'emoji-picker.dialog', run);

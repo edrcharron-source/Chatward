@@ -37,6 +37,7 @@ export const FEATURES: Feature[] = [
   { id: 'tab.watch', what: 'open the Watch together tab', find: (p) => tab(p, 'watch') },
   { id: 'tab.vault', what: 'open the Vault tab', find: (p) => tab(p, 'vault') },
   { id: 'server.settings', what: 'open server settings', find: (p) => p.getByRole('button', { name: 'Server settings', exact: true }) },
+  { id: 'scroll.open', what: 'open the Scroll feed', find: (p) => p.getByRole('button', { name: /Scroll!/ }) },
   { id: 'settings.open', what: 'open app settings', find: (p) => p.getByRole('button', { name: 'Settings', exact: true }) },
   { id: 'settings.close', what: 'close app settings', find: (p) => p.getByRole('button', { name: 'Close settings', exact: true }) },
 

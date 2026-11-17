@@ -186,3 +186,7 @@
   background-image: radial-gradient(1px 1px at 1px 1px, var(--lb-star) 50%, transparent 51%);
   background-size: 22px 22px;
 }
+
+/* Scroll! button (components/scroll): a yellow block with the lebai hard offset shadow. */
+:root[data-skin='lebserver'] .cw-scroll-btn { background: var(--lb-yellow); color: var(--lb-ink); border: 2px solid var(--lb-ink); box-shadow: 3px 3px 0 var(--lb-ink); border-radius: 0; animation: none; }
+:root[data-skin='lebserver'] .cw-scroll-btn:hover { background: var(--lb-yellow); box-shadow: 1px 1px 0 var(--lb-ink); transform: translate(2px, 2px); }
