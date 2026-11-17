@@ -10,6 +10,8 @@ import { useScreenShare } from '../voice/useScreenShare';
 import { useFloatingBox } from '../float/useFloatingBox';
 import VoiceDock from '../voice/VoiceDock';
 import VaultView from '../vault/VaultView';
+import ScrollButton from '../scroll/ScrollButton';
+import ScrollFeed from '../scroll/ScrollFeed';
 import WorkoutsView from '../workouts/WorkoutsView';
 import { WatchPartyPanel } from '../watchparty';
 import MemberList from '../servers/MemberList';
@@ -125,6 +127,7 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenMov
   const phone = usePhone();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [meOpen, setMeOpen] = useState(false);
+  const [scrollOpen, setScrollOpen] = useState(false);
   const presence = useSession((s) => s.presence);
   // The web app: make sure this device's notifications still reach it, and clear the badge once it is open.
   useEffect(() => {
@@ -443,6 +446,8 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenMov
     </div>
   );
 
+  const scrollOverlay = scrollOpen && serverId ? <ScrollFeed serverId={serverId} onClose={() => setScrollOpen(false)} /> : null;
+
   if (phone) {
     // Same pieces as the wide layout: the server name, the tool buttons and the tab bar, with the member list in a drawer
     // and your card (status, notifications, settings) in a sheet behind the gear.
@@ -453,6 +458,7 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenMov
         <header className="cw-tabs-bar cw-phone-top" data-region="tabs">
           <strong className="cw-tabs-server">{bundle?.server.name ?? 'Chatward'}</strong>
           <div className="cw-tabs-tools">
+            {serverId && <ScrollButton onOpen={() => setScrollOpen(true)} />}
             <button type="button" className={`cw-tool${meOpen ? ' active' : ''}`} aria-label="You: status, notifications and settings" aria-expanded={meOpen} onClick={() => setMeOpen(true)}>
               <PixelIcon name="gear" size={16} />
               {myStatus !== 'online' && <span className={`cw-dot-inline ${myStatus}`} aria-hidden="true" />}
@@ -484,6 +490,7 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenMov
             onOpenServerSettings={canOpenServerSettings ? () => setServerSettingsOpen(true) : null} />
         )}
         {windows}
+        {scrollOverlay}
       </div>
     );
   }
@@ -501,6 +508,7 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenMov
               {membersHidden ? 'Show members' : 'Hide members'}
             </button>
           )}
+          {serverId && <ScrollButton onOpen={() => setScrollOpen(true)} />}
           {rail
             ? <MysteryButton className="cw-tool"><span aria-hidden="true">🔪</span><span>Mystery</span></MysteryButton>
             : <MysteryButton className="icon cw-tool-icon" />}
@@ -524,6 +532,7 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenMov
       {side('cw-tabs-side')}
 
       {windows}
+      {scrollOverlay}
     </div>
   );
 }

@@ -222,6 +222,23 @@ export type VaultRef = VaultDescriptor & { itemId: string };
  * A Vault album someone made by hand. The name and description are sealed in `ciphertext` (a VaultAlbumMeta) with the
  * channel key by `sealedBy`; the server only knows which item ids are grouped together.
  */
+/** Scroll feed: how many people liked an item, whether you did, and how many comments it has. */
+export interface ScrollSocial {
+  count: number;
+  liked: boolean;
+  comments: number;
+}
+
+/** A comment on a Vault item in the Scroll feed. `gif` is a GIF from the GIF integration, when there is one. */
+export interface ScrollComment {
+  id: string;
+  itemId: string;
+  authorId: string;
+  text: string;
+  gif: NonNullable<MessagePayload['gif']> | null;
+  createdAt: number;
+}
+
 export interface VaultAlbum {
   id: string;
   serverId: string;

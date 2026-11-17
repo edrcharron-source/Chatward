@@ -137,3 +137,7 @@
 :root[data-skin='lcars'][data-theme='light'] .lcars-status { color: #2c6fb5; }
 :root[data-skin='lcars'][data-theme='light'] .lcars-status.live,
 :root[data-skin='lcars'][data-theme='light'] .lcars-alert { filter: brightness(.85); }
+
+/* Scroll! button (components/scroll): an amber pill in capitals, the LCARS "selected and live" colour. */
+:root[data-skin='lcars'] .cw-scroll-btn { background: var(--lcs-live); color: var(--lcs-ink); box-shadow: none; text-transform: uppercase; letter-spacing: .1em; font-size: 16px; animation: none; }
+:root[data-skin='lcars'] .cw-scroll-btn:hover { background: var(--lcs-live-hover); }
