@@ -6,8 +6,6 @@
  * it ends right at the top of the keyboard, and `cw-kb` on <html> says the keyboard is open (the phone layout hides its
  * tab bar then, to leave the chat more room).
  */
-const KEYBOARD_MIN_PX = 120;
-
 /** The keyboard can only be up while something you type into has focus. */
 function typing(): boolean {
   const el = document.activeElement as HTMLElement | null;
@@ -43,11 +41,12 @@ export function followVisualViewport(): void {
       html.classList.remove('cw-kb');
       return;
     }
-    const keyboard = window.innerHeight - vv.height > KEYBOARD_MIN_PX;
     root.style.height = `${Math.round(vv.height)}px`;
     // iPhone may still scroll the page a little; move the app with it so it stays where you see it.
     root.style.transform = vv.offsetTop ? `translateY(${Math.round(vv.offsetTop)}px)` : '';
-    html.classList.toggle('cw-kb', keyboard);
+    // Typing means the keyboard is up. Reported heights are not reliable on every iPhone (the keyboard's own
+    // accessory bar can make the gap look small), so focus decides, and the phone bar goes compact.
+    html.classList.toggle('cw-kb', typing());
   };
   const schedule = () => { if (!frame) frame = requestAnimationFrame(apply); };
   vv.addEventListener('resize', schedule);

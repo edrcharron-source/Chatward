@@ -23,6 +23,8 @@
   flex: none; background: var(--bg-1); border-top: 1px solid var(--border);
   padding: 4px 4px calc(4px + env(safe-area-inset-bottom));
 }
+/* While the keyboard is up (html.cw-kb) the tab bar goes away entirely, so the chat has the whole space above the
+   keyboard. It comes back when the keyboard closes. */
 html.cw-kb .cw-phone-bottom { display: none; }
 .cw-phone-bottom .cw-tabs { flex-wrap: nowrap; justify-content: space-around; gap: 4px; margin: 0; }
 .cw-phone-bottom .cw-tab { flex: 1 1 0; min-width: 0; justify-content: center; }
