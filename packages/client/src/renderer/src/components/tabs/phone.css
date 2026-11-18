@@ -64,7 +64,9 @@ html.cw-kb .cw-call-pill { display: none; }
   /* Touch screens have no hover: the hover-only message buttons give way to a long press (MessageItem). */
   .cv-actions { display: none !important; }
   .cv-msg:hover { background: transparent; }
-  .cv-msg { -webkit-touch-callout: none; }
+  /* A long press on a message opens the reply sheet (MessageItem), not the system selection: no text selection on
+     messages, so the iOS/Android copy bubble never covers the screen. "Copy text" in the sheet still copies. */
+  .cv-msg, .cv-msg * { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
 }
 
 /* Dialogs (Server settings, Movies, GIF and sound dialogs) open as sheets from the bottom on a phone: full width,
