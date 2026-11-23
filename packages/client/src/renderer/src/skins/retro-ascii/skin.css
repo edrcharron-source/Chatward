@@ -145,3 +145,6 @@
 :root[data-skin='retro-ascii'] .cw-scroll-btn:hover { background: var(--accent-hover); }
 :root[data-skin='retro-ascii'] .cw-scroll-btn::before { content: '['; }
 :root[data-skin='retro-ascii'] .cw-scroll-btn::after { content: ']'; }
+
+/* Scroll feed actions (components/scroll): over the picture they are plain white with a shadow, with no box, in this skin. */
+:root[data-skin='retro-ascii'] .cw-scroll-act, :root[data-skin='retro-ascii'] .cw-scroll-act:hover { background: none; box-shadow: none; color: #fff; text-shadow: 0 1px 4px rgba(0, 0, 0, .7); }

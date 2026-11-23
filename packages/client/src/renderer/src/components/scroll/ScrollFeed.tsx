@@ -139,6 +139,7 @@ export default function ScrollFeed({ serverId, onClose }: { serverId: string; on
             const url = urls[slide.id];
             return (
               <article key={slide.id} className="cw-scroll-slide" aria-label={`${i + 1} of ${ordered.length}: ${slide.title}`}>
+                <div className="cw-scroll-stage">
                 <div className="cw-scroll-media">
                   {url && slide.kind === 'video'
                     ? <FeedVideo src={url} title={slide.title} active={i === index} />
@@ -155,6 +156,7 @@ export default function ScrollFeed({ serverId, onClose }: { serverId: string; on
                   </button>
                 </div>
                 <p className="cw-scroll-caption">{slide.title}</p>
+                </div>
               </article>
             );
           })}

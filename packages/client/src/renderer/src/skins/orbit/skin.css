@@ -229,3 +229,6 @@
 /* Scroll! button (components/scroll): a gold outline with spaced capitals, like the Orbit tab bar. */
 :root[data-skin='orbit'] .cw-scroll-btn { background: transparent; color: var(--orb-gold); border: 1px solid var(--orb-gold); box-shadow: none; border-radius: 0; text-transform: uppercase; letter-spacing: .2em; animation: none; }
 :root[data-skin='orbit'] .cw-scroll-btn:hover { background: var(--accent-tint); color: var(--text-strong); }
+
+/* Scroll feed actions (components/scroll): over the picture they are plain white with a shadow, with no box, in this skin. */
+:root[data-skin='orbit'] .cw-scroll-act, :root[data-skin='orbit'] .cw-scroll-act:hover { background: none; box-shadow: none; color: #fff; text-shadow: 0 1px 4px rgba(0, 0, 0, .7); }

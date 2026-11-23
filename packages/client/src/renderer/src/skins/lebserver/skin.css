@@ -190,3 +190,6 @@
 /* Scroll! button (components/scroll): a yellow block with the lebai hard offset shadow. */
 :root[data-skin='lebserver'] .cw-scroll-btn { background: var(--lb-yellow); color: var(--lb-ink); border: 2px solid var(--lb-ink); box-shadow: 3px 3px 0 var(--lb-ink); border-radius: 0; animation: none; }
 :root[data-skin='lebserver'] .cw-scroll-btn:hover { background: var(--lb-yellow); box-shadow: 1px 1px 0 var(--lb-ink); transform: translate(2px, 2px); }
+
+/* Scroll feed actions (components/scroll): over the picture they are plain white with a shadow, with no box, in this skin. */
+:root[data-skin='lebserver'] .cw-scroll-act, :root[data-skin='lebserver'] .cw-scroll-act:hover { background: none; box-shadow: none; color: #fff; text-shadow: 0 1px 4px rgba(0, 0, 0, .7); }

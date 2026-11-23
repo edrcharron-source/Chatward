@@ -141,3 +141,6 @@
 /* Scroll! button (components/scroll): an amber pill in capitals, the LCARS "selected and live" colour. */
 :root[data-skin='lcars'] .cw-scroll-btn { background: var(--lcs-live); color: var(--lcs-ink); box-shadow: none; text-transform: uppercase; letter-spacing: .1em; font-size: 16px; animation: none; }
 :root[data-skin='lcars'] .cw-scroll-btn:hover { background: var(--lcs-live-hover); }
+
+/* Scroll feed actions (components/scroll): over the picture they are plain white with a shadow, with no box, in this skin. */
+:root[data-skin='lcars'] .cw-scroll-act, :root[data-skin='lcars'] .cw-scroll-act:hover { background: none; box-shadow: none; color: #fff; text-shadow: 0 1px 4px rgba(0, 0, 0, .7); }
