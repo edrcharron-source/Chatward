@@ -456,9 +456,9 @@ export default function TabsLayout({ bundle, onOpenSettings, onReload, onOpenMov
     return (
       <div className="cw-tabs-shell cw-phone" data-region="shell" data-layout="phone">
         <header className="cw-tabs-bar cw-phone-top" data-region="tabs">
+          {serverId && <ScrollButton onOpen={() => setScrollOpen(true)} />}
           <strong className="cw-tabs-server">{bundle?.server.name ?? 'Chatward'}</strong>
           <div className="cw-tabs-tools">
-            {serverId && <ScrollButton onOpen={() => setScrollOpen(true)} />}
             <button type="button" className={`cw-tool${meOpen ? ' active' : ''}`} aria-label="You: status, notifications and settings" aria-expanded={meOpen} onClick={() => setMeOpen(true)}>
               <PixelIcon name="gear" size={16} />
               {myStatus !== 'online' && <span className={`cw-dot-inline ${myStatus}`} aria-hidden="true" />}

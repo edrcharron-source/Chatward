@@ -83,47 +83,78 @@
   justify-content: center;
   background: var(--media-bg);
 }
-.cw-scroll-media { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
-.cw-scroll-image, .cw-scroll-video { max-width: 100%; max-height: 100%; object-fit: contain; }
+.cw-scroll-media {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Clear the floating header above and the controls and caption below, so the video's seek bar is never under the frame. */
+  padding: 56px 0 calc(72px + env(safe-area-inset-bottom));
+}
+.cw-scroll-image, .cw-scroll-video { width: 100%; height: 100%; object-fit: cover; }
 .cw-scroll-loading { color: var(--overlay-text); }
 .cw-scroll-rail {
   position: absolute;
-  right: 12px;
-  bottom: 80px;
+  right: 8px;
+  bottom: 96px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 18px;
   align-items: center;
 }
+/* Reels-style: the actions float over the picture with no box, a soft shadow keeps them readable. */
 .cw-scroll-act {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 2px;
-  min-width: 52px;
-  padding: 8px 6px;
+  min-width: 48px;
+  padding: 4px;
   border: 0;
-  border-radius: var(--radius-sm);
-  background: var(--backdrop);
+  background: none;
   color: var(--overlay-text);
   font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, .7);
   cursor: pointer;
 }
 .cw-scroll-act[aria-pressed='true'] { color: var(--danger); }
-.cw-scroll-act span:first-child { font-size: 22px; line-height: 1; }
+.cw-scroll-act span:first-child { font-size: 30px; line-height: 1; }
+/* The picture column: the actions and caption sit over the picture, as in a reel. A soft dark fade sits at the bottom. It never takes clicks, so the video controls still work. */
+.cw-scroll-stage {
+  position: relative;
+  width: min(100%, 520px);
+  height: 100%;
+}
+.cw-scroll-stage::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 42%;
+  background: linear-gradient(to top, rgba(0, 0, 0, .55), transparent);
+  pointer-events: none;
+}
 .cw-scroll-caption {
   position: absolute;
   left: 14px;
-  bottom: 18px;
-  right: 80px;
+  bottom: 96px;
+  right: 84px;
+  z-index: 1;
   margin: 0;
-  padding: 6px 10px;
-  border-radius: var(--radius-sm);
-  background: var(--backdrop);
+  padding: 0;
+  background: none;
   color: var(--overlay-text);
-  font-size: 14px;
+  font-size: 15px;
+  font-weight: 600;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, .7);
+  overflow-wrap: anywhere;
+  pointer-events: none;
 }
-
 .cw-scroll-sheet {
   position: absolute;
   left: 0;
