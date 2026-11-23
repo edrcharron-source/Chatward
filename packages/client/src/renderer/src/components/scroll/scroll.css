@@ -83,8 +83,18 @@
   justify-content: center;
   background: var(--media-bg);
 }
-.cw-scroll-media { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
+.cw-scroll-media {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Clear the floating header above and the controls and caption below, so the video's seek bar is never under the frame. */
+  padding: 56px 0 calc(72px + env(safe-area-inset-bottom));
+}
 .cw-scroll-image, .cw-scroll-video { max-width: 100%; max-height: 100%; object-fit: contain; }
+.cw-scroll-video { width: 100%; height: 100%; }
 .cw-scroll-loading { color: var(--overlay-text); }
 .cw-scroll-rail {
   position: absolute;

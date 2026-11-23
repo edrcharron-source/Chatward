@@ -141,7 +141,7 @@ export default function ScrollFeed({ serverId, onClose }: { serverId: string; on
               <article key={slide.id} className="cw-scroll-slide" aria-label={`${i + 1} of ${ordered.length}: ${slide.title}`}>
                 <div className="cw-scroll-media">
                   {url && slide.kind === 'video'
-                    ? <video src={url} controls playsInline loop className="cw-scroll-video" />
+                    ? <FeedVideo src={url} title={slide.title} active={i === index} />
                     : url ? <img src={url} alt={slide.title} className="cw-scroll-image" /> : <span className="cw-scroll-loading muted">Loading…</span>}
                 </div>
                 <div className="cw-scroll-rail">
@@ -173,6 +173,22 @@ export default function ScrollFeed({ serverId, onClose }: { serverId: string; on
       )}
     </div>
   );
+}
+
+/** A video that plays while it is the one on screen and pauses when you scroll away. Sound starts only if the browser allows it. */
+function FeedVideo({ src, title, active }: { src: string; title: string; active: boolean }) {
+  const ref = useRef<HTMLVideoElement>(null);
+  useEffect(() => {
+    const v = ref.current;
+    if (!v) return;
+    if (!active) { v.pause(); return; }
+    void v.play().catch(() => {
+      // The browser blocked sound: start again muted, so the clip still plays.
+      v.muted = true;
+      void v.play().catch(() => {});
+    });
+  }, [active, src]);
+  return <video ref={ref} src={src} controls playsInline loop autoPlay={active} className="cw-scroll-video" aria-label={title} />;
 }
 
 function CommentsSheet({ serverId, itemId, me, onClose, onCountChange }: {
