@@ -178,6 +178,8 @@ export default function ScrollFeed({ serverId, onClose }: { serverId: string; on
 /** A video that plays while it is the one on screen and pauses when you scroll away. Sound starts only if the browser allows it. */
 function FeedVideo({ src, title, active }: { src: string; title: string; active: boolean }) {
   const ref = useRef<HTMLVideoElement>(null);
+  const activeRef = useRef(active);
+  activeRef.current = active;
   useEffect(() => {
     const v = ref.current;
     if (!v) return;
@@ -188,7 +190,9 @@ function FeedVideo({ src, title, active }: { src: string; title: string; active:
       void v.play().catch(() => {});
     });
   }, [active, src]);
-  return <video ref={ref} src={src} controls playsInline loop autoPlay={active} className="cw-scroll-video" aria-label={title} />;
+  // A clip only plays while it is the one on screen, even when someone presses its play button on another slide.
+  const stopIfAway = () => { if (!activeRef.current) ref.current?.pause(); };
+  return <video ref={ref} src={src} controls playsInline loop autoPlay={active} onPlay={stopIfAway} className="cw-scroll-video" aria-label={title} />;
 }
 
 function CommentsSheet({ serverId, itemId, me, onClose, onCountChange }: {
